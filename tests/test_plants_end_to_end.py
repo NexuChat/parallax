@@ -112,10 +112,10 @@ def test_deliberate_workspace_rtl_composer_does_not_mirror(demo_url: str) -> Non
             page = resources[3]
             await login(page, demo_url, "workspace", "owner@demo", "sites.workspace", email=True)
             await page.goto(f"{demo_url}/workspace/threads?lang=en")
-            english_tool, english_control = await rect(page, ".composer-tools"), await rect(page, ".composer button")
+            english_tool, english_control = await rect(page, ".composer-tools"), await rect(page, '.composer button[type="submit"]')
             width = await page.evaluate("innerWidth")
             await page.goto(f"{demo_url}/workspace/threads?lang=ar")
-            arabic_tool, arabic_control = await rect(page, ".composer-tools"), await rect(page, ".composer button")
+            arabic_tool, arabic_control = await rect(page, ".composer-tools"), await rect(page, '.composer button[type="submit"]')
             mirrored_tool_x = width - english_tool["x"] - english_tool["width"]
             mirrored_control_x = width - english_control["x"] - english_control["width"]
             assert abs(arabic_tool["x"] - mirrored_tool_x) > 1
@@ -132,9 +132,9 @@ def test_deliberate_workspace_dark_theme_shifts_content_geometry(demo_url: str) 
             page = resources[3]
             await login(page, demo_url, "workspace", "owner@demo", "sites.workspace", email=True)
             await page.goto(f"{demo_url}/workspace/threads?theme=light")
-            light = await rect(page, ".workspace")
+            light = await rect(page, ".app-shell")
             await page.goto(f"{demo_url}/workspace/threads?theme=dark")
-            dark = await rect(page, ".workspace")
+            dark = await rect(page, ".app-shell")
             assert dark["y"] > light["y"]
         finally:
             await close_browser(resources)
@@ -293,7 +293,7 @@ def test_deliberate_admin_reports_authorization_is_inverted(demo_url: str) -> No
             assert owner.url.endswith("/admin/login")
             response = await member.goto(f"{demo_url}/admin/reports")
             assert response and response.status == 200
-            assert "Weekly reports" in await member.locator("h1").inner_text()
+            assert "Scheduled reports" in await member.locator("h1").inner_text()
             await member_context.close()
         finally:
             await close_browser(resources)
