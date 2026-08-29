@@ -173,7 +173,12 @@ class Application:
     def file_response(path: Path) -> Response:
         if not path.is_file():
             return Application.not_found()
-        content_type = "application/x-ndjson" if path.name == "feed.jsonl" else mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        if path.name == "feed.jsonl":
+            content_type = "application/x-ndjson"
+        elif path.name == "graded-summary.json":
+            content_type = "application/json"
+        else:
+            content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         return "200 OK", [("Content-Type", content_type), ("Content-Length", str(path.stat().st_size))], path.read_bytes()
 
     @staticmethod

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from parallax.types import Axis, Finding, FindingKind, Severity, Surface, SurfaceKind
 from scripts import run_demo_suite
 from sites.base import Planted
@@ -56,6 +58,42 @@ def test_exit_code_fails_for_misses_or_false_positives() -> None:
 
     assert run_demo_suite.exit_code({"site": run_demo_suite.grade_findings([], [plant])}) == 1
     assert run_demo_suite.exit_code({"site": run_demo_suite.grade_findings([finding(FindingKind.RENDER_DEFECT, Axis.BASELINE, "/")], [])}) == 1
+
+
+def test_summary_writer_records_every_grade_and_plant_verdict(tmp_path) -> None:
+    found = Planted("render", "baseline", "/", "landing")
+    missed = Planted("escalation", "privilege", "/billing", "billing")
+    grades = {
+        "shop": run_demo_suite.Grade([found], [missed], [finding(FindingKind.DEAD_SURFACE, Axis.BASELINE, "/other")]),
+        "control": run_demo_suite.Grade([], [], []),
+    }
+    path = tmp_path / "graded-summary.json"
+
+    run_demo_suite.write_summary(grades, "http://127.0.0.1:8090", path, generated_at="2026-08-29T12:00:00+00:00")
+
+    assert json.loads(path.read_text()) == {
+        "host": "http://127.0.0.1:8090",
+        "generated_at": "2026-08-29T12:00:00+00:00",
+        "sites": {
+            "shop": {
+                "planted": 2, "found": 1, "missed": 1, "false_positives": 1,
+                "plants": [
+                    {"name": "landing", "defect": "render", "axis": "baseline", "route": "/", "verdict": "found"},
+                    {"name": "billing", "defect": "escalation", "axis": "privilege", "route": "/billing", "verdict": "missed"},
+                ],
+            },
+            "control": {"planted": 0, "found": 0, "missed": 0, "false_positives": 0, "plants": []},
+        },
+        "totals": {"planted": 2, "found": 1, "missed": 1, "false_positives": 1},
+    }
+
+
+def test_public_spec_example_is_emitted_from_a_real_finding() -> None:
+    generated = run_demo_suite.generated_example_spec()
+    published = (run_demo_suite.ROOT / "web" / "generated-example.spec.ts").read_text(encoding="utf-8")
+
+    assert published == generated
+    assert 'test("Parallax: escalation-privilege-' in generated
 
 
 def test_storage_state_builder_turns_a_login_cookie_into_playwright_state() -> None:

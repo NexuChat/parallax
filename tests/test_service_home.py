@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import re
 from pathlib import Path
 from typing import Any
 from wsgiref.util import setup_testing_defaults
@@ -52,3 +53,35 @@ def test_home_console_health_unknown_and_path_traversal_contract(tmp_path: Path)
 
     status, _, _ = request(app, "GET", "/console/../app.js")
     assert status == "404 Not Found"
+
+
+def test_graded_summary_is_json_when_present_and_404_when_absent(tmp_path: Path) -> None:
+    web = tmp_path / "web"
+    web.mkdir()
+    app = Application(runs_root=tmp_path / "runs", web_root=web)
+
+    status, _, _ = request(app, "GET", "/graded-summary.json")
+    assert status == "404 Not Found"
+
+    (web / "graded-summary.json").write_text('{"sites":{}}', encoding="utf-8")
+    status, headers, body = request(app, "GET", "/graded-summary.json")
+    assert status == "200 OK"
+    assert headers["Content-Type"].startswith("application/json")
+    assert body == b'{"sites":{}}'
+
+
+def test_home_html_references_only_served_assets(tmp_path: Path) -> None:
+    source_web = Path(__file__).resolve().parents[1] / "web"
+    app = Application(runs_root=tmp_path / "runs", web_root=source_web)
+
+    status, headers, body = request(app, "GET", "/")
+    assert status == "200 OK"
+    assert headers["Content-Type"].startswith("text/html")
+    assert b'/style.css' not in body
+    assert b'/favicon.ico' not in body
+    assets = re.findall(r'(?:href|src)="(/[^"?#]+)', body.decode())
+    for asset in assets:
+        status, _, _ = request(app, "GET", asset)
+        assert status == "200 OK", asset
+    status, _, _ = request(app, "GET", "/generated-example.spec.ts")
+    assert status == "200 OK"

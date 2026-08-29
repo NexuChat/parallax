@@ -12,6 +12,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -23,8 +24,9 @@ if str(DEMO_DIR) not in sys.path:
     sys.path.insert(0, str(DEMO_DIR))
 
 from parallax.conductor import Conductor  # noqa: E402
+from parallax.emitter import spec_for  # noqa: E402
 from parallax.specialists import AccessSpecialist, LayoutI18nSpecialist, RealtimeSpecialist  # noqa: E402
-from parallax.types import Finding  # noqa: E402
+from parallax.types import Axis, BASELINE, Finding, FindingKind, Outcome, Privilege, Severity, Surface, SurfaceKind, Testimony  # noqa: E402
 from serve import discover_sites  # noqa: E402
 from sites.base import Planted  # noqa: E402
 
@@ -93,6 +95,52 @@ def grade_findings(findings: list[Finding], planted: list[Planted], site_name: s
 
 def exit_code(grades: dict[str, Grade]) -> int:
     return int(any(grade.missed or grade.false_positives for grade in grades.values()))
+
+
+def summary_payload(grades: dict[str, Grade], host: str, generated_at: str | None = None) -> dict[str, object]:
+    """Make the public, machine-readable account of one graded demo run."""
+    sites: dict[str, dict[str, object]] = {}
+    totals = {"planted": 0, "found": 0, "missed": 0, "false_positives": 0}
+    for name, grade in grades.items():
+        plants = [
+            {"name": plant.note, "defect": plant.defect, "axis": plant.axis, "route": plant.route, "verdict": verdict}
+            for verdict, group in (("found", grade.found), ("missed", grade.missed))
+            for plant in group
+        ]
+        site = {
+            "planted": len(plants), "found": len(grade.found), "missed": len(grade.missed),
+            "false_positives": len(grade.false_positives), "plants": plants,
+        }
+        sites[name] = site
+        for key in totals:
+            totals[key] += int(site[key])
+    return {
+        "host": host.rstrip("/"),
+        "generated_at": generated_at or datetime.now(timezone.utc).isoformat(),
+        "sites": sites,
+        "totals": totals,
+    }
+
+
+def write_summary(grades: dict[str, Grade], host: str, path: Path, *, generated_at: str | None = None) -> None:
+    """Publish the completed demo grade where the public page can fetch it."""
+    path.write_text(json.dumps(summary_payload(grades, host, generated_at), indent=2) + "\n", encoding="utf-8")
+
+
+def generated_example_spec() -> str:
+    """Generate the public output example from the same Finding model as a run."""
+    surface = Surface(SurfaceKind.ROUTE, "https://demo.mlki.app/workspace/audit")
+    anon = BASELINE.__class__(privilege=Privilege.ANON, varies=Axis.PRIVILEGE)
+    finding = Finding(
+        FindingKind.ESCALATION, Severity.HIGH, surface, Axis.PRIVILEGE,
+        "Anonymous access to the workspace audit route.",
+        [Testimony(surface, BASELINE, Outcome.REACHED), Testimony(surface, anon, Outcome.REACHED)],
+    )
+    return spec_for(finding)
+
+
+def write_generated_example(path: Path) -> None:
+    path.write_text(generated_example_spec(), encoding="utf-8")
 
 
 def _specialists(no_vision: bool) -> list[object]:
@@ -232,7 +280,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
-    grades = asyncio.run(run(parse_args(argv)))
+    args = parse_args(argv)
+    grades = asyncio.run(run(args))
+    write_summary(grades, args.host, ROOT / "web" / "graded-summary.json")
+    write_generated_example(ROOT / "web" / "generated-example.spec.ts")
     print_report(grades)
     return exit_code(grades)
 
