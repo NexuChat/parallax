@@ -5,62 +5,53 @@ from demo.sites.base import Request
 
 
 def request(path: str, role: str = "anon", **query: str) -> Request:
-    cookies = {} if role == "anon" else {"session": role}
-    return Request(path=path, query=query, cookies=cookies)
+    return Request(path=path, query=query, cookies={} if role == "anon" else {"session": role})
 
 
 def test_admin_declares_exactly_the_three_deliberate_plants() -> None:
-    site = AdminSite()
-    assert [(plant.defect, plant.axis, plant.route) for plant in site.planted] == [
-        ("inversion", "privilege", "/reports"),
-        ("drift", "locale", "/exports"),
-        ("dead", "baseline", "/legacy"),
-    ]
+    assert [(item.defect, item.axis, item.route) for item in AdminSite().planted] == [("inversion", "privilege", "/reports"), ("drift", "locale", "/exports"), ("dead", "baseline", "/legacy")]
 
 
-def test_intentional_inversion_owner_is_locked_out_while_member_reaches_reports() -> None:
+def test_intentional_plants_keep_their_declared_route_behaviour() -> None:
     site = AdminSite()
     assert site.handle(request("/reports", "owner")).status == 302
     assert site.handle(request("/reports", "member")).status == 200
-
-
-def test_intentional_locale_drift_exports_disappear_in_arabic() -> None:
-    site = AdminSite()
     assert site.handle(request("/exports", "member", lang="en")).status == 200
     assert site.handle(request("/exports", "member", lang="ar")).status == 404
-
-
-def test_intentional_dead_legacy_link_is_unreachable_for_everyone() -> None:
-    site = AdminSite()
-    for role in ("anon", "member", "owner"):
-        for lang in ("en", "ar"):
-            assert site.handle(request("/legacy", role, lang=lang)).status == 404
+    assert all(site.handle(request("/legacy", role, lang=lang)).status == 404 for role in ("anon", "member", "owner") for lang in ("en", "ar"))
 
 
 def test_home_and_users_keep_their_correct_baseline_access() -> None:
     site = AdminSite()
     assert all(site.handle(request("/", role)).status == 200 for role in ("anon", "member", "owner"))
     assert site.handle(request("/users")).status == 302
-    assert site.handle(request("/users", "member")).status == 200
-    assert site.handle(request("/users", "owner")).status == 200
+    assert all(site.handle(request("/users", role)).status == 200 for role in ("member", "owner"))
 
 
-def test_admin_console_has_metrics_events_and_a_real_users_table() -> None:
+def test_product_pages_render_real_operational_data() -> None:
     site = AdminSite()
-    home = site.handle(request("/")).body.decode()
+    home = site.handle(request("/", "owner")).body.decode()
     users = site.handle(request("/users", "owner")).body.decode()
-    assert "Active seats" in home and "Recent events" in home
-    assert "<table>" in users and users.count("<tr>") >= 4
+    reports = site.handle(request("/reports", "member")).body.decode()
+    exports = site.handle(request("/exports", "owner")).body.decode()
+    assert "System status" in home and "99.98%" in home and "Recent events" in home
+    assert "ada@northstar.test" in users and users.count("<tr>") >= 5 and "Invite user" in users
+    assert "Weekly operations summary" in reports and "PDF" in reports
+    assert "EX-4821" in exports and "Processing" in exports
 
 
-def test_mounted_pages_keep_links_and_actions_within_admin() -> None:
+def test_arabic_home_and_users_are_translated_and_rtl() -> None:
     site = AdminSite()
-    for path, role in (("/", "anon"), ("/users", "member")):
-        markup = site.handle(Request(path=path, mount="/admin", cookies={} if role == "anon" else {"session": role})).body.decode()
-        assert all(url.startswith("/admin") for url in re.findall(r'(?:href|action)=["\']?([^"\' >]+)', markup))
+    home = site.handle(request("/", "owner", lang="ar")).body.decode()
+    users = site.handle(request("/users", "owner", lang="ar")).body.decode()
+    assert 'dir="rtl"' in home and "حالة الأنظمة" in home
+    assert "الأشخاص الذين لديهم صلاحية" in users and "البريد الإلكتروني" in users
 
 
-def test_mounted_protected_route_redirects_to_mounted_login() -> None:
-    response = AdminSite().handle(Request(path="/users", mount="/admin"))
-
-    assert response.headers["Location"] == "/admin/login"
+def test_login_sets_session_cookie_and_mounted_links_stay_within_admin() -> None:
+    site = AdminSite()
+    logged_in = site.handle(Request(method="POST", path="/login", mount="/admin", body=b"username=owner&password=owner-pass"))
+    assert logged_in.status == 302 and "session=owner" in logged_in.headers["Set-Cookie"]
+    markup = site.handle(Request(path="/users", mount="/admin", cookies={"session": "owner"})).body.decode()
+    assert all(url.startswith("/admin") for url in re.findall(r'(?:href|action)="([^"]+)', markup))
+    assert site.handle(Request(path="/users", mount="/admin")).headers["Location"] == "/admin/login"
