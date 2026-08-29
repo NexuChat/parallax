@@ -98,8 +98,87 @@ def test_access_delegates_to_differ_and_keeps_only_privilege_findings() -> None:
 
 
 def test_layout_without_a_client_returns_nothing(monkeypatch) -> None:
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    assert LayoutI18nSpecialist().judge([moment(changed=("owner-en-light-desktop",))], []) == []
+    specialist = LayoutI18nSpecialist()
+    assert specialist.route == "disabled"
+    assert specialist.judge([moment(changed=("owner-en-light-desktop",))], []) == []
+
+
+def test_layout_injected_client_wins_over_every_environment_route(monkeypatch) -> None:
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "configured-project")
+    monkeypatch.setenv("GEMINI_API_KEY", "studio-key")
+    fake = FakeClient(TextResponse('{"findings": []}'))
+    specialist = LayoutI18nSpecialist(
+        client=fake,
+        token_fetcher=lambda: (_ for _ in ()).throw(AssertionError("should not fetch a token")),
+        client_factory=lambda **_: (_ for _ in ()).throw(AssertionError("should not build a client")),
+    )
+    specialist.judge([moment(changed=("owner-en-light-desktop",))], [])
+    assert specialist.route == "injected"
+    assert len(fake.models.calls) == 1
+
+
+def test_layout_selects_vertex_with_configured_project_and_bearer_token(monkeypatch) -> None:
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "configured-project")
+    monkeypatch.setenv("GOOGLE_CLOUD_LOCATION", "global")
+    monkeypatch.setenv("GEMINI_API_KEY", "studio-key")
+    captured: dict[str, object] = {}
+    fake = FakeClient(TextResponse('{"findings": []}'))
+
+    def factory(**kwargs: object) -> FakeClient:
+        captured.update(kwargs)
+        return fake
+
+    specialist = LayoutI18nSpecialist(
+        token_fetcher=lambda: "test-bearer-token", client_factory=factory
+    )
+    specialist.judge([moment(changed=("owner-en-light-desktop",))], [])
+    assert specialist.route == "vertex"
+    assert captured["vertexai"] is True
+    assert captured["project"] == "configured-project"
+    assert captured["location"] == "global"
+    assert captured["http_options"] == {"api_version": "v1"}
+    assert captured["credentials"].token == "test-bearer-token"
+    assert fake.models.calls[0]["model"] == "gemini-3.5-flash"
+
+
+def test_layout_selects_ai_studio_when_vertex_is_not_configured(monkeypatch) -> None:
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "studio-key")
+    captured: dict[str, object] = {}
+    fake = FakeClient(TextResponse('{"findings": []}'))
+
+    def factory(**kwargs: object) -> FakeClient:
+        captured.update(kwargs)
+        return fake
+
+    specialist = LayoutI18nSpecialist(client_factory=factory)
+    specialist.judge([moment(changed=("owner-en-light-desktop",))], [])
+    assert specialist.route == "ai_studio"
+    assert captured == {"api_key": "studio-key"}
+    assert len(fake.models.calls) == 1
+
+
+def test_layout_refreshes_vertex_token_once_after_an_auth_failure(monkeypatch) -> None:
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "configured-project")
+    tokens = iter(["first-token", "second-token"])
+    fetches: list[str] = []
+    first = FakeClient(TextResponse('{"findings": []}'))
+    second = FakeClient(TextResponse('{"findings": []}'))
+
+    def unauthorized(**_: object) -> object:
+        raise RuntimeError("401 UNAUTHENTICATED")
+
+    first.models.generate_content = unauthorized  # type: ignore[method-assign]
+    clients = iter([first, second])
+    specialist = LayoutI18nSpecialist(
+        token_fetcher=lambda: fetches.append("fetch") or next(tokens),
+        client_factory=lambda **_: next(clients),
+    )
+    assert specialist.judge([moment(changed=("owner-en-light-desktop",))], []) == []
+    assert fetches == ["fetch", "fetch"]
+    assert len(second.models.calls) == 1
 
 
 def test_layout_sends_the_mosaic_and_parses_a_canned_verdict() -> None:

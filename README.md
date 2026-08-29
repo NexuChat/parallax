@@ -25,7 +25,7 @@ PYTHONPATH=src python -m parallax https://app.example.com --out runs/first --sto
 
 Open `console/index.html?feed=../runs/first/feed.jsonl` in the repository's console, or use the [live console](https://perallax.mlki.app). The local console reads the newline-delimited feed and its referenced mosaics; serving the repository with a static web server avoids browser `file:` restrictions.
 
-The command also accepts `--max-surfaces`, `--settle-ms`, and `--headed`. Omit `--no-vision` and set `GEMINI_API_KEY` to enable the Gemini layout and i18n lens; if no key is present, the CLI continues without that lens.
+The command also accepts `--max-surfaces`, `--settle-ms`, and `--headed`. Omit `--no-vision` to enable the Gemini layout and i18n lens. It chooses the first available route: a configured Vertex AI project (`GOOGLE_CLOUD_PROJECT`, with optional `GOOGLE_CLOUD_LOCATION`, defaulting to `global`) using application-default credentials or a fresh `gcloud auth print-access-token` bearer token; then `GEMINI_API_KEY` for AI Studio. The CLI prints the selected route, or explains why the lens is disabled, before the sweep starts.
 
 ## What a run produces
 

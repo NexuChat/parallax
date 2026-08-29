@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, Callable
 
 from ..contracts import Moment
 from ..types import Axis, Finding, FindingKind, Severity, Surface, Testimony
@@ -16,9 +17,23 @@ class LayoutI18nSpecialist:
 
     name = "layout_i18n"
 
-    def __init__(self, client: Any | None = None, *, max_moments: int = 5) -> None:
+    model = "gemini-3.5-flash"
+
+    def __init__(
+        self,
+        client: Any | None = None,
+        *,
+        max_moments: int = 5,
+        token_fetcher: Callable[[], str] | None = None,
+        client_factory: Callable[..., Any] | None = None,
+    ) -> None:
         self._client = client
         self._max_moments = max(0, max_moments)
+        self._token_fetcher = token_fetcher
+        self._client_factory = client_factory or self._google_client
+        self._project = os.environ.get("GOOGLE_CLOUD_PROJECT")
+        self._location = os.environ.get("GOOGLE_CLOUD_LOCATION", "global")
+        self.route = self._select_route()
 
     def judge(
         self, moments: Sequence[Moment], testimonies: Sequence[Testimony]
@@ -34,27 +49,96 @@ class LayoutI18nSpecialist:
                 continue
             sent += 1
             try:
-                response = client.models.generate_content(
-                    model="gemini-3.5-flash",
-                    contents=[self._prompt(moment), self._image_part(moment)],
-                )
+                response = self._generate(client, moment)
                 verdict = self._parse_response(response)
             except Exception:
                 continue
             findings.extend(self._findings_from_verdict(verdict, moment, testimonies))
         return findings
 
-    @staticmethod
-    def _environment_client() -> Any | None:
-        key = os.environ.get("GEMINI_API_KEY")
-        if not key:
-            return None
-        try:
-            from google import genai
+    def _select_route(self) -> str:
+        if self._client is not None:
+            return "injected"
+        if self._project:
+            return "vertex"
+        if os.environ.get("GEMINI_API_KEY"):
+            return "ai_studio"
+        return "disabled"
 
-            return genai.Client(api_key=key)
-        except Exception:
-            return None
+    def _environment_client(self) -> Any | None:
+        if self.route == "vertex":
+            try:
+                self._client = self._vertex_client()
+            except Exception:
+                return None
+        elif self.route == "ai_studio":
+            try:
+                self._client = self._client_factory(api_key=os.environ["GEMINI_API_KEY"])
+            except Exception:
+                return None
+        return self._client
+
+    def _vertex_client(self, *, force_token: bool = False) -> Any:
+        credentials = self._vertex_credentials(force_token=force_token)
+        return self._client_factory(
+            vertexai=True,
+            project=self._project,
+            location=self._location,
+            credentials=credentials,
+            http_options={"api_version": "v1"},
+        )
+
+    def _vertex_credentials(self, *, force_token: bool) -> Any:
+        if not force_token and self._token_fetcher is None:
+            try:
+                import google.auth
+
+                credentials, _ = google.auth.default()
+                return credentials
+            except Exception:
+                pass
+        from google.oauth2.credentials import Credentials
+
+        token = (self._token_fetcher or self._gcloud_token)()
+        if not token:
+            raise RuntimeError("gcloud returned an empty access token")
+        return Credentials(token=token)
+
+    @staticmethod
+    def _gcloud_token() -> str:
+        return subprocess.run(
+            ["gcloud", "auth", "print-access-token"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    @staticmethod
+    def _google_client(**kwargs: Any) -> Any:
+        from google import genai
+
+        return genai.Client(**kwargs)
+
+    def _generate(self, client: Any, moment: Moment) -> Any:
+        kwargs = {
+            "model": self.model,
+            "contents": [self._prompt(moment), self._image_part(moment)],
+        }
+        try:
+            return client.models.generate_content(**kwargs)
+        except Exception as error:
+            if self.route != "vertex" or not self._is_auth_failure(error):
+                raise
+            self._client = self._vertex_client(force_token=True)
+            return self._client.models.generate_content(**kwargs)
+
+    @staticmethod
+    def _is_auth_failure(error: Exception) -> bool:
+        status = getattr(error, "status_code", None) or getattr(error, "code", None)
+        if status in {401, 403}:
+            return True
+        message = str(error).upper()
+        return "UNAUTHENTICATED" in message or "401" in message
 
     @staticmethod
     def _image_part(moment: Moment) -> dict[str, dict[str, bytes | str]]:
