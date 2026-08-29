@@ -43,17 +43,25 @@
   }
 
   async function attachRun() {
-    const run = new URLSearchParams(location.search).get('run');
-    if (!run || !/^[a-zA-Z0-9_-]+$/.test(run)) return;
-    const feed = `/runs/${run}/feed.jsonl`;
-    try {
-      const response = await fetch(feed, { cache: 'no-store' });
-      if (!response.ok) throw new Error('unavailable');
-      consoleFrame.src = `/console?feed=${encodeURIComponent(feed)}`;
-      feedStatus.textContent = `Live feed attached: ${feed}`;
-    } catch (_) {
-      feedStatus.textContent = `Live feed unavailable; fixture feed remains visible.`;
+    // The wall must show a real sweep. A fixture on the front page of a tool
+    // whose whole claim is measured evidence is worse than an empty panel, so
+    // the published run is the default and the fixture is only ever a last
+    // resort — announced as one when it happens.
+    const requested = new URLSearchParams(location.search).get('run');
+    const candidates = requested && /^[a-zA-Z0-9_-]+$/.test(requested)
+      ? [`/runs/${requested}/feed.jsonl`, '/console/runs/latest/feed.jsonl']
+      : ['/console/runs/latest/feed.jsonl'];
+    for (const feed of candidates) {
+      try {
+        const response = await fetch(feed, { cache: 'no-store' });
+        if (!response.ok) continue;
+        const lines = (await response.text()).split('\n').filter(Boolean).length;
+        consoleFrame.src = `/console?feed=${encodeURIComponent(feed)}`;
+        feedStatus.textContent = `Attached to a real sweep: ${feed} · ${lines} events`;
+        return;
+      } catch (_) { /* try the next candidate */ }
     }
+    feedStatus.textContent = 'No published sweep found — showing the sample feed, not a real run.';
   }
 
   loadScoreboard();

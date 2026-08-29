@@ -5,13 +5,18 @@ from __future__ import annotations
 from html import escape
 from urllib.parse import parse_qs
 
-from .base import Request, Response
+from .base import Account, Request, Response
 
 
 class ControlSite:
     name = "control"
     title = "Team ledger"
     planted: list = []
+    # Declared, not scraped: the graded suite logs in with exactly these.
+    accounts: list = [
+        Account(role="owner", email="owner", password="owner-pass"),
+        Account(role="member", email="member", password="member-pass"),
+    ]
     tap_targets = (".tap",)
 
     _copy = {

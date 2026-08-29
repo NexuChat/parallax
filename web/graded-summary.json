@@ -1,0 +1,149 @@
+{
+  "host": "http://127.0.0.1:8099",
+  "generated_at": "2026-08-29T12:34:34.930222+00:00",
+  "sites": {
+    "admin": {
+      "planted": 3,
+      "found": 2,
+      "missed": 1,
+      "false_positives": 27,
+      "plants": [
+        {
+          "name": "Owners are redirected while members may read reports.",
+          "defect": "inversion",
+          "axis": "privilege",
+          "route": "/reports",
+          "verdict": "found"
+        },
+        {
+          "name": "A navigation link points to a route which never resolves.",
+          "defect": "dead",
+          "axis": "baseline",
+          "route": "/legacy",
+          "verdict": "found"
+        },
+        {
+          "name": "The English-only export route disappears in Arabic.",
+          "defect": "drift",
+          "axis": "locale",
+          "route": "/exports",
+          "verdict": "missed"
+        }
+      ]
+    },
+    "control": {
+      "planted": 0,
+      "found": 0,
+      "missed": 0,
+      "false_positives": 6,
+      "plants": []
+    },
+    "docs": {
+      "planted": 3,
+      "found": 2,
+      "missed": 1,
+      "false_positives": 18,
+      "plants": [
+        {
+          "name": "Arabic renders one guide heading as its translation key.",
+          "defect": "untranslated",
+          "axis": "locale",
+          "route": "/guide",
+          "verdict": "found"
+        },
+        {
+          "name": "Related questions disappear under 768px.",
+          "defect": "divergence",
+          "axis": "viewport",
+          "route": "/faq",
+          "verdict": "found"
+        },
+        {
+          "name": "Dark-only secondary help text uses #6b6b6b.",
+          "defect": "low_contrast",
+          "axis": "theme",
+          "route": "/",
+          "verdict": "missed"
+        }
+      ]
+    },
+    "shop": {
+      "planted": 4,
+      "found": 2,
+      "missed": 2,
+      "false_positives": 30,
+      "plants": [
+        {
+          "name": "The cart table has a fixed minimum width.",
+          "defect": "horizontal_overflow",
+          "axis": "viewport",
+          "route": "/cart",
+          "verdict": "found"
+        },
+        {
+          "name": "Quantity steppers are deliberately 24 by 24 pixels.",
+          "defect": "small_tap_target",
+          "axis": "viewport",
+          "route": "/cart",
+          "verdict": "found"
+        },
+        {
+          "name": "The fixed 720px action row puts Place order beyond 360px.",
+          "defect": "offscreen_control",
+          "axis": "viewport",
+          "route": "/checkout",
+          "verdict": "missed"
+        },
+        {
+          "name": "Long product names are clipped by a fixed-height title box.",
+          "defect": "clipped",
+          "axis": "viewport",
+          "route": "/product/<id>",
+          "verdict": "missed"
+        }
+      ]
+    },
+    "workspace": {
+      "planted": 4,
+      "found": 1,
+      "missed": 3,
+      "false_positives": 37,
+      "plants": [
+        {
+          "name": "Composer controls use physical left spacing.",
+          "defect": "rtl_not_mirrored",
+          "axis": "locale",
+          "route": "/threads",
+          "verdict": "found"
+        },
+        {
+          "name": "The audit template is accidentally public.",
+          "defect": "escalation",
+          "axis": "privilege",
+          "route": "/audit",
+          "verdict": "missed"
+        },
+        {
+          "name": "Dark mode adds a header border.",
+          "defect": "theme_layout_shift",
+          "axis": "theme",
+          "route": "/threads",
+          "verdict": "missed"
+        },
+        {
+          "name": "Quiet-thread messages do not reach polling clients.",
+          "defect": "propagation",
+          "axis": "relational",
+          "route": "/threads",
+          "verdict": "missed"
+        }
+      ]
+    }
+  },
+  "totals": {
+    "planted": 14,
+    "found": 7,
+    "missed": 7,
+    "false_positives": 118
+  }
+}
