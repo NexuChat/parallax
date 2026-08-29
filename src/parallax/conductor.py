@@ -136,9 +136,11 @@ class Conductor:
             })
             testimonies, moments, observed_finding = await self._run_relational_scenario(scenario)
             all_testimonies.extend(testimonies)
+            scenario_mosaic = None
             for moment in moments:
                 image = self._write_mosaic(scenario.surface, moment)
-                self._write(feed_path, "mosaic", mosaic_payload(moment.mosaic, image))
+                self._write(feed_path, "mosaic", mosaic_payload(moment.mosaic, image, surface_id=scenario.surface.id))
+                scenario_mosaic = moment.mosaic
 
             findings = compare(testimonies)
             if observed_finding is not None:
@@ -148,7 +150,7 @@ class Conductor:
             findings = _unique_findings(findings)
             all_findings.extend(findings)
             for finding in findings:
-                self._write(feed_path, "finding", finding_payload(finding))
+                self._write(feed_path, "finding", finding_payload(finding, mosaic=scenario_mosaic))
 
         spec_paths = emit_all(all_findings, self.out_dir / "specs")
         return ConductSummary(surfaces, all_testimonies, all_findings, spec_paths, feed_path)
