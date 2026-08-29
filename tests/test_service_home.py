@@ -24,7 +24,13 @@ def request(app: Application, method: str, path: str) -> tuple[str, dict[str, st
 
 
 def test_home_console_health_unknown_and_path_traversal_contract(tmp_path: Path) -> None:
-    app = Application(runs_root=tmp_path / "runs")
+    source_console = Path(__file__).resolve().parents[1] / "console"
+    console = tmp_path / "console"
+    (console / "runs").mkdir(parents=True)
+    for name in ("index.html", "style.css"):
+        (console / name).write_bytes((source_console / name).read_bytes())
+    (console / "runs" / "index.json").write_text('{"workspace":{}}', encoding="utf-8")
+    app = Application(runs_root=tmp_path / "runs", console_root=console)
 
     status, headers, body = request(app, "GET", "/")
     assert status == "200 OK"
@@ -85,6 +91,9 @@ def test_home_html_references_only_served_assets(tmp_path: Path) -> None:
     assert b'/style.css' not in body
     assert b'/favicon.ico' not in body
     script = (source_web / "home.js").read_text(encoding="utf-8")
+    assert "/graded-summary.json" in script
+    assert "control" in script
+    assert "Control result unavailable" in script
     assert "/console/runs/index.json" in script
     assert "new URLSearchParams(location.search).get('app')" in script
     assert "entries.find((entry) => entry.name === 'workspace')" in script
@@ -95,3 +104,20 @@ def test_home_html_references_only_served_assets(tmp_path: Path) -> None:
         assert status == "200 OK", asset
     status, _, _ = request(app, "GET", "/generated-example.spec.ts")
     assert status == "200 OK"
+
+
+def test_home_renders_when_graded_summary_is_unavailable(tmp_path: Path) -> None:
+    source_web = Path(__file__).resolve().parents[1] / "web"
+    web = tmp_path / "web"
+    web.mkdir()
+    for name in ("index.html", "home.css", "home.js", "generated-example.spec.ts"):
+        (web / name).write_bytes((source_web / name).read_bytes())
+    app = Application(runs_root=tmp_path / "runs", web_root=web)
+
+    status, headers, body = request(app, "GET", "/")
+    assert status == "200 OK"
+    assert headers["Content-Type"].startswith("text/html")
+    assert b"Measured control" in body
+
+    status, _, _ = request(app, "GET", "/graded-summary.json")
+    assert status == "404 Not Found"
