@@ -11,6 +11,7 @@ from typing import Any
 from PIL import Image
 
 from parallax.conductor import Conductor
+from parallax.contracts import finding_payload
 from parallax.types import Axis, Defect, Finding, FindingKind, Severity
 
 
@@ -129,6 +130,73 @@ class Specialist:
         self.calls.append((moments, testimonies))
         testimony = list(testimonies)[0]
         return [Finding(FindingKind.RENDER_DEFECT, Severity.LOW, testimony.surface, Axis.BASELINE, "specialist", [testimony])]
+
+
+def test_finding_payload_carries_its_mosaic_reference() -> None:
+    from parallax.contracts import MosaicFrame, Tile
+    from parallax.types import BASELINE, Outcome, Surface, SurfaceKind, Testimony
+
+    surface = Surface(SurfaceKind.ROUTE, f"{SITE}/shop?category=paper")
+    finding = Finding(
+        FindingKind.RENDER_DEFECT,
+        Severity.LOW,
+        surface,
+        Axis.BASELINE,
+        "paper listing clips its heading",
+        [Testimony(surface, BASELINE, Outcome.PARTIAL)],
+    )
+    mosaic = MosaicFrame(jpeg((12, 34, 56)), (Tile(BASELINE.name, 0, 0, 12, 8),), seq=17)
+
+    payload = finding_payload(finding, mosaic=mosaic)
+
+    assert payload["mosaic"] == {"surface_id": surface.id, "seq": 17}
+
+
+def test_conductor_finding_reference_uses_its_surface_mosaic(tmp_path: Path) -> None:
+    async def check() -> None:
+        discovery = {
+            f"{SITE}/": {"links": ["/shop?category=paper"], "affordances": []},
+            f"{SITE}/shop?category=paper": {"links": [], "affordances": []},
+        }
+        result = await Conductor(
+            f"{SITE}/", tmp_path, browser=FakeBrowser([{"discovery": discovery}] + [{} for _ in range(14)]),
+            specialists=[Specialist()], max_surfaces=2, settle_ms=0,
+        ).conduct()
+
+        events = [json.loads(line) for line in result.feed_path.read_text().splitlines()]
+        mosaics = [event["payload"] for event in events if event["kind"] == "mosaic"]
+        finding = next(event["payload"] for event in events if event["kind"] == "finding" and event["payload"]["surface_id"] == result.surfaces[1].id)
+
+        assert finding["mosaic"]["surface_id"] == result.surfaces[1].id
+        assert finding["mosaic"] in [{"surface_id": mosaic["surface_id"], "seq": mosaic["seq"]} for mosaic in mosaics]
+
+    asyncio.run(check())
+
+
+def test_conductor_finding_without_settled_moment_carries_no_mosaic_reference(tmp_path: Path) -> None:
+    class NoFrameCDPSession(FakeCDPSession):
+        async def send(self, name: str, params: dict[str, Any] | None = None) -> None:
+            self.sent.append((name, params))
+
+    class SilentBrowser(FakeBrowser):
+        async def new_context(self, **options: Any) -> FakeBrowserContext:
+            context = await super().new_context(**options)
+            if len(self.contexts) > 1:
+                context.cdp = NoFrameCDPSession()
+            return context
+
+    async def check() -> None:
+        result = await Conductor(
+            f"{SITE}/", tmp_path,
+            browser=SilentBrowser([{"discovery": {f"{SITE}/": {"links": [], "affordances": []}}}] + [{} for _ in range(7)]),
+            specialists=[Specialist()], max_surfaces=1, settle_ms=0,
+        ).conduct()
+        events = [json.loads(line) for line in result.feed_path.read_text().splitlines()]
+        finding = next(event["payload"] for event in events if event["kind"] == "finding")
+
+        assert finding["mosaic"] is None
+
+    asyncio.run(check())
 
 
 def test_conductor_discovers_bounds_runs_concurrently_and_publishes(tmp_path: Path) -> None:

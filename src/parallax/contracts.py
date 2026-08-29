@@ -130,7 +130,7 @@ class FeedEvent:
         return {"kind": self.kind, "at": self.at.isoformat(), "payload": self.payload}
 
 
-def finding_payload(finding: Finding) -> dict[str, Any]:
+def finding_payload(finding: Finding, *, mosaic: MosaicFrame | None = None) -> dict[str, Any]:
     """A finding, flattened for transport, evidence included.
 
     The evidence line travels with the finding on purpose: a claim the console
@@ -147,13 +147,19 @@ def finding_payload(finding: Finding) -> dict[str, Any]:
         "summary": finding.summary,
         "evidence": finding.evidence_line(),
         "witnesses": [t.context.name for t in finding.testimonies],
+        "mosaic": (
+            {"surface_id": finding.surface.id, "seq": mosaic.seq}
+            if mosaic is not None
+            else None
+        ),
     }
 
 
-def mosaic_payload(mosaic: MosaicFrame, image_url: str) -> dict[str, Any]:
+def mosaic_payload(mosaic: MosaicFrame, image_url: str, *, surface_id: str) -> dict[str, Any]:
     """A mosaic, referenced rather than inlined — the console fetches the image."""
 
     return {
+        "surface_id": surface_id,
         "seq": mosaic.seq,
         "image": image_url,
         "tiles": [
