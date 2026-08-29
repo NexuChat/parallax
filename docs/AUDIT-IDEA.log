@@ -1,0 +1,49 @@
+$ /home/dev/auctor/.venv-mcp/bin/python -I -B -m auctor.sdk_worker --provider claude
+
+The second tracer landed and it sharpens the report materially. Four corrections and one upgrade.
+
+## Correction to my §3 (a number I got wrong)
+
+I wrote "six of the clean control's nine specs." **`specs/` and `mosaics/` are never cleaned between runs** (`conductor.py:97` truncates `feed.jsonl` only), so on-disk spec counts are stale-inflated — `shop` has 55 spec files against 32 findings. Use the feed: the control's six findings are **two phantom escalations and four render findings, all on the locale axis** (every control spec is `parallax-render-locale-*`). The argument is unchanged; the number was.
+
+## Upgrade: the escalation predicate isn't noisy, it is *inverted*
+
+I said it fires on working authentication. It is worse than that, and this is now the single sharpest sentence in the audit:
+
+`/workspace/audit` — the planted defect, *"The audit template is accidentally public"* — is public to **everyone**. So `blocked_variants` at `differ.py:91` is empty, and `differ.py:93` cannot fire. **The predicate requires a boundary to exist in order to report that a boundary was crossed. A defect that removes the boundary entirely is therefore structurally invisible to it.**
+
+The more complete the exposure, the less detectable. That is the exact inverse of the severity ordering in `differ.py:36-39`, which grades anon-reached as HIGH. Parallax cannot see its own highest-severity finding. That is not a tuning problem — it is the §4 objection made mechanical, and it makes fix #1 non-optional.
+
+## The output claim is weaker than I reported
+
+I said the emitter ships permanently-red tests. It also ships tests that **cannot run at all**:
+
+- `emitter.py:131` hardcodes `storageState: ".auth/<role>.json"`. The pipeline writes `runs/<site>/storage-<role>.json` (`run_demo_suite.py:249`) and **never writes `.auth/anon.json`** — anon has no account, so `_storage_for` returns `None` (`conductor.py:361-364`). The front page's hero artifact, `web/generated-example.spec.ts`, opens with `storageState: ".auth/anon.json"`. Playwright errors before the first assertion.
+- `conductor.py:34` builds affordance selectors as `${tag}:nth-of-type(${index+1})` from a *flat filtered array index*, not DOM sibling position. `button:nth-of-type(2)` is baked into committed specs → strict-mode violation, not an assertion.
+- URLs are absolute and ephemeral: `http://127.0.0.1:8099/...` in every committed spec.
+- `emitter.py:58-63` picks `defects[0]` from an alphabetically sorted union across all testimonies — so `parallax-render-locale-*.spec.ts` in `workspace` contains an **offscreen-control** body. The spec doesn't assert the finding it is named after.
+- `CONTENT_DIVERGENCE` specs assert a frozen FNV-1a hash of the *desktop baseline's* `innerText` while running at 360px (`expect(contentSignature).toBe("5306e4ea")`). That is a snapshot of the baseline, not a property; any legitimate copy edit breaks it.
+
+`web/index.html` §04 says *"The output is a test, not a report."* As shipped, the output is neither.
+
+## The relational axis is demo-only
+
+`run_demo_suite.py:151-155`: `if site.name != "workspace": return []`. And `__main__.py` **never passes `relational_scenarios` at all** — so a real `python -m parallax <url>` sweep performs zero actions. The capability the thesis calls *قدرة لا بديل عنها* exists as one hardcoded closure for one demo site and is unreachable from the product's own CLI.
+
+Also: the duplication I found has two independent causes, not one. Beyond the `AccessSpecialist` double-emit, an `AFFORDANCE` surface keeps its parent's *route* as its `path` (`conductor.py:207`) and `witness.visit` re-navigates it — so `B on /workspace/threads` is a redundant second page load of `/workspace/threads` and re-emits its entire finding set.
+
+And the 8/14 score is generous: `_finding_defects` (`run_demo_suite.py:65-70`) unions the finding's kind with *every* defect on *every* attached testimony, so a finding can be credited for a plant it never diagnosed.
+
+## Revised change list — same 30h, one reordering
+
+| # | Change | Proves | Cost |
+|---|---|---|---|
+| 1 | **Escalation predicate + `_unique_findings` in the main loop** (`differ.py:91-108`, `conductor.py:126-129`) | Escalation must key on *offered-vs-reachable*, not on "someone else was blocked" — otherwise the fully-public defect stays invisible. Control's privilege findings → 0. | 3h |
+| 2 | **Per-witness discovery** (`conductor.py:30-35`, `witness.py`, `types.py`) | The capability, and the oracle #1 needs. Also un-freezes `?lang=en`, revives `drift`, kills the phantom RTL findings. | 8h |
+| 3 | **Make specs executable** — write `.auth/<role>.json` incl. an empty anon state, `baseURL` + relative paths, stable selectors, assert *the finding's own* defect, and give propagation a real two-context `expect.poll` instead of `test.skip` | Makes the §04 headline true. Currently the front page's own proof artifact cannot run. | 4h |
+| 4 | **Drop viewport from content divergence; tag findings `comparative`** (`differ.py:153-159`, `:215-218`) | −18 of 19 divergences; aligns code with `IDEA.md:37`; turns the four-fifths ratio into the argument. | 4h |
+| 5 | **Clean `specs/`+`mosaics/` per run, re-grade, publish the delta** | A measured false-positive reduction against a declared control. | 4h |
+
+**Ranking unchanged in substance, sharpened in justification.** #2 is still where the idea is thinking too small — the oracle is rendered on the page and nobody reads it. But #1 and #3 are now both integrity fixes rather than quality fixes: as published, the tool reports working authentication as a bypass, cannot detect a fully-public page, and ships specs that do not execute — while the landing page leads with all three.
+
+The recommendation I'd defend hardest is still the cheapest one: **lead with the control.** *"We swept an application with nothing wrong with it and here is exactly how often we were wrong"* is the only claim in this project that survives a hostile read, and it is currently in §03, below three sections that don't.

@@ -1,0 +1,241 @@
+$ /home/dev/auctor/.venv-mcp/bin/python -I -B -m auctor.sdk_worker --provider codex
+
+# Architecture audit
+
+## Verdict
+
+The architecture is modular in vocabulary, but only partially modular in execution. The strongest seam is the specialist protocol. Most other stages are concrete calls coordinated through `Conductor`, with shared mutable objects and undocumented semantic coupling.
+
+Two central claims are false today:
+
+- A completed run cannot be replayed through a new specialist without a browser because the specialist inputs are not recorded.
+- The emitter does not reliably produce a failing regression spec for a real finding.
+
+No files were modified; the worktree remained clean.
+
+## Critical
+
+### 1. Real findings can become passing or irrelevant Playwright specs
+
+The clearest failure is privilege escalation.
+
+The differ deliberately represents an escalation using the blocked policy witness followed by the witness that bypassed it:
+
+> `testimonies=[policy_witness, t]`
+
+[differ.py:91](/home/dev/parallax-lanes/audit-arch/src/parallax/differ.py:91)
+
+The emitter then chooses any non-owner testimony and sorts by context name:
+
+> `return sorted(candidates ... key=lambda t: t.context.name)[0]`
+
+[emitter.py:23](/home/dev/parallax-lanes/audit-arch/src/parallax/emitter.py:23)
+
+For the valid case `anon=blocked, member=reached`, that chooses anonymous and emits:
+
+```ts
+storageState: ".auth/anon.json"
+expect(blocked).toBeTruthy()
+```
+
+That spec passes because anonymous is already blocked; it never tests the member bypass. I confirmed this through a local read-only reproduction.
+
+Other emitter failures:
+
+- `PROPAGATION_FAILURE` and `DEAD_SURFACE` fall through to `test.skip`, so they do not become failing specs at all. [emitter.py:135](/home/dev/parallax-lanes/audit-arch/src/parallax/emitter.py:135)
+- Vision-generated render findings do not attach a `Defect`. [layout_i18n.py:211](/home/dev/parallax-lanes/audit-arch/src/parallax/specialists/layout_i18n.py:211) The emitter therefore generates an unconditional `throw`, not a reproducible invariant. [emitter.py:58](/home/dev/parallax-lanes/audit-arch/src/parallax/emitter.py:58)
+- The probe records defect detail and selector, but `Witness._map_defects()` discards both and retains only the enum. [probe.js:26](/home/dev/parallax-lanes/audit-arch/src/parallax/probe.js:26), [witness.py:219](/home/dev/parallax-lanes/audit-arch/src/parallax/witness.py:219)
+- Consequently, route findings test `body`, not the offending element. [emitter.py:36](/home/dev/parallax-lanes/audit-arch/src/parallax/emitter.py:36)
+- A clipping finding is emitted as an offscreen-viewport assertion, although the probe defines clipping as `scrollWidth > clientWidth` inside an element. [probe.js:95](/home/dev/parallax-lanes/audit-arch/src/parallax/probe.js:95), [emitter.py:66](/home/dev/parallax-lanes/audit-arch/src/parallax/emitter.py:66)
+- An RTL geometry failure is reduced to checking `dir="rtl"` and computed direction. A layout can remain completely unmirrored and pass. [emitter.py:98](/home/dev/parallax-lanes/audit-arch/src/parallax/emitter.py:98)
+
+The `Finding` DTO is a real data boundary, but the emitter depends on hidden conventions about testimony ordering, defect provenance, and finding kinds. Replacing the differ while merely returning valid `Finding` objects can silently break emission.
+
+### 2. One compositor leaks visual state across surfaces
+
+The compositor is created once, outside the surface loop:
+
+[conductor.py:84](/home/dev/parallax-lanes/audit-arch/src/parallax/conductor.py:84)
+
+It retains `_latest`, `_thumbnails`, and `_changed_at` for its lifetime:
+
+[compositor.py:53](/home/dev/parallax-lanes/audit-arch/src/parallax/compositor.py:53)
+
+At the next surface, the conductor changes the global action before any new frames arrive:
+
+[conductor.py:93](/home/dev/parallax-lanes/audit-arch/src/parallax/conductor.py:93)
+
+The compositor considers the wall fully painted if every context has ever produced a frame:
+
+```python
+return all(name in self._latest for name in self._contexts)
+```
+
+[compositor.py:134](/home/dev/parallax-lanes/audit-arch/src/parallax/compositor.py:134)
+
+Therefore, after surface one:
+
+- A silent witness on surface two is represented by its surface-one image.
+- A moment can combine new tiles from surface two with stale tiles from surface one.
+- That mixed wall is relabelled with surface two using `replace(settled, surface=surface)`. [conductor.py:221](/home/dev/parallax-lanes/audit-arch/src/parallax/conductor.py:221)
+- Motion can be attributed to the new action even if the underlying change belongs to the prior generation.
+
+The missing concept is a surface/run epoch. Either reset the compositor per surface or require every tile to paint in the current epoch before emitting.
+
+## High
+
+### 3. The replay claim is false
+
+`Specialist.judge()` requires both moments and testimonies:
+
+[contracts.py:98](/home/dev/parallax-lanes/audit-arch/src/parallax/contracts.py:98)
+
+A completed run persists:
+
+- Mosaic JPEGs.
+- A feed containing mosaic sequence, image path, and tile boxes.
+- Flattened findings.
+- Generated specs.
+
+The mosaic feed payload omits:
+
+- `Moment.changed`
+- `Moment.action`
+- `Moment.surface`
+- `Moment.settled_ms`
+- `MosaicFrame.composed_at`
+
+[contracts.py:153](/home/dev/parallax-lanes/audit-arch/src/parallax/contracts.py:153)
+
+No testimony is serialized. `ConductSummary` returns testimonies in memory, but not moments:
+
+[conductor.py:41](/home/dev/parallax-lanes/audit-arch/src/parallax/conductor.py:41)
+
+Once `conduct()` returns, the visual specialist inputs are gone. Once the process exits, testimony inputs are gone too.
+
+A real replay requires a versioned durable record containing:
+
+- Contexts and their varied axes.
+- Surface catalogue.
+- Every testimony field: outcome, status, paths, signatures, geometry, defects with selector/detail, and observation time.
+- Every moment field, referencing its persisted JPEG.
+- A loader that reconstructs the exact `Moment` and `Testimony` sequences.
+- A browser-free specialist runner.
+
+That codec, manifest, and replay entry point do not exist.
+
+The stronger “sessions do not know who is watching” claim is also overstated. Every witness injects `probe.js`, and the probe itself decides overflow, clipping, contrast, tap-target, and translation defects. [witness.py:78](/home/dev/parallax-lanes/audit-arch/src/parallax/witness.py:78), [probe.js:55](/home/dev/parallax-lanes/audit-arch/src/parallax/probe.js:55) Adding a lens that needs an unrecorded DOM measurement requires another browser run, not merely a replay.
+
+### 4. Testimony is mutated after observation
+
+`Testimony` claims:
+
+> “Evidence, immutable once written.”
+
+But it is a non-frozen dataclass with mutable lists:
+
+[types.py:182](/home/dev/parallax-lanes/audit-arch/src/parallax/types.py:182)
+
+The conductor runs the mirror judgment and appends its result directly into `variant.defects`:
+
+[conductor.py:102](/home/dev/parallax-lanes/audit-arch/src/parallax/conductor.py:102)
+
+This is unsound for three reasons:
+
+1. A derived comparison result is rewritten as witness-observed evidence.
+2. The witness assigned `PARTIAL` when defects existed during observation, but a later mirror defect is appended while the testimony remains `REACHED`. [witness.py:91](/home/dev/parallax-lanes/audit-arch/src/parallax/witness.py:91)
+3. Differ, specialists, emitter, summary, and feed all share references to the same mutable testimony.
+
+The mirror stage should return findings or immutable derived observations. It should not rewrite testimony.
+
+The same independence problem applies to specialists: they run sequentially over the same mutable objects, and the conductor neither copies inputs nor catches specialist exceptions. [conductor.py:108](/home/dev/parallax-lanes/audit-arch/src/parallax/conductor.py:108) One specialist can mutate what the next sees or abort the entire run.
+
+### 5. `AccessSpecialist` duplicates the differ
+
+The conductor always calls `compare(testimonies)`, then calls every specialist:
+
+[conductor.py:108](/home/dev/parallax-lanes/audit-arch/src/parallax/conductor.py:108)
+
+`AccessSpecialist` calls the same `compare()` again and filters it:
+
+[access.py:17](/home/dev/parallax-lanes/audit-arch/src/parallax/specialists/access.py:17)
+
+It adds no independent lens. In the default CLI, it is always installed. [__main__.py:54](/home/dev/parallax-lanes/audit-arch/src/parallax/__main__.py:54)
+
+Effects:
+
+- Privilege findings occur twice in `summary.findings` and the feed.
+- Service counts are inflated.
+- The console hides the duplication because it deduplicates findings by ID. [app.js:35](/home/dev/parallax-lanes/audit-arch/console/app.js:35)
+- `emit_all` writes the same deterministic filename twice and returns duplicate paths. [emitter.py:172](/home/dev/parallax-lanes/audit-arch/src/parallax/emitter.py:172)
+
+This is the pass-through that earns nothing.
+
+## Seams
+
+| Boundary | Assessment | Replacement impact |
+|---|---|---|
+| Witness → compositor | Real value type, incidental operational seam | `Frame` exists, but witnesses emit `(bytes, metadata)`, not `Frame`; the conductor invents sequence numbers and adapts the callback. Replacing either side requires reproducing undocumented constructor/lifecycle methods and conductor glue. [witness.py:112](/home/dev/parallax-lanes/audit-arch/src/parallax/witness.py:112), [conductor.py:186](/home/dev/parallax-lanes/audit-arch/src/parallax/conductor.py:186) |
+| Compositor → specialist | Mostly genuine | `Moment`/`MosaicFrame` plus the `Specialist` protocol form a useful interface. A specialist can be replaced independently if it remains synchronous and does not throw. The compositor itself is concrete and must still expose the exact constructor, `submit`, `set_action`, and `tick` API. |
+| Differ → emitter | Nominal interface, brittle semantics | `Finding` is explicit, but emitter behavior depends on testimony ordering, mutable defects, selectors that were discarded, and a closed set of kinds. Shape-compatible replacement is not behavior-compatible. |
+| Conductor → everything | Incidental calls | It directly imports and constructs `Witness` and `Compositor`, invokes concrete functions for mirror/differ/emitter, performs persistence, and mutates evidence. Only specialists have an explicit protocol. [conductor.py:14](/home/dev/parallax-lanes/audit-arch/src/parallax/conductor.py:14) |
+
+The module doing more than its name says is `probe.js`: it is not merely a probe; it is a substantial deterministic specialist running inside every browser witness. The conductor is also more than an ordering owner—it performs discovery, adaptation, mutation, error policy, artifact storage, feed serialization, and emission.
+
+## Concurrency and performance
+
+What protects current shared state:
+
+- Browser isolation comes from separate Playwright contexts.
+- Compositor mutations happen on one asyncio event-loop thread.
+- `consume()` contains no `await`, so sequence increment and `submit()` are currently atomic relative to other asyncio tasks. [conductor.py:192](/home/dev/parallax-lanes/audit-arch/src/parallax/conductor.py:192)
+- There is no compositor lock; use from threads or a consumer that introduces awaits would invalidate that assumption.
+
+Remaining races and losses:
+
+- Every CDP frame creates an unbounded task. There is no queue bound, coalescing, or backpressure. [witness.py:121](/home/dev/parallax-lanes/audit-arch/src/parallax/witness.py:121)
+- `stop_screencast()` cancels all pending delivery tasks, so terminal frames can disappear when navigation finishes. [witness.py:141](/home/dev/parallax-lanes/audit-arch/src/parallax/witness.py:141)
+- Sequence numbers describe consumer execution order, not capture time; `Frame.captured_at` and CDP metadata are ignored.
+- The cross-surface stale-wall race described above is not protected.
+- A live feed reader can observe a partial JSON line. The console records that partial file text, then slices it away on the next poll, potentially losing the completed event permanently. [app.js:95](/home/dev/parallax-lanes/audit-arch/console/app.js:95)
+
+The whole-wall encode was moved off every `submit`, which is a good correction. The hot path is still synchronous:
+
+- Base64 decode in the asyncio task. [witness.py:184](/home/dev/parallax-lanes/audit-arch/src/parallax/witness.py:184)
+- JPEG decode, RGB conversion, LANCZOS resize/crop, grayscale resize, and pixel diff on every frame. [compositor.py:88](/home/dev/parallax-lanes/audit-arch/src/parallax/compositor.py:88)
+- Full 4×2 wall construction and JPEG encoding inside `tick()` on the event loop. [compositor.py:138](/home/dev/parallax-lanes/audit-arch/src/parallax/compositor.py:138)
+- The browser probe forces repeated DOM/style/layout reads across large element sets in seven renderer contexts. [probe.js:55](/home/dev/parallax-lanes/audit-arch/src/parallax/probe.js:55)
+
+A slow consumer cannot block the CDP callback itself, but its synchronous PIL work still blocks the shared Python event loop and lets delivery tasks accumulate.
+
+## Three weakest tests
+
+1. `test_public_spec_example_is_emitted_from_a_real_finding`
+
+   [test_demo_suite.py:92](/home/dev/parallax-lanes/audit-arch/tests/test_demo_suite.py:92)
+
+   The “real finding” is manually constructed with owner and anonymous both reached. Under the differ’s policy rules, that evidence does not produce an escalation because no blocked witness establishes a policy. [run_demo_suite.py:128](/home/dev/parallax-lanes/audit-arch/scripts/run_demo_suite.py:128) The test would pass if the differ stopped producing escalations or if the generated spec passed immediately.
+
+2. `test_each_finding_kind_emits_the_required_assertion`
+
+   [test_emitter.py:72](/home/dev/parallax-lanes/audit-arch/tests/test_emitter.py:72)
+
+   It checks substrings such as `toBeTruthy()` and `status() === 403`. It does not execute or type-check the specs, nor verify which witness is selected. It passes despite the confirmed blocked-anonymous/wrong-context escalation bug and treats a skipped dead-surface test as successful emission.
+
+3. `test_final_flush_never_publishes_a_wall_with_an_unpainted_context`
+
+   [test_conductor.py:305](/home/dev/parallax-lanes/audit-arch/tests/test_conductor.py:305)
+
+   It tests only the first surface. On a later surface, a silent witness is considered painted because its previous-surface frame remains in `_latest`; the named “never” invariant is therefore broken while this test still passes.
+
+A broader gap is that the browser “end-to-end” tests prove the demo defects exist, but do not run those sites through Conductor and execute the emitted Playwright specs. [test_plants_end_to_end.py:1](/home/dev/parallax-lanes/audit-arch/tests/test_plants_end_to_end.py:1)
+
+## What I would delete
+
+Outright:
+
+- `AccessSpecialist` and its default registrations. The differ already owns this judgment, and the wrapper actively creates duplicate findings.
+- The `Compositor.mosaic` alias; it is an unused pass-through over `current_mosaic`. [compositor.py:72](/home/dev/parallax-lanes/audit-arch/src/parallax/compositor.py:72)
+- The invalid hand-built “real finding” example; regenerate examples only from actual differ output.
+
+I would also remove `RealtimeSpecialist` from the default specialist list immediately. Ordinary conductor testimonies are deliberately filtered out, so it is a default no-op. [realtime.py:28](/home/dev/parallax-lanes/audit-arch/src/parallax/specialists/realtime.py:28) `RelationalPair` independently produces propagation findings and is not wired into the conductor. Until there is a declared sender/action/receiver/expectation event contract, inferring causality from later tile motion is not defensible.
