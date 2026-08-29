@@ -45,6 +45,14 @@ def test_home_and_users_keep_their_correct_baseline_access() -> None:
     assert site.handle(request("/users", "owner")).status == 200
 
 
+def test_admin_console_has_metrics_events_and_a_real_users_table() -> None:
+    site = AdminSite()
+    home = site.handle(request("/")).body.decode()
+    users = site.handle(request("/users", "owner")).body.decode()
+    assert "Active seats" in home and "Recent events" in home
+    assert "<table>" in users and users.count("<tr>") >= 4
+
+
 def test_mounted_pages_keep_links_and_actions_within_admin() -> None:
     site = AdminSite()
     for path, role in (("/", "anon"), ("/users", "member")):

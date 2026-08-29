@@ -23,6 +23,13 @@ def test_anonymous_user_is_redirected_from_settings() -> None:
     assert (response.status, response.headers["Location"]) == (302, "/login")
 
 
+def test_landing_has_activity_stats_and_thread_previews() -> None:
+    markup = WorkspaceSite().handle(Request(path="/")).body.decode()
+
+    assert "Recent activity" in markup and "Thread previews" in markup
+    assert "Open threads" in markup and markup.count('class=avatar') >= 2
+
+
 def test_mounted_pages_keep_links_and_actions_within_workspace() -> None:
     site = WorkspaceSite()
     cookies = _login(site, "owner@demo")

@@ -35,6 +35,12 @@ def test_docs_faq_intentionally_drops_related_questions_below_768px():
     assert "Related questions" in markup
 
 
+def test_docs_pages_include_browse_content_faq_items_and_code_examples():
+    assert "Browse by task" in body("/") and "Popular pages" in body("/")
+    assert body("/faq").count("<details>") == 3
+    assert "northstar init" in body("/guide") and "GET /v1/projects" in body("/api")
+
+
 def test_docs_arabic_is_rtl_and_unknown_paths_are_404():
     assert '<html lang="ar" dir="rtl"' in body("/api", query={"lang": "ar"})
     assert DocsSite().handle(Request(path="/nope")).status == 404

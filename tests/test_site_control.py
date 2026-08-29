@@ -19,6 +19,14 @@ def test_control_declares_no_planted_findings() -> None:
     assert ControlSite().planted == []
 
 
+def test_control_has_dense_console_content_without_planted_defects() -> None:
+    site = ControlSite()
+    home = page(site, "/")
+    team = page(site, "/team", "member")
+    assert "Active seats" in home and "Recent events" in home
+    assert "<table>" in team and team.count("<tr>") >= 4
+
+
 def test_control_privilege_narrows_properly_owner_reaches_reports_member_cannot() -> None:
     site = ControlSite()
     assert site.handle(Request(path="/reports", cookies={"session": "owner"})).status == 200
