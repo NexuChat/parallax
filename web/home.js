@@ -5,8 +5,11 @@
     ['workspace', 4], ['shop', 4], ['docs', 3], ['admin', 3], ['control', 0],
   ];
   const summaryUrl = '/graded-summary.json';
+  const sweepIndexUrl = '/console/runs/index.json';
+  const applicationOrder = ['workspace', 'shop', 'admin', 'docs', 'control'];
   const table = document.getElementById('scoreboard-data');
   const note = document.getElementById('scoreboard-note');
+  const gallery = document.getElementById('app-gallery');
   const feedStatus = document.getElementById('feed-status');
   const consoleFrame = document.getElementById('console-frame');
   const generatedSpec = document.getElementById('generated-spec');
@@ -42,29 +45,62 @@
     } catch (_) { /* Declared plants remain the offline baseline. */ }
   }
 
-  async function attachRun() {
-    // The wall must show a real sweep. A fixture on the front page of a tool
-    // whose whole claim is measured evidence is worse than an empty panel, so
-    // the published run is the default and the fixture is only ever a last
-    // resort — announced as one when it happens.
-    const requested = new URLSearchParams(location.search).get('run');
-    const candidates = requested && /^[a-zA-Z0-9_-]+$/.test(requested)
-      ? [`/runs/${requested}/feed.jsonl`, '/console/runs/latest/feed.jsonl']
-      : ['/console/runs/latest/feed.jsonl'];
-    for (const feed of candidates) {
-      try {
-        const response = await fetch(feed, { cache: 'no-store' });
-        if (!response.ok) continue;
-        const lines = (await response.text()).split('\n').filter(Boolean).length;
-        consoleFrame.src = `/console?feed=${encodeURIComponent(feed)}`;
-        feedStatus.textContent = `Attached to a real sweep: ${feed} · ${lines} events`;
-        return;
-      } catch (_) { /* try the next candidate */ }
+  function feedUrl(entry) {
+    return `/console/${entry.feed.replace(/^\/+/, '')}`;
+  }
+
+  function updateWall(entry, updateUrl) {
+    const feed = feedUrl(entry);
+    consoleFrame.src = `/console?feed=${encodeURIComponent(feed)}`;
+    consoleFrame.title = `Parallax live witness mosaic — ${entry.name}`;
+    feedStatus.textContent = `${entry.name}: ${entry.findings} findings across ${entry.mosaics} mosaics · ${feed}`;
+    gallery.querySelectorAll('.app-card').forEach((card) => {
+      const selected = card.dataset.app === entry.name;
+      card.classList.toggle('is-selected', selected);
+      card.querySelector('.app-select').setAttribute('aria-pressed', String(selected));
+    });
+    if (updateUrl) {
+      const url = new URL(location.href);
+      url.searchParams.set('app', entry.name);
+      history.replaceState(null, '', url);
     }
-    feedStatus.textContent = 'No published sweep found — showing the sample feed, not a real run.';
+  }
+
+  function drawGallery(entries) {
+    gallery.innerHTML = entries.map((entry) => {
+      const kinds = Object.entries(entry.by_kind).map(([kind, count]) => `${kind} ${count}`).join(' · ');
+      const controlNote = entry.name === 'control' ? '<span class="app-control-note">Clean control: nothing is planted; anything found is a false positive.</span>' : '';
+      return `<article class="app-card${entry.name === 'control' ? ' is-control' : ''}" data-app="${entry.name}"><button class="app-select" type="button" aria-pressed="false"><span class="app-name">${entry.name}</span><span class="app-count">${entry.findings} findings</span><span class="app-kinds">${kinds}</span>${controlNote}</button><a class="app-live" href="https://demo.mlki.app/${entry.name}/" target="_blank" rel="noopener">open application ↗</a></article>`;
+    }).join('');
+    gallery.setAttribute('aria-busy', 'false');
+    entries.forEach((entry) => {
+      gallery.querySelector(`[data-app="${entry.name}"] .app-select`).addEventListener('click', () => updateWall(entry, true));
+    });
+    const requestedApp = new URLSearchParams(location.search).get('app');
+    const selected = entries.find((entry) => entry.name === requestedApp)
+      || entries.find((entry) => entry.name === 'workspace')
+      || entries[0];
+    updateWall(selected, requestedApp !== selected.name);
+  }
+
+  async function loadGallery() {
+    try {
+      const response = await fetch(sweepIndexUrl, { cache: 'no-store' });
+      if (!response.ok) throw new Error('index unavailable');
+      const index = await response.json();
+      const entries = applicationOrder
+        .filter((name) => index && index[name] && typeof index[name].feed === 'string')
+        .map((name) => ({ name, ...index[name] }));
+      if (!entries.length) throw new Error('index empty');
+      drawGallery(entries);
+    } catch (_) {
+      gallery.innerHTML = '<p class="gallery-fallback">Published sweep index unavailable. Showing one published sweep instead.</p>';
+      gallery.setAttribute('aria-busy', 'false');
+      feedStatus.textContent = 'Published sweep index unavailable; attached to /console/runs/latest/feed.jsonl.';
+    }
   }
 
   loadScoreboard();
   loadGeneratedSpec();
-  attachRun();
+  loadGallery();
 })();
