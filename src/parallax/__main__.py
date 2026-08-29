@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -55,13 +54,17 @@ def _storage_states(pairs: list[str]) -> dict[Privilege | str, str]:
 def _specialists(no_vision: bool) -> list[object]:
     lenses: list[object] = [AccessSpecialist(), RealtimeSpecialist()]
     if no_vision:
+        print("vision lens disabled: --no-vision", file=sys.stderr)
         return lenses
-    # The vision lens returns nothing at all without a key rather than failing the
-    # run, but silently producing half a report is worse than saying so out loud.
-    if not os.environ.get("GEMINI_API_KEY"):
-        print("note: GEMINI_API_KEY is unset — running without the vision lens", file=sys.stderr)
+    vision = LayoutI18nSpecialist()
+    if vision.route == "disabled":
+        print(
+            "vision lens disabled: set GOOGLE_CLOUD_PROJECT for Vertex AI or GEMINI_API_KEY for AI Studio",
+            file=sys.stderr,
+        )
         return lenses
-    lenses.append(LayoutI18nSpecialist())
+    print(f"vision lens route: {vision.route}", file=sys.stderr)
+    lenses.append(vision)
     return lenses
 
 
