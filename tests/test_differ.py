@@ -70,20 +70,19 @@ def test_arabic_locale_implies_rtl() -> None:
 
 
 # --------------------------------------------------------------------------
-# Privilege axis — sameness is the bug
+# Privilege axis — a policy violation needs evidence of a policy
 # --------------------------------------------------------------------------
 
-def test_member_reaching_owner_surface_is_escalation() -> None:
+def test_public_surface_reached_by_all_privileges_is_not_an_escalation() -> None:
+    """The old shared-reach escalation assertion encoded the false-positive defect."""
     findings = compare(
         [
             say(BASELINE, Outcome.REACHED),
             say(witness(Privilege.MEMBER), Outcome.REACHED),
+            say(witness(Privilege.ANON), Outcome.REACHED),
         ]
     )
-    escalations = [f for f in findings if f.kind is FindingKind.ESCALATION]
-    assert len(escalations) == 1
-    assert escalations[0].severity is Severity.MEDIUM
-    assert escalations[0].axis is Axis.PRIVILEGE
+    assert findings == []
 
 
 def test_anonymous_escalation_outranks_member_escalation() -> None:
@@ -91,9 +90,22 @@ def test_anonymous_escalation_outranks_member_escalation() -> None:
         [
             say(BASELINE, Outcome.REACHED),
             say(witness(Privilege.ANON), Outcome.REACHED),
+            say(witness(Privilege.MEMBER), Outcome.BLOCKED),
         ]
     )
     assert findings[0].severity is Severity.HIGH, "an open-internet reach is the worst case"
+
+
+def test_blocked_anon_and_reached_member_produce_one_escalation_with_both_witnesses() -> None:
+    anonymous = say(witness(Privilege.ANON), Outcome.BLOCKED)
+    member = say(witness(Privilege.MEMBER), Outcome.REACHED)
+    findings = compare([say(BASELINE, Outcome.REACHED), anonymous, member])
+
+    assert len(findings) == 1
+    escalation = findings[0]
+    assert escalation.kind is FindingKind.ESCALATION
+    assert escalation.testimonies == [anonymous, member]
+    assert escalation.evidence_line() == "anon-en-light-desktop=blocked · member-en-light-desktop=reached"
 
 
 def test_properly_denied_surface_yields_no_finding() -> None:
@@ -117,12 +129,13 @@ def test_owner_blocked_while_member_allowed_is_inversion() -> None:
     assert [f.kind for f in findings] == [FindingKind.POLICY_INVERSION]
 
 
-def test_partial_still_counts_as_reached_for_escalation() -> None:
+def test_partial_still_counts_as_reached_for_an_observed_policy_escalation() -> None:
     """Rendering a degraded admin page is still reaching it."""
     findings = compare(
         [
             say(BASELINE, Outcome.REACHED),
             say(witness(Privilege.ANON), Outcome.PARTIAL),
+            say(witness(Privilege.MEMBER), Outcome.BLOCKED),
         ]
     )
     assert any(f.kind is FindingKind.ESCALATION for f in findings)
@@ -224,10 +237,22 @@ def test_a_crashed_witness_is_never_read_as_a_denial() -> None:
     assert findings == [], "a failed witness must produce neither a pass nor a finding"
 
 
+def test_error_never_evidences_a_policy_or_a_privilege_breach() -> None:
+    findings = compare(
+        [
+            say(BASELINE, Outcome.REACHED),
+            say(witness(Privilege.ANON), Outcome.ERROR),
+            say(witness(Privilege.MEMBER), Outcome.REACHED),
+        ]
+    )
+    assert findings == []
+
+
 def test_every_finding_carries_the_testimony_it_rests_on() -> None:
     findings = compare(
         [
             say(BASELINE, Outcome.REACHED),
+            say(witness(Privilege.ANON), Outcome.BLOCKED),
             say(witness(Privilege.MEMBER), Outcome.REACHED),
         ]
     )
@@ -246,6 +271,31 @@ def test_surface_nobody_reached_is_reported_as_dead() -> None:
     )
     assert [f.kind for f in findings] == [FindingKind.DEAD_SURFACE]
     assert findings[0].severity is Severity.INFO
+
+
+def test_surface_blocked_for_every_privilege_has_no_escalation() -> None:
+    findings = compare(
+        [
+            say(BASELINE, Outcome.BLOCKED),
+            say(witness(Privilege.MEMBER), Outcome.BLOCKED),
+            say(witness(Privilege.ANON), Outcome.BLOCKED),
+        ]
+    )
+    assert [f.kind for f in findings] == [FindingKind.DEAD_SURFACE]
+
+
+def test_absent_affordance_on_a_reached_page_is_not_a_dead_surface() -> None:
+    """A missing control is distinct from a route that nobody could load."""
+    page = Surface(kind=SurfaceKind.ROUTE, path="/room")
+    control = Surface(kind=SurfaceKind.AFFORDANCE, path="/room", selector="#delete")
+    findings = compare(
+        [
+            say(BASELINE, Outcome.REACHED, surface=page),
+            say(BASELINE, Outcome.BLOCKED, surface=control),
+            say(witness(Privilege.MEMBER), Outcome.BLOCKED, surface=control),
+        ]
+    )
+    assert findings == []
 
 
 def test_findings_are_ordered_most_severe_first() -> None:

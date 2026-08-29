@@ -23,9 +23,11 @@ from .types import (
     Defect,
     Finding,
     FindingKind,
+    Outcome,
     Privilege,
     Severity,
     Surface,
+    SurfaceKind,
     Testimony,
 )
 
@@ -84,10 +86,12 @@ def _group_by_surface(testimonies: Iterable[Testimony]) -> dict[str, list[Testim
 def _privilege_findings(
     surface: Surface, baseline: Testimony, variants: list[Testimony]
 ) -> list[Finding]:
-    """The privilege axis: difference is required, so sameness is the bug."""
+    """Report privilege breaches only where a blocked witness shows a policy exists."""
     findings: list[Finding] = []
+    blocked_variants = [t for t in variants if t.outcome is Outcome.BLOCKED]
     for t in variants:
-        if baseline.reached and t.reached:
+        if baseline.reached and t.reached and blocked_variants:
+            policy_witness = blocked_variants[0]
             findings.append(
                 Finding(
                     kind=FindingKind.ESCALATION,
@@ -96,9 +100,10 @@ def _privilege_findings(
                     axis=Axis.PRIVILEGE,
                     summary=(
                         f"{t.context.privilege.value} reached {surface.describe()}, "
-                        f"which the owner also reached — access did not narrow with privilege"
+                        f"although {policy_witness.context.privilege.value} was blocked — "
+                        f"access policy was bypassed"
                     ),
-                    testimonies=[baseline, t],
+                    testimonies=[policy_witness, t],
                 )
             )
         elif not baseline.reached and t.reached:
@@ -191,7 +196,9 @@ def _render_findings(surface: Surface, group: list[Testimony]) -> list[Finding]:
     return findings
 
 
-def _analyse(surface: Surface, group: list[Testimony]) -> list[Finding]:
+def _analyse(
+    surface: Surface, group: list[Testimony], reached_route_paths: set[str]
+) -> list[Finding]:
     findings = _render_findings(surface, group)
 
     baseline = next((t for t in group if t.context.varies is Axis.BASELINE), None)
@@ -212,7 +219,13 @@ def _analyse(surface: Surface, group: list[Testimony]) -> list[Finding]:
     findings += _privilege_findings(surface, baseline, privilege_variants)
     findings += _equivalence_findings(surface, baseline, equivalence_variants)
 
-    if not any(t.reached for t in group):
+    # A control absent from an otherwise reached page is not a dead route: it
+    # may represent a hidden or unavailable affordance, a distinct claim that
+    # must not be mislabeled as "nobody could reach this surface."
+    is_absent_affordance_on_reached_page = (
+        surface.kind is SurfaceKind.AFFORDANCE and surface.path in reached_route_paths
+    )
+    if not any(t.reached for t in group) and not is_absent_affordance_on_reached_page:
         findings.append(
             Finding(
                 kind=FindingKind.DEAD_SURFACE,
@@ -229,7 +242,13 @@ def _analyse(surface: Surface, group: list[Testimony]) -> list[Finding]:
 def compare(testimonies: Iterable[Testimony]) -> list[Finding]:
     """Compare all testimonies and return findings, most severe first."""
     findings: list[Finding] = []
-    for group in _group_by_surface(testimonies).values():
-        findings.extend(_analyse(group[0].surface, group))
+    groups = _group_by_surface(testimonies)
+    reached_route_paths = {
+        group[0].surface.path
+        for group in groups.values()
+        if group[0].surface.kind is SurfaceKind.ROUTE and any(t.reached for t in group)
+    }
+    for group in groups.values():
+        findings.extend(_analyse(group[0].surface, group, reached_route_paths))
     findings.sort(key=lambda f: (_SEVERITY_ORDER[f.severity], f.surface.path, f.kind.value))
     return findings
