@@ -302,6 +302,33 @@ def test_moments_are_harvested_while_the_witnesses_are_still_working(tmp_path: P
     asyncio.run(check())
 
 
+def test_final_flush_never_publishes_a_wall_with_an_unpainted_context(tmp_path: Path) -> None:
+    class NoFrameCDPSession(FakeCDPSession):
+        async def send(self, name: str, params: dict[str, Any] | None = None) -> None:
+            self.sent.append((name, params))
+
+    class OneSilentWitnessBrowser(FakeBrowser):
+        async def new_context(self, **options: Any) -> FakeBrowserContext:
+            context = await super().new_context(**options)
+            # Discovery takes the first context; the seventh witness is silent.
+            if len(self.contexts) == 8:
+                context.cdp = NoFrameCDPSession()
+            return context
+
+    async def check() -> None:
+        browser = OneSilentWitnessBrowser(
+            [{"discovery": {f"{SITE}/": {"links": [], "affordances": []}}}] + [{} for _ in range(7)]
+        )
+        result = await Conductor(
+            f"{SITE}/", tmp_path, browser=browser, max_surfaces=1, settle_ms=0, poll_ms=1
+        ).conduct()
+
+        events = [json.loads(line) for line in result.feed_path.read_text().splitlines()]
+        assert not [event for event in events if event["kind"] == "mosaic"]
+
+    asyncio.run(check())
+
+
 def test_mirror_defects_are_present_when_differ_runs_and_errors_do_not_abort(tmp_path: Path, monkeypatch: Any) -> None:
     async def check() -> None:
         import parallax.conductor as conductor_module
