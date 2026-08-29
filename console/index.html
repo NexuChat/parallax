@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>Parallax · live console</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <main class="console-shell">
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark">P</span><span>PARALLAX</span><span class="live-dot">LIVE</span></div>
+        <div class="run-state" id="runState">BOOTSTRAP FIXTURE · READY</div>
+        <div class="clock" id="clock" aria-label="Current UTC time"></div>
+      </header>
+
+      <section class="metrics" aria-label="Live run summary">
+        <div class="metric"><span class="metric-value" id="witnessCount">0</span><span class="metric-label">witnesses live</span></div>
+        <div class="metric"><span class="metric-value" id="surfaceCount">0</span><span class="metric-label">surfaces checked</span></div>
+        <div class="severity-totals" aria-label="Findings by severity">
+          <span class="total total-high"><b id="highCount">0</b> HIGH</span>
+          <span class="total total-medium"><b id="mediumCount">0</b> MEDIUM</span>
+          <span class="total total-low"><b id="lowCount">0</b> LOW</span>
+          <span class="total total-info"><b id="infoCount">0</b> INFO</span>
+        </div>
+      </section>
+
+      <section class="wall-grid">
+        <section class="mosaic-panel panel" aria-labelledby="mosaicTitle">
+          <div class="panel-heading"><div><span class="eyebrow">COMPOSITOR / SEVEN CONTEXTS</span><h1 id="mosaicTitle">Live witness mosaic</h1></div><span class="sequence" id="sequence">WAITING FOR FRAME</span></div>
+          <div class="mosaic-stage" id="mosaicStage">
+            <div class="mosaic-empty" id="mosaicEmpty">No mosaic frame yet. Waiting for the compositor feed.</div>
+            <img id="mosaicImage" alt="Live mosaic of seven witness contexts">
+            <div class="tile-layer" id="tileLayer" aria-hidden="true"></div>
+          </div>
+          <p class="mosaic-caption" id="mosaicCaption">Each outline is a witness. Finding evidence lights the exact witness tiles behind the claim.</p>
+        </section>
+
+        <aside class="findings-panel panel" aria-labelledby="findingsTitle">
+          <div class="panel-heading"><div><span class="eyebrow">SPECIALIST OUTPUT</span><h2 id="findingsTitle">Findings <span id="findingCount">0</span></h2></div><span class="feed-indicator" id="feedIndicator">FIXTURE</span></div>
+          <div class="findings" id="findings" aria-live="polite">
+            <div class="findings-empty" id="findingsEmpty">No findings yet. The console will keep watching without hiding the wall.</div>
+          </div>
+        </aside>
+      </section>
+      <footer class="footer"><span id="feedSource">feed: fixtures/feed.jsonl</span><span>Claims stay attached to witnesses, not just logs.</span></footer>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>
