@@ -23,6 +23,10 @@ from typing import Protocol, runtime_checkable
 class Request:
     method: str = "GET"
     path: str = "/"
+    # Where this site is mounted, without a trailing slash, e.g. "/shop". A site
+    # that links to "/cart" instead of f"{mount}/cart" sends every visitor —
+    # and every witness — out of the site and into whatever else the host serves.
+    mount: str = ""
     query: dict[str, str] = field(default_factory=dict)
     cookies: dict[str, str] = field(default_factory=dict)
     headers: dict[str, str] = field(default_factory=dict)
