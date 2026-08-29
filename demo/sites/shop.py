@@ -81,7 +81,9 @@ class ShopSite:
             content = self._product(copy, lang, path.removeprefix("/product/"), request.mount)
         else:
             return Response.not_found()
-        return Response.html(self._page(copy, lang, theme, path, content, request.mount))
+        markup = self._page(copy, lang, theme, path, content, request.mount)
+        overrides = ".brand{display:inline-flex;align-items:center;min-block-size:44px}.filter-list a{min-height:44px}"
+        return Response.html(markup.replace("</style>", f"{overrides}</style>", 1))
 
     def _page(self, copy: dict[str, object], lang: str, theme: str, path: str, content: str, mount: str) -> str:
         direction = "rtl" if lang == "ar" else "ltr"
