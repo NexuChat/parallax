@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from parallax.emitter import emit_all, filename_for, spec_for
@@ -65,8 +66,44 @@ def test_specs_encode_context_and_header_evidence() -> None:
     assert "viewport: { width: 360, height: 740 }" in generated
     assert 'locale: "ar"' in generated
     assert 'colorScheme: "dark"' in generated
-    assert 'storageState: ".auth/member.json"' in generated
+    assert 'storageState: "runs/admin/storage-member.json"' in generated
     assert "storage-state convention" in generated
+    assert 'use: { baseURL: "https://your-app.example" }' in generated
+
+
+def test_specs_use_base_url_relative_routes_and_pipeline_storage_states() -> None:
+    anonymous = Context(privilege=Privilege.ANON, varies=Axis.PRIVILEGE)
+    member = Context(privilege=Privilege.MEMBER, varies=Axis.PRIVILEGE)
+    owner = Context(privilege=Privilege.OWNER, varies=Axis.PRIVILEGE)
+    absolute_surface = Surface(
+        SurfaceKind.ROUTE,
+        "https://demo.example/workspace/audit?return=https://elsewhere.example",
+    )
+
+    anon_spec = spec_for(
+        Finding(FindingKind.ESCALATION, Severity.HIGH, absolute_surface, Axis.PRIVILEGE, "anonymous access", [
+            Testimony(absolute_surface, anonymous, Outcome.REACHED),
+        ])
+    )
+    member_spec = spec_for(
+        Finding(FindingKind.CAPABILITY_DRIFT, Severity.HIGH, absolute_surface, Axis.PRIVILEGE, "member access", [
+            Testimony(absolute_surface, member, Outcome.REACHED),
+        ])
+    )
+    owner_spec = spec_for(
+        Finding(FindingKind.CAPABILITY_DRIFT, Severity.HIGH, absolute_surface, Axis.PRIVILEGE, "owner access", [
+            Testimony(absolute_surface, owner, Outcome.REACHED),
+        ])
+    )
+
+    assert "storageState" not in anon_spec
+    assert ".auth/" not in anon_spec
+    assert 'storageState: "runs/workspace/storage-member.json"' in member_spec
+    assert 'storageState: "runs/workspace/storage-owner.json"' in owner_spec
+    for generated in (anon_spec, member_spec, owner_spec):
+        assert ".auth/" not in generated
+        assert not re.search(r"page\.goto\([^)]*://", generated)
+        assert 'page.goto("/workspace/audit?return=https%3A%2F%2Felsewhere.example")' in generated
 
 
 def test_each_finding_kind_emits_the_required_assertion() -> None:
