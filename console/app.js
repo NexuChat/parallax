@@ -49,7 +49,12 @@
     if (!Array.isArray(payload.tiles) || !payload.image) return;
     state.tiles = payload.tiles; el.sequence.textContent = `FRAME ${payload.seq ?? '—'} · ${payload.tiles.length} WITNESSES`;
     el.image.onload = () => { el.image.style.display = 'block'; el.mosaicEmpty.style.display = 'none'; layoutTiles(); };
-    el.image.src = payload.image; el.caption.textContent = `Frame ${payload.seq ?? '—'} · ${payload.tiles.length} contexts aligned to their source pixels. Active evidence is outlined in red.`;
+    // A mosaic path in the feed is relative to the FEED, not to this page. A run
+    // published under runs/<id>/ names its images `mosaics/…`, and resolving that
+    // against the document gave /console/mosaics/… — a broken image on every frame.
+    el.image.src = /^(data:|https?:|\/)/.test(payload.image)
+      ? payload.image
+      : new URL(payload.image, new URL(source, document.baseURI)).href; el.caption.textContent = `Frame ${payload.seq ?? '—'} · ${payload.tiles.length} contexts aligned to their source pixels. Active evidence is outlined in red.`;
   }
   function layoutTiles() {
     const naturalWidth = el.image.naturalWidth, naturalHeight = el.image.naturalHeight;

@@ -76,8 +76,36 @@ class Application:
         path = self.console_root / "index.html"
         if not path.is_file():
             return self.not_found()
-        body = path.read_bytes().replace(b"</head>", b'<base href="/console/">\n  </head>', 1)
+        # The base must precede every relative URL in the document, so it goes
+        # immediately after <head>. Appending it before </head> left the
+        # stylesheet already resolved against /console — a 404, and a console
+        # served with no styling at all.
+        source = path.read_bytes()
+        marker = b"<head>"
+        index = source.find(marker)
+        if index == -1:
+            return self.not_found()
+        cut = index + len(marker)
+        body = source[:cut] + b'\n  <base href="/console/">' + source[cut:]
+        # The CDN in front of this service enforces a four-hour browser cache from
+        # a zone setting we do not want to change, so a redeployed console kept
+        # running yesterday's JavaScript. Stamp the assets with the build's own
+        # mtime: every deploy changes the URL, and nothing else has to.
+        body = self.version_assets(body, self.console_root)
         return "200 OK", [("Content-Type", "text/html"), ("Content-Length", str(len(body)))], body
+
+    @staticmethod
+    def version_assets(body: bytes, root: Path) -> bytes:
+        """Append each local asset's mtime to its reference, so a deploy busts the cache."""
+        for name in ("app.js", "style.css", "home.js", "home.css"):
+            asset = root / name
+            if not asset.is_file():
+                continue
+            stamp = str(int(asset.stat().st_mtime)).encode()
+            for quote in (b'"', b"'"):
+                needle = quote + name.encode() + quote
+                body = body.replace(needle, quote + name.encode() + b"?v=" + stamp + quote)
+        return body
 
     def run_response(self, method: str, path: str, environ: dict[str, Any]) -> Response:
         parts = path.split("/")[2:]
@@ -179,7 +207,15 @@ class Application:
             content_type = "application/json"
         else:
             content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        return "200 OK", [("Content-Type", content_type), ("Content-Length", str(path.stat().st_size))], path.read_bytes()
+        # Everything this service serves is either a live run's output or a page
+        # that changes between takes. Behind a CDN the default was a four-hour
+        # cache, so a fix deployed during a demo would not appear until long
+        # after the demo ended.
+        return "200 OK", [
+            ("Content-Type", content_type),
+            ("Content-Length", str(path.stat().st_size)),
+            ("Cache-Control", "no-cache, must-revalidate"),
+        ], path.read_bytes()
 
     @staticmethod
     def json_response(status: str, payload: dict[str, Any]) -> Response:
