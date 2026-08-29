@@ -210,6 +210,19 @@ def test_changed_tile_waits_for_every_context_to_paint_before_emitting() -> None
     assert moment.changed == ("left",)
 
 
+def test_new_surface_requires_every_context_to_repaint_before_emitting() -> None:
+    """A frame from the previous surface must not paint this surface's tile."""
+    now = 0
+    compositor = Compositor(("left", "right"), clock=lambda: now, settle_ms=0)
+    for name in ("left", "right"):
+        compositor.submit(Frame(name, jpeg((10, 10, 10)), seq=1))
+
+    compositor.set_action("second surface")
+    compositor.submit(Frame("left", jpeg((220, 220, 220)), seq=2))
+
+    assert compositor.tick(1) is None
+
+
 def test_undecodable_later_frame_keeps_the_contexts_last_good_image() -> None:
     compositor = Compositor(CONTEXTS)
     for name in CONTEXTS[1:]:

@@ -69,12 +69,15 @@ class Compositor:
             self._dirty = False
         return self._current_mosaic
 
-    @property
-    def mosaic(self) -> MosaicFrame | None:
-        """Alias for callers that prefer a shorter read-only accessor."""
-        return self.current_mosaic
-
     def set_action(self, action: str) -> None:
+        # The conductor calls this once per surface. Frames are observations of
+        # that surface, so an old frame must never satisfy this surface's
+        # paintedness gate for a witness that is now silent.
+        self._latest.clear()
+        self._thumbnails.clear()
+        self._changed_at.clear()
+        self._current_mosaic = None
+        self._dirty = False
         self._action = action
 
     def submit(self, frame: Frame) -> None:

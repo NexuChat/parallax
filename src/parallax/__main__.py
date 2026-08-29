@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from .conductor import Conductor
-from .specialists import AccessSpecialist, LayoutI18nSpecialist, RealtimeSpecialist
+from .specialists import LayoutI18nSpecialist, RealtimeSpecialist
 from .types import Privilege, Severity
 
 
@@ -52,7 +52,10 @@ def _storage_states(pairs: list[str]) -> dict[Privilege | str, str]:
 
 
 def _specialists(no_vision: bool) -> list[object]:
-    lenses: list[object] = [AccessSpecialist(), RealtimeSpecialist()]
+    # The conductor always runs the differ, which owns escalation and inversion
+    # judgement. AccessSpecialist remains an opt-in compatibility lens, never a
+    # default CLI lens, so its projection cannot duplicate that work.
+    lenses: list[object] = [RealtimeSpecialist()]
     if no_vision:
         print("vision lens disabled: --no-vision", file=sys.stderr)
         return lenses

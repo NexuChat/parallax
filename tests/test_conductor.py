@@ -374,7 +374,7 @@ def test_moments_are_harvested_while_the_witnesses_are_still_working(tmp_path: P
     asyncio.run(check())
 
 
-def test_final_flush_never_publishes_a_wall_with_an_unpainted_context(tmp_path: Path) -> None:
+def test_second_surface_never_publishes_a_wall_with_a_stale_context(tmp_path: Path) -> None:
     class NoFrameCDPSession(FakeCDPSession):
         async def send(self, name: str, params: dict[str, Any] | None = None) -> None:
             self.sent.append((name, params))
@@ -382,26 +382,32 @@ def test_final_flush_never_publishes_a_wall_with_an_unpainted_context(tmp_path: 
     class OneSilentWitnessBrowser(FakeBrowser):
         async def new_context(self, **options: Any) -> FakeBrowserContext:
             context = await super().new_context(**options)
-            # Discovery takes the first context; the seventh witness is silent.
-            if len(self.contexts) == 8:
+            # Discovery takes the first context; the seventh witness on the
+            # second surface is silent. Its old first-surface frame must not
+            # count as paint for the new surface.
+            if len(self.contexts) == 15:
                 context.cdp = NoFrameCDPSession()
             return context
 
     async def check() -> None:
         browser = OneSilentWitnessBrowser(
-            [{"discovery": {f"{SITE}/": {"links": [], "affordances": []}}}] + [{} for _ in range(7)]
+            [{"discovery": {f"{SITE}/": {"links": ["/second"], "affordances": []}}}] + [{} for _ in range(14)]
         )
         result = await Conductor(
-            f"{SITE}/", tmp_path, browser=browser, max_surfaces=1, settle_ms=0, poll_ms=1
+            f"{SITE}/", tmp_path, browser=browser, max_surfaces=2, settle_ms=0, poll_ms=1
         ).conduct()
 
         events = [json.loads(line) for line in result.feed_path.read_text().splitlines()]
-        assert not [event for event in events if event["kind"] == "mosaic"]
+        assert [event for event in events if event["kind"] == "mosaic"]
+        assert not [
+            event for event in events
+            if event["kind"] == "mosaic" and event["payload"]["surface_id"] == result.surfaces[1].id
+        ]
 
     asyncio.run(check())
 
 
-def test_mirror_defects_are_present_when_differ_runs_and_errors_do_not_abort(tmp_path: Path, monkeypatch: Any) -> None:
+def test_mirror_observations_reach_the_differ_without_mutating_witness_evidence(tmp_path: Path, monkeypatch: Any) -> None:
     async def check() -> None:
         import parallax.conductor as conductor_module
 
@@ -427,6 +433,50 @@ def test_mirror_defects_are_present_when_differ_runs_and_errors_do_not_abort(tmp
         assert seen
         locale = next(testimony for testimony in seen[0] if testimony.context.varies is Axis.LOCALE)
         assert Defect.RTL_NOT_MIRRORED in locale.defects
+        recorded_locale = next(testimony for testimony in result.testimonies if testimony.context.varies is Axis.LOCALE)
+        assert Defect.RTL_NOT_MIRRORED not in recorded_locale.defects
+
+    asyncio.run(check())
+
+
+def test_specialists_are_isolated_deduplicated_and_failures_are_reported(tmp_path: Path) -> None:
+    class BrokenLens:
+        name = "broken"
+
+        def judge(self, _moments: object, testimonies: object) -> list[Finding]:
+            first = list(testimonies)[0]
+            first.defects.append(Defect.CLIPPED)
+            raise RuntimeError("lens broke")
+
+    class DuplicateLens:
+        name = "duplicate"
+
+        def __init__(self) -> None:
+            self.saw_unmodified_evidence = False
+
+        def judge(self, _moments: object, testimonies: object) -> list[Finding]:
+            first = list(testimonies)[0]
+            self.saw_unmodified_evidence = first.defects == []
+            return [Finding(FindingKind.RENDER_DEFECT, Severity.LOW, first.surface, Axis.LOCALE, "duplicate", [first])]
+
+    async def check() -> None:
+        duplicate = DuplicateLens()
+        browser = FakeBrowser([{"discovery": {f"{SITE}/": {"links": [], "affordances": []}}}] + [{} for _ in range(7)])
+        result = await Conductor(
+            f"{SITE}/", tmp_path, browser=browser, specialists=[BrokenLens(), duplicate], settle_ms=0
+        ).conduct()
+
+        assert duplicate.saw_unmodified_evidence
+        assert len(result.findings) == 1
+        assert result.testimonies[0].defects == []
+        assert len(result.spec_paths) == 1
+        events = [json.loads(line) for line in result.feed_path.read_text().splitlines()]
+        assert any(
+            event["kind"] == "status"
+            and event["payload"].get("specialist") == "broken"
+            and event["payload"].get("state") == "error"
+            for event in events
+        )
 
     asyncio.run(check())
 

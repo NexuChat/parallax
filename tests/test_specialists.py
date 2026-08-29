@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from parallax.contracts import Moment, MosaicFrame, Specialist, Tile
+from parallax.__main__ import _specialists
 from parallax.specialists import AccessSpecialist, LayoutI18nSpecialist, RealtimeSpecialist
 from parallax.types import (
     BASELINE,
@@ -95,6 +96,10 @@ def test_access_delegates_to_differ_and_keeps_only_privilege_findings() -> None:
     )
     assert [finding.kind for finding in findings] == [FindingKind.ESCALATION]
     assert all(finding.axis is Axis.PRIVILEGE for finding in findings)
+
+
+def test_access_is_explicitly_opt_in_not_a_default_cli_lens() -> None:
+    assert not any(isinstance(specialist, AccessSpecialist) for specialist in _specialists(no_vision=True))
 
 
 def test_layout_without_a_client_returns_nothing(monkeypatch) -> None:
