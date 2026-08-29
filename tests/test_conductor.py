@@ -166,7 +166,7 @@ def test_discovery_stays_within_the_start_path_and_origin(tmp_path: Path) -> Non
     async def check() -> None:
         for start in (f"{SITE}/shop", f"{SITE}/shop/"):
             discovery = {
-                start: {"links": ["/shop/inside", "/sibling", "https://elsewhere.test/nope"], "affordances": []},
+                f"{SITE}/shop": {"links": ["/shop/inside", "/sibling", "https://elsewhere.test/nope"], "affordances": []},
                 f"{SITE}/shop/inside": {"links": [], "affordances": []},
             }
             browser = FakeBrowser([{"discovery": discovery}])
@@ -174,7 +174,75 @@ def test_discovery_stays_within_the_start_path_and_origin(tmp_path: Path) -> Non
 
             surfaces = await conductor._discover()
 
-            assert [surface.path for surface in surfaces] == [start, f"{SITE}/shop/inside"]
+            assert [surface.path for surface in surfaces] == [f"{SITE}/shop", f"{SITE}/shop/inside"]
+
+    asyncio.run(check())
+
+
+def test_discovery_reaches_a_second_level_route_before_first_page_affordances(tmp_path: Path) -> None:
+    async def check() -> None:
+        discovery = {
+            f"{SITE}/": {
+                "links": ["/member"],
+                "affordances": [{"selector": "#profile", "label": "Profile"}],
+            },
+            f"{SITE}/member": {"links": ["/audit"], "affordances": []},
+            f"{SITE}/audit": {"links": [], "affordances": []},
+        }
+        surfaces = await Conductor(
+            f"{SITE}/", tmp_path, browser=FakeBrowser([{"discovery": discovery}]), max_surfaces=3
+        )._discover()
+
+        assert [surface.path for surface in surfaces] == [f"{SITE}/", f"{SITE}/member", f"{SITE}/audit"]
+
+    asyncio.run(check())
+
+
+def test_discovery_normalizes_duplicate_route_links_and_trailing_slashes(tmp_path: Path) -> None:
+    async def check() -> None:
+        discovery = {
+            f"{SITE}/": {
+                "links": ["/audit", "/audit/", "audit", "/audit?b=2&a=1", "/audit?a=1&b=2"],
+                "affordances": [],
+            },
+            f"{SITE}/audit": {"links": [], "affordances": []},
+            f"{SITE}/audit?a=1&b=2": {"links": [], "affordances": []},
+        }
+        surfaces = await Conductor(
+            f"{SITE}/", tmp_path, browser=FakeBrowser([{"discovery": discovery}]), max_surfaces=4
+        )._discover()
+
+        assert [surface.path for surface in surfaces] == [
+            f"{SITE}/",
+            f"{SITE}/audit",
+            f"{SITE}/audit?a=1&b=2",
+        ]
+
+    asyncio.run(check())
+
+
+def test_discovery_prioritizes_unrepresented_routes_over_affordances(tmp_path: Path) -> None:
+    async def check() -> None:
+        discovery = {
+            f"{SITE}/": {
+                "links": ["/account", "/audit"],
+                "affordances": [
+                    {"selector": "#sign-out", "label": "Sign out"},
+                    {"selector": "#settings", "label": "Settings"},
+                ],
+            },
+            f"{SITE}/account": {"links": [], "affordances": []},
+            f"{SITE}/audit": {"links": [], "affordances": []},
+        }
+        surfaces = await Conductor(
+            f"{SITE}/", tmp_path, browser=FakeBrowser([{"discovery": discovery}]), max_surfaces=3
+        )._discover()
+
+        assert [(surface.kind.value, surface.path) for surface in surfaces] == [
+            ("route", f"{SITE}/"),
+            ("route", f"{SITE}/account"),
+            ("route", f"{SITE}/audit"),
+        ]
 
     asyncio.run(check())
 

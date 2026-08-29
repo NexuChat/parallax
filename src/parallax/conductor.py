@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
-from urllib.parse import urldefrag, urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urldefrag, urljoin, urlsplit, urlunsplit
 
 from .compositor import Compositor
 from .contracts import FeedEvent, Frame, Moment, Specialist, finding_payload, mosaic_payload
@@ -116,21 +116,41 @@ class Conductor:
         return ConductSummary(surfaces, all_testimonies, all_findings, spec_paths, feed_path)
 
     async def _discover(self) -> list[Surface]:
-        """Use only the baseline context to make the replay set causal and comparable."""
+        """Use only the baseline context to make the replay set causal and comparable.
+
+        Routes form a breadth-first frontier.  They are deliberately selected before
+        controls: a control is another observation of its page, while a route can
+        reveal an entire new navigation layer (including links visible only to the
+        baseline's signed-in state).  This makes a short crawl cover distinct pages
+        before spending its remaining slots on siblings such as page-one buttons.
+        """
         witness = Witness(self._baseline(), self.browser, storage_state=self._storage_for(self._baseline()))
-        pending = [self.start_url]
-        visited: set[str] = set()
+        pending_routes = [self.start_url]
+        queued_routes = {self.start_url}
+        visited_routes: set[str] = set()
+        pending_affordances: list[Surface] = []
+        queued_affordances: set[tuple[str, str]] = set()
         surfaces: list[Surface] = []
         origin = _origin(self.start_url)
         try:
             await witness.open()
             assert witness.page is not None
-            while pending and len(surfaces) < self.max_surfaces:
-                route = pending.pop(0)
-                if route in visited:
+            while len(surfaces) < self.max_surfaces:
+                if pending_routes:
+                    # FIFO preserves breadth-first order.  More importantly, every
+                    # queued route outranks affordances from an already represented
+                    # route, so shallow controls cannot starve deeper navigation.
+                    route = pending_routes.pop(0)
+                    queued_routes.remove(route)
+                    if route in visited_routes:
+                        continue
+                    visited_routes.add(route)
+                    surfaces.append(Surface(SurfaceKind.ROUTE, route))
+                elif pending_affordances:
+                    surfaces.append(pending_affordances.pop(0))
                     continue
-                visited.add(route)
-                surfaces.append(Surface(SurfaceKind.ROUTE, route))
+                else:
+                    break
                 try:
                     await witness.page.goto(route, wait_until="domcontentloaded", timeout=5_000)
                     data = await witness.page.evaluate(_DISCOVERY_SCRIPT)
@@ -139,13 +159,14 @@ class Conductor:
                 if not isinstance(data, dict):
                     continue
                 for action in data.get("affordances", []):
-                    if len(surfaces) >= self.max_surfaces:
-                        break
                     if not isinstance(action, dict) or not isinstance(action.get("selector"), str):
                         continue
+                    affordance_key = (route, action["selector"])
+                    if affordance_key in queued_affordances:
+                        continue
                     surface = Surface(SurfaceKind.AFFORDANCE, route, action["selector"], action.get("label"))
-                    if surface not in surfaces:
-                        surfaces.append(surface)
+                    queued_affordances.add(affordance_key)
+                    pending_affordances.append(surface)
                 for href in data.get("links", []):
                     if not isinstance(href, str):
                         continue
@@ -153,10 +174,11 @@ class Conductor:
                     if (
                         _origin(target) == origin
                         and _is_at_or_below_start_path(target, self.start_url)
-                        and target not in visited
-                        and target not in pending
+                        and target not in visited_routes
+                        and target not in queued_routes
                     ):
-                        pending.append(target)
+                        queued_routes.add(target)
+                        pending_routes.append(target)
         finally:
             await witness.close()
         return surfaces
@@ -259,9 +281,17 @@ def _now_ms() -> int:
 
 
 def _normal_url(url: str) -> str:
+    """Return one stable key per navigable route before it enters the crawl.
+
+    Browsers commonly expose both a directory URL and its trailing-slash form,
+    and link builders can emit the same query parameters in different orders.
+    Treating either as a new route would consume a bounded discovery slot twice.
+    """
     clean, _ = urldefrag(url)
     parts = urlsplit(clean)
-    return urlunsplit((parts.scheme, parts.netloc, parts.path or "/", parts.query, ""))
+    path = parts.path.rstrip("/") or "/"
+    query = urlencode(sorted(parse_qsl(parts.query, keep_blank_values=True)))
+    return urlunsplit((parts.scheme, parts.netloc, path, query, ""))
 
 
 def _origin(url: str) -> tuple[str, str]:
