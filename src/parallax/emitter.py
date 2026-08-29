@@ -6,6 +6,7 @@ import hashlib
 import json
 from collections.abc import Iterable
 from pathlib import Path
+from urllib.parse import quote, urlsplit
 
 from .types import Axis, Defect, Finding, FindingKind, SurfaceKind, Testimony
 
@@ -18,6 +19,24 @@ def _ts(value: str) -> str:
 def _comment(value: str) -> str:
     """Keep untrusted evidence inside a one-line comment safely."""
     return value.replace("\\", "\\\\").replace("\r", "\\r").replace("\n", "\\n").replace("*/", "*\\/")
+
+
+def _base_url_path(value: str) -> str:
+    """Return a route suitable for Playwright's configured baseURL."""
+    parts = urlsplit(value)
+    path = parts.path or "/"
+    if not path.startswith("/"):
+        path = f"/{path}"
+    query = quote(parts.query, safe="!$&'()*+,;=@%")
+    return f"{path}?{query}" if query else path
+
+
+def _storage_state_path(route: str, privilege: str) -> str | None:
+    """Return the state-file location created by run_demo_suite for a role."""
+    if privilege == "anon":
+        return None
+    site = _base_url_path(route).lstrip("/").split("/", 1)[0] or "site"
+    return f"runs/{site}/storage-{privilege}.json"
 
 
 def _context_for(finding: Finding) -> Testimony:
@@ -122,13 +141,14 @@ def spec_for(finding: Finding) -> str:
     """Render one self-contained, failing-until-fixed Playwright TypeScript spec."""
     witness = _context_for(finding)
     context = witness.context
-    path = _ts(finding.surface.path)
+    path = _ts(_base_url_path(finding.surface.path))
     title = _ts(f"Parallax: {finding.id}")
+    storage_state = _storage_state_path(finding.surface.path, context.privilege.value)
+    storage_line = f"\n  storageState: {_ts(storage_state)}," if storage_state else ""
     setup = f'''test.use({{
   viewport: {{ width: {context.viewport.width}, height: {context.viewport.height} }},
   locale: {_ts(context.locale.value)},
-  colorScheme: {_ts(context.theme.value)},
-  storageState: {_ts(f'.auth/{context.privilege.value}.json')},
+  colorScheme: {_ts(context.theme.value)},{storage_line}
 }});'''
     prelude = f'''  const response = await page.goto({path});
   const isLoginPage = /\\/(?:login|sign-in|auth)(?:[/?#]|$)/i.test(new URL(page.url()).pathname);'''
@@ -149,7 +169,8 @@ def spec_for(finding: Finding) -> str:
  * Finding: {_comment(finding.id)}
  * Axis: {_comment(finding.axis.value)}
  * Evidence: {_comment(finding.evidence_line())}
- * storage-state convention: .auth/<role>.json supplies the browser state for anon, member, and owner.
+ * In playwright.config.ts: use: {{ baseURL: "https://your-app.example" }}
+ * storage-state convention: scripts/run_demo_suite.py writes runs/<site>/storage-<role>.json after login for member and owner; anonymous runs use no stored state.
  */
 import {{ test, expect }} from "@playwright/test";
 
