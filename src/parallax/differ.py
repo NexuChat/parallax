@@ -43,6 +43,7 @@ _DEFECT_SEVERITY = {
     Defect.RTL_NOT_MIRRORED: Severity.MEDIUM,
     Defect.UNTRANSLATED: Severity.MEDIUM,
     Defect.LOW_CONTRAST: Severity.MEDIUM,
+    Defect.SMALL_TAP_TARGET: Severity.MEDIUM,    # only ever raised where fingers are used
     Defect.CLIPPED: Severity.LOW,
 }
 
@@ -53,6 +54,7 @@ _DEFECT_PHRASING = {
     Defect.LOW_CONTRAST: "text contrast falls below WCAG AA",
     Defect.CLIPPED: "text or a control is clipped",
     Defect.OFFSCREEN_CONTROL: "an actionable control sits outside the viewport",
+    Defect.SMALL_TAP_TARGET: "a tap target is smaller than the 44px minimum",
 }
 
 _SEVERITY_ORDER = {Severity.HIGH: 0, Severity.MEDIUM: 1, Severity.LOW: 2, Severity.INFO: 3}

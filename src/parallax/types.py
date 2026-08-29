@@ -18,6 +18,7 @@ import hashlib
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Any
 
 
 # --------------------------------------------------------------------------
@@ -173,6 +174,7 @@ class Defect(str, Enum):
     LOW_CONTRAST = "low_contrast"                 # fails WCAG AA in this theme
     CLIPPED = "clipped"                           # text or control cut off
     OFFSCREEN_CONTROL = "offscreen_control"       # actionable element unreachable
+    SMALL_TAP_TARGET = "small_tap_target"         # below the 44px WCAG 2.2 minimum
 
 
 @dataclass
@@ -185,6 +187,8 @@ class Testimony:
     http_status: int | None = None
     final_path: str | None = None      # redirects are how denials usually announce themselves
     content_signature: str | None = None  # hash of visible text/structure, for parity checks
+    layout_signature: str | None = None   # hash of geometry alone: must not move on the theme axis
+    geometry: list[dict[str, Any]] = field(default_factory=list)  # landmark boxes, for the mirror test
     defects: list[Defect] = field(default_factory=list)
     note: str = ""
     screenshot: str | None = None      # object path, never bytes
