@@ -170,6 +170,7 @@ class Defect(str, Enum):
 
     HORIZONTAL_OVERFLOW = "horizontal_overflow"   # content wider than the viewport
     RTL_NOT_MIRRORED = "rtl_not_mirrored"         # layout stayed LTR under an RTL locale
+    THEME_LAYOUT_SHIFT = "theme_layout_shift"     # dark mode recoloured *and* moved something
     UNTRANSLATED = "untranslated"                 # raw i18n keys or wrong-language text
     LOW_CONTRAST = "low_contrast"                 # fails WCAG AA in this theme
     CLIPPED = "clipped"                           # text or control cut off

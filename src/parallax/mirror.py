@@ -21,15 +21,17 @@ class MirrorOffender:
     actual: dict[str, float] | None
 
 
-def mirror_defects(baseline: Testimony, variant: Testimony) -> list[Defect]:
-    """Return render defects appropriate to the variant's comparison axis.
+_AXIS_DEFECT = {
+    Axis.LOCALE: Defect.RTL_NOT_MIRRORED,
+    Axis.THEME: Defect.THEME_LAYOUT_SHIFT,
+}
 
-    Theme movement is reported by :func:`mirror_report`, but the current defect
-    vocabulary only has a name for the RTL invariant.  It must not be used to
-    describe a dark-mode layout shift.
-    """
-    if variant.context.varies is Axis.LOCALE and mirror_report(baseline, variant):
-        return [Defect.RTL_NOT_MIRRORED]
+
+def mirror_defects(baseline: Testimony, variant: Testimony) -> list[Defect]:
+    """Return the render defect appropriate to the variant's comparison axis."""
+    defect = _AXIS_DEFECT.get(variant.context.varies)
+    if defect is not None and mirror_report(baseline, variant):
+        return [defect]
     return []
 
 
@@ -71,19 +73,25 @@ def _box_mismatches(
 ) -> list[MirrorOffender]:
     remaining = list(variant.geometry)
     offenders: list[MirrorOffender] = []
+    # Across locales only *position* is an invariant: translated text legitimately
+    # renders wider, narrower or taller, and flagging that would drown the real
+    # signal. Across themes nothing at all may move, so size is compared too.
+    compared = ("x", "y") if mirrored else _BOX_KEYS
     for source in baseline.geometry:
         target_index = _matching_index(source, remaining)
-        expected = _expected_box(source, baseline.context, mirrored=mirrored)
         name = _name(source)
-        if expected is None:
+        if _box(source) is None:
             continue
         if target_index is None:
-            offenders.append(MirrorOffender(name, expected, None))
+            expected = _expected_box(source, baseline.context, mirrored=mirrored, actual=None)
+            offenders.append(MirrorOffender(name, expected or {}, None))
             continue
 
-        actual_source = remaining.pop(target_index)
-        actual = _box(actual_source)
-        if actual is None or not _within_tolerance(expected, actual):
+        actual = _box(remaining.pop(target_index))
+        expected = _expected_box(source, baseline.context, mirrored=mirrored, actual=actual)
+        if expected is None:
+            continue
+        if actual is None or not _within_tolerance(expected, actual, compared):
             offenders.append(MirrorOffender(name, expected, actual))
     return offenders
 
@@ -122,12 +130,26 @@ def _name(box: dict[str, Any]) -> str:
 
 
 def _expected_box(
-    source: dict[str, Any], context: Context, *, mirrored: bool
+    source: dict[str, Any],
+    context: Context,
+    *,
+    mirrored: bool,
+    actual: dict[str, float] | None,
 ) -> dict[str, float] | None:
-    result = _box(source)
-    if result is not None and mirrored:
-        result["x"] = context.viewport.width - result["x"] - result["w"]
-    return result
+    """Where the variant's box belongs if the layout mirrored correctly.
+
+    Mirroring preserves an element's distance from the *opposite* edge: what sat
+    `x` from the left in LTR must sit `x` from the right in RTL, so
+    `x' = W - x - w`. The width in that equation is the variant's own, because
+    the same element translated into Arabic may render wider or narrower — and
+    that is a translation, not a mirroring failure.
+    """
+    box = _box(source)
+    if box is None or not mirrored:
+        return box
+    width = (actual or box)["w"]
+    box["x"] = context.viewport.width - box["x"] - width
+    return box
 
 
 def _box(source: dict[str, Any]) -> dict[str, float] | None:
@@ -138,5 +160,7 @@ def _box(source: dict[str, Any]) -> dict[str, float] | None:
     return values
 
 
-def _within_tolerance(expected: dict[str, float], actual: dict[str, float]) -> bool:
-    return all(abs(expected[key] - actual[key]) <= _TOLERANCE_PX for key in _BOX_KEYS)
+def _within_tolerance(
+    expected: dict[str, float], actual: dict[str, float], keys: tuple[str, ...]
+) -> bool:
+    return all(abs(expected[key] - actual[key]) <= _TOLERANCE_PX for key in keys)

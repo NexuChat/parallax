@@ -97,6 +97,10 @@ class Witness:
             http_status=status,
             final_path=final_path,
             content_signature=self.last_probe.get("contentSignature"),
+            # Raw material for the mirror test and the theme invariant. A single
+            # witness cannot judge either — only the comparison across two can.
+            layout_signature=self.last_probe.get("layoutSignature"),
+            geometry=list(self.last_probe.get("geometry") or []),
             defects=defects,
             note=note,
         )
@@ -273,18 +277,31 @@ async def run_witnesses(
 
     testimonies: list[Testimony] = []
     try:
-        for context in contexts or derive_witnesses():
-            witness = Witness(context, browser, storage_state=_storage_for(context, storage_states))
-            try:
-                testimonies.append(await witness.visit(surface))
-            finally:
-                await witness.close()
+        # Concurrently, not one after another. Sequential visits would make the
+        # relational axis unobservable: by the time a receiver looked, the
+        # sender's session would already be closed — and a whole class of defect
+        # would simply never appear.
+        witnesses = [
+            Witness(context, browser, storage_state=_storage_for(context, storage_states))
+            for context in contexts or derive_witnesses()
+        ]
+        testimonies = list(
+            await asyncio.gather(*(_visit_and_close(witness, surface) for witness in witnesses))
+        )
     finally:
         if owned_browser:
             await browser.close()
             if playwright is not None:
                 await playwright.stop()
     return testimonies
+
+
+async def _visit_and_close(witness: Witness, surface: Surface) -> Testimony:
+    """Close this witness's own context, never the browser the others share."""
+    try:
+        return await witness.visit(surface)
+    finally:
+        await witness.close()
 
 
 async def _make_browser(factory: BrowserFactory | None) -> tuple[Any, Any | None]:

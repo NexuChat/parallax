@@ -33,6 +33,7 @@ class Compositor:
         settle_ms: int = 500,
         clock: Callable[[], int] | None = None,
         motion_threshold: float = 5.0,
+        tile_size: tuple[int, int] | None = None,
     ) -> None:
         names = tuple(contexts) if contexts is not None else tuple(
             context.name for context in derive_witnesses()
@@ -51,7 +52,10 @@ class Compositor:
         self._latest: dict[str, tuple[int, Image.Image]] = {}
         self._thumbnails: dict[str, Image.Image] = {}
         self._changed_at: dict[str, int] = {}
-        self._tile_size: tuple[int, int] | None = None
+        # Left unset, the first frame to arrive decides the tile shape for
+        # everyone — which is a race when the witnesses have different
+        # viewports. Callers running the real seven should pass one.
+        self._tile_size: tuple[int, int] | None = tile_size
         self._current_mosaic: MosaicFrame | None = None
         self._action = ""
 
@@ -125,7 +129,9 @@ class Compositor:
             tiles.append(Tile(context_name=name, x=x, y=y, w=width, h=height))
 
         encoded = BytesIO()
-        wall.save(encoded, format="JPEG", quality=100, subsampling=0)
+        # The wall is looked at, not measured: q100 would multiply the cost of
+        # every moment sent to a model for detail no one can see at tile scale.
+        wall.save(encoded, format="JPEG", quality=80)
         return MosaicFrame(
             jpeg=encoded.getvalue(),
             tiles=tuple(tiles),
@@ -144,7 +150,23 @@ def _decode(jpeg: bytes) -> Image.Image:
 
 
 def _fit(image: Image.Image, size: tuple[int, int]) -> Image.Image:
-    return image if image.size == size else image.resize(size, Image.Resampling.LANCZOS)
+    """Scale a frame into its tile without distorting it.
+
+    Witnesses do not share a viewport — 360x740 sits next to 1440x900 — so
+    stretching every frame to one tile size would leave the mobile witness
+    looking broken and destroy the comparison the wall exists to make. Letterbox
+    instead: the tile keeps its slot, the frame keeps its proportions.
+    """
+    if image.size == size:
+        return image
+    scale = min(size[0] / image.width, size[1] / image.height)
+    scaled = image.resize(
+        (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
+        Image.Resampling.LANCZOS,
+    )
+    canvas = Image.new("RGB", size, _PLACEHOLDER)
+    canvas.paste(scaled, ((size[0] - scaled.width) // 2, (size[1] - scaled.height) // 2))
+    return canvas
 
 
 def _has_motion(before: Image.Image, after: Image.Image, threshold: float) -> bool:

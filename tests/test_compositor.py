@@ -23,6 +23,11 @@ def pixel(mosaic: bytes, x: int, y: int) -> tuple[int, int, int]:
         return image.convert("RGB").getpixel((x, y))
 
 
+def is_color(actual: tuple[int, int, int], expected: tuple[int, int, int]) -> bool:
+    """The wall is saved lossily on purpose; assert the colour, not the bytes."""
+    return all(abs(left - right) <= 10 for left, right in zip(actual, expected))
+
+
 def test_seven_frames_compose_into_a_stable_four_by_two_grid() -> None:
     compositor = Compositor(CONTEXTS)
     colors = [(index * 30, 20, 40) for index in range(7)]
@@ -41,7 +46,7 @@ def test_seven_frames_compose_into_a_stable_four_by_two_grid() -> None:
     for index, color in enumerate(colors):
         x = (index % 4) * 12 + 6
         y = (index // 4) * 8 + 4
-        assert all(abs(actual - expected) <= 2 for actual, expected in zip(pixel(mosaic.jpeg, x, y), color))
+        assert is_color(pixel(mosaic.jpeg, x, y), color)
 
 
 def test_later_frame_replaces_the_contexts_earlier_frame_and_stale_delivery_is_ignored() -> None:
@@ -52,7 +57,18 @@ def test_later_frame_replaces_the_contexts_earlier_frame_and_stale_delivery_is_i
 
     mosaic = compositor.current_mosaic
     assert mosaic is not None
-    assert pixel(mosaic.jpeg, 6, 4) == (0, 0, 240)
+    assert is_color(pixel(mosaic.jpeg, 6, 4), (0, 0, 240))
+
+
+def test_a_narrow_viewport_is_letterboxed_rather_than_stretched() -> None:
+    """The mobile witness is 360 wide next to a 1440 desktop. It must not distort."""
+    compositor = Compositor(CONTEXTS, tile_size=(40, 20))
+    compositor.submit(Frame(CONTEXTS[0], jpeg((240, 0, 0), size=(10, 20)), seq=1))
+
+    mosaic = compositor.current_mosaic
+    assert mosaic is not None
+    assert is_color(pixel(mosaic.jpeg, 20, 10), (240, 0, 0))   # the frame, centred
+    assert is_color(pixel(mosaic.jpeg, 2, 10), (36, 36, 36))   # padding, not stretched pixels
 
 
 def test_unchanged_tile_emits_no_moment() -> None:

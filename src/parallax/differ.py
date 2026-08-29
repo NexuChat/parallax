@@ -41,6 +41,7 @@ _DEFECT_SEVERITY = {
     Defect.OFFSCREEN_CONTROL: Severity.HIGH,      # the user simply cannot act
     Defect.HORIZONTAL_OVERFLOW: Severity.MEDIUM,
     Defect.RTL_NOT_MIRRORED: Severity.MEDIUM,
+    Defect.THEME_LAYOUT_SHIFT: Severity.MEDIUM,
     Defect.UNTRANSLATED: Severity.MEDIUM,
     Defect.LOW_CONTRAST: Severity.MEDIUM,
     Defect.SMALL_TAP_TARGET: Severity.MEDIUM,    # only ever raised where fingers are used
@@ -50,6 +51,7 @@ _DEFECT_SEVERITY = {
 _DEFECT_PHRASING = {
     Defect.HORIZONTAL_OVERFLOW: "content overflows horizontally",
     Defect.RTL_NOT_MIRRORED: "layout is not mirrored for a right-to-left locale",
+    Defect.THEME_LAYOUT_SHIFT: "the layout moved when only the theme changed",
     Defect.UNTRANSLATED: "untranslated or raw i18n strings are visible",
     Defect.LOW_CONTRAST: "text contrast falls below WCAG AA",
     Defect.CLIPPED: "text or a control is clipped",

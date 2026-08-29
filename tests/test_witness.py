@@ -207,6 +207,63 @@ def test_screencast_delivers_jpegs_without_blocking_and_stops_cleanly() -> None:
     asyncio.run(check())
 
 
+def test_witnesses_visit_concurrently_rather_than_one_after_another() -> None:
+    """Simultaneity is the thesis, not an optimisation.
+
+    A sequential run cannot observe the relational axis at all: by the time the
+    receiver looks, the sender's session is already closed.
+    """
+    live = 0
+    peak = 0
+
+    class ConcurrentPage(FakePage):
+        async def goto(self, url: str, **kwargs: Any) -> FakeResponse:
+            nonlocal live, peak
+            live += 1
+            peak = max(peak, live)
+            await asyncio.sleep(0.01)
+            live -= 1
+            return await super().goto(url, **kwargs)
+
+    class ConcurrentBrowser(FakeBrowser):
+        async def new_context(self, **options: Any) -> FakeBrowserContext:
+            self.context_options.append(options)
+            context = FakeBrowserContext({})
+            context.page = ConcurrentPage({})
+            self.contexts.append(context)
+            return context
+
+    async def check() -> None:
+        browser = ConcurrentBrowser()
+        testimonies = await run_witnesses(SURFACE, browser=browser)
+
+        assert len(testimonies) == 7
+        assert peak == 7   # all seven in flight at the same instant
+
+    asyncio.run(check())
+
+
+def test_probe_geometry_and_layout_signature_reach_the_testimony() -> None:
+    """Dropping these makes the mirror test and the theme invariant unobservable."""
+    async def check() -> None:
+        browser = FakeBrowser([{
+            "probe": {
+                "defects": [],
+                "contentSignature": "content",
+                "layoutSignature": "layout-1",
+                "geometry": [{"selector": "#nav", "tag": "nav", "x": 20, "y": 10, "w": 200, "h": 40, "text": ""}],
+            }
+        }])
+        testimony = await Witness(Context(), browser).visit(SURFACE)
+
+        assert testimony.layout_signature == "layout-1"
+        assert testimony.geometry == [
+            {"selector": "#nav", "tag": "nav", "x": 20, "y": 10, "w": 200, "h": 40, "text": ""}
+        ]
+
+    asyncio.run(check())
+
+
 def test_navigation_or_probe_failure_becomes_recorded_error() -> None:
     async def check() -> None:
         navigation = await Witness(

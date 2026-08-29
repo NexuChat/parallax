@@ -65,11 +65,24 @@ def test_dark_mode_shift_is_reported_when_signature_differs() -> None:
 
     report = mirror_report(baseline, dark)
 
-    assert mirror_defects(baseline, dark) == []
+    assert mirror_defects(baseline, dark) == [Defect.THEME_LAYOUT_SHIFT]
     assert len(report) == 1
     assert report[0].selector == "#nav"
     assert report[0].expected["x"] == 20
     assert report[0].actual["x"] == 26
+
+
+def test_translated_text_may_change_width_without_being_a_mirroring_failure() -> None:
+    """Arabic renders the same label at a different width. Only position mirrors."""
+    baseline = say(BASELINE, [box("#nav", 20, 10, 200, 40)])
+    arabic = say(
+        Context(locale=Locale.AR, varies=Axis.LOCALE),
+        # Correctly mirrored — its right edge sits 20px from the right — but 60px wider.
+        [box("#nav", WIDTH - 20 - 260, 10, 260, 44)],
+    )
+
+    assert mirror_report(baseline, arabic) == []
+    assert mirror_defects(baseline, arabic) == []
 
 
 def test_one_pixel_rounding_difference_is_within_tolerance() -> None:
