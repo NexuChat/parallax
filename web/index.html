@@ -43,16 +43,15 @@
       </section>
 
       <section class="wall section" id="wall" aria-labelledby="wall-title">
-        <div class="section-heading"><p class="kicker">02 / LIVE WALL</p><h2 id="wall-title">Seven sessions, one image.</h2></div>
-        <p class="section-intro">Seven sessions stream over CDP into one image; a finding highlights the tiles it rests on.</p>
+        <div class="section-heading"><p class="kicker">02 / PUBLISHED SWEEPS</p><h2 id="wall-title">Five applications, one method.</h2></div>
+        <p class="section-intro">Choose an application to inspect its seven-session wall. Each sweep preserves the same witnesses while changing only one axis at a time.</p>
+        <div class="app-gallery" id="app-gallery" aria-label="Published application sweeps" aria-busy="true">
+          <p class="gallery-loading">Loading published application sweeps.</p>
+        </div>
         <div class="wall-frame">
-          <!-- The published run is the source in the markup itself. Pointing this
-               at /console and swapping it from JavaScript meant a visitor whose
-               script was stale, slow or blocked was shown the sample fixture on
-               the front page of a tool whose whole claim is measured evidence. -->
           <iframe id="console-frame" src="/console?feed=%2Fconsole%2Fruns%2Flatest%2Ffeed.jsonl" title="Parallax live witness mosaic" loading="eager"></iframe>
         </div>
-        <p class="feed-status" id="feed-status" role="status">Attached to the published sweep at <code>/console/runs/latest/</code>.</p>
+        <p class="feed-status" id="feed-status" role="status">Loading the published sweep index.</p>
       </section>
 
       <section class="scoreboard section" id="scoreboard" aria-labelledby="scoreboard-title">

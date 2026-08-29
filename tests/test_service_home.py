@@ -41,6 +41,11 @@ def test_home_console_health_unknown_and_path_traversal_contract(tmp_path: Path)
     assert status == "200 OK"
     assert headers["Content-Type"].startswith("text/css")
 
+    status, headers, body = request(app, "GET", "/console/runs/index.json")
+    assert status == "200 OK"
+    assert headers["Content-Type"].startswith("application/json")
+    assert b'"workspace"' in body
+
     status, _, body = request(app, "GET", "/healthz")
     assert status == "200 OK"
     assert body == b'{"ok":true}\n'
@@ -79,6 +84,11 @@ def test_home_html_references_only_served_assets(tmp_path: Path) -> None:
     assert headers["Content-Type"].startswith("text/html")
     assert b'/style.css' not in body
     assert b'/favicon.ico' not in body
+    script = (source_web / "home.js").read_text(encoding="utf-8")
+    assert "/console/runs/index.json" in script
+    assert "new URLSearchParams(location.search).get('app')" in script
+    assert "entries.find((entry) => entry.name === 'workspace')" in script
+    assert "|| entries[0]" in script
     assets = re.findall(r'(?:href|src)="(/[^"?#]+)', body.decode())
     for asset in assets:
         status, _, _ = request(app, "GET", asset)
