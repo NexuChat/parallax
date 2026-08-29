@@ -1,7 +1,13 @@
 import re
 
+import pytest
+
+from demo.sites.admin import AdminSite
 from demo.sites.base import Request
 from demo.sites.control import ControlSite
+from demo.sites.docs import DocsSite
+from demo.sites.shop import ShopSite
+from demo.sites.workspace import WorkspaceSite
 
 
 def page(site: ControlSite, path: str, role: str = "anon", **query: str) -> str:
@@ -36,7 +42,7 @@ def test_control_privilege_narrows_properly_owner_reaches_reports_member_cannot(
 
 def test_control_arabic_page_declares_rtl_and_uses_logical_layout() -> None:
     markup = page(ControlSite(), "/", lang="ar")
-    assert '<html lang="ar" dir="rtl">' in markup
+    assert '<html lang="ar" dir="rtl" data-theme="system">' in markup
     assert "padding-inline" in markup and "margin-inline" in markup
     assert "padding-left" not in markup and "margin-right" not in markup
     assert "نظرة عامة" in markup
@@ -45,9 +51,10 @@ def test_control_arabic_page_declares_rtl_and_uses_logical_layout() -> None:
 def test_control_dark_and_light_only_change_colour_declarations() -> None:
     site = ControlSite()
     light, dark = stylesheet(page(site, "/", theme="light")), stylesheet(page(site, "/", theme="dark"))
-    variable_prefix = r":root\{--bg:[^;]+;--ink:[^;]+;--wash:[^;]+;--accent:[^;]+;--card:[^;]+;--muted:[^;]+;--line:[^}]+\}"
-    assert re.sub(variable_prefix, ":root{COLORS}", light) == re.sub(variable_prefix, ":root{COLORS}", dark)
-    assert light != dark
+    assert light == dark
+    assert "@media (prefers-color-scheme: dark)" in light
+    assert 'data-theme="light"' in page(site, "/", theme="light")
+    assert 'data-theme="dark"' in page(site, "/", theme="dark")
 
 
 def test_control_has_no_raw_i18n_keys_and_all_declared_taps_are_44px() -> None:
@@ -79,3 +86,13 @@ def test_mounted_protected_route_redirects_to_mounted_login() -> None:
     response = ControlSite().handle(Request(path="/team", mount="/control"))
 
     assert response.headers["Location"] == "/control/login"
+
+
+@pytest.mark.parametrize("site", [WorkspaceSite(), ShopSite(), DocsSite(), AdminSite(), ControlSite()])
+def test_every_site_serves_system_theme_css_and_explicit_choices(site) -> None:
+    light = site.handle(Request(path="/", query={"theme": "light"})).body.decode()
+    dark = site.handle(Request(path="/", query={"theme": "dark"})).body.decode()
+    system = site.handle(Request(path="/")).body.decode()
+    assert "prefers-color-scheme: dark" in system
+    assert '<meta name="color-scheme" content="light dark">' in system
+    assert 'data-theme="light"' in light and 'data-theme="dark"' in dark
