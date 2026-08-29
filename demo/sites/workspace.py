@@ -60,16 +60,16 @@ class WorkspaceSite:
     def handle(self, request: Request) -> Response:
         lang, theme = request.lang, request.theme
         if request.path == "/":
-            return self._page(request, self._landing(lang), lang, theme)
+            return self._page(request, self._landing(request, lang), lang, theme)
         if request.path == "/login":
             return self._login(request, lang, theme)
         if request.path == "/threads":
             user = self._user(request)
             if user is None:
-                return self._login_redirect()
+                return self._login_redirect(request)
             if request.method == "POST":
                 return self._post_message(request, user)
-            return self._page(request, self._threads(lang, user), lang, theme)
+            return self._page(request, self._threads(request, lang, user), lang, theme)
         if request.path == "/api/messages":
             user = self._user(request)
             if user is None:
@@ -78,7 +78,7 @@ class WorkspaceSite:
         if request.path in ("/settings", "/billing"):
             user = self._user(request)
             if user is None:
-                return self._login_redirect()
+                return self._login_redirect(request)
             if user["role"] != "owner":
                 return self._page(request, f"<h1>{escape(_COPY[lang]['not_allowed'])}</h1>", lang, theme, status=403)
             label = _COPY[lang][request.path[1:]]
@@ -99,8 +99,8 @@ class WorkspaceSite:
         return _STORE["accounts"].get(email) if email else None  # type: ignore[union-attr,return-value]
 
     @staticmethod
-    def _login_redirect() -> Response:
-        return Response.redirect("/login")
+    def _login_redirect(request: Request) -> Response:
+        return Response.redirect(f"{request.mount}/login")
 
     def _login(self, request: Request, lang: str, theme: str) -> Response:
         copy = _COPY[lang]
@@ -112,16 +112,16 @@ class WorkspaceSite:
                 token = f"workspace-{session_number}"
                 _STORE["next_session"] = int(session_number) + 1
                 _STORE["sessions"][token] = form["email"]  # type: ignore[index]
-                return Response.redirect("/threads", **{"Set-Cookie": f"session={token}; Path=/; HttpOnly; SameSite=Lax"})
+                return Response.redirect(f"{request.mount}/threads", **{"Set-Cookie": f"session={token}; Path=/; HttpOnly; SameSite=Lax"})
             content = f"<p class=error>{escape(copy['bad_login'])}</p>"
-            return self._page(request, content + self._login_form(copy), lang, theme, status=401)
-        return self._page(request, self._login_form(copy), lang, theme)
+            return self._page(request, content + self._login_form(request, copy), lang, theme, status=401)
+        return self._page(request, self._login_form(request, copy), lang, theme)
 
     @staticmethod
-    def _login_form(copy: dict[str, str]) -> str:
+    def _login_form(request: Request, copy: dict[str, str]) -> str:
         return (
             f"<main class=auth><h1>{escape(copy['welcome'])}</h1>"
-            f"<form method=post><label>{escape(copy['email'])}<input name=email type=email required></label>"
+            f"<form method=post action={request.mount}/login><label>{escape(copy['email'])}<input name=email type=email required></label>"
             f"<label>{escape(copy['password'])}<input name=password type=password required></label>"
             f"<button>{escape(copy['login'])}</button></form></main>"
         )
@@ -136,8 +136,8 @@ class WorkspaceSite:
             message_id = int(_STORE["next_id"])
             _STORE["next_id"] = message_id + 1
             _STORE["messages"].append({"id": message_id, "thread": thread, "author": user["name"], "text": text})  # type: ignore[union-attr]
-            return Response.redirect(f"/threads?posted={message_id}")
-        return Response.redirect("/threads")
+            return Response.redirect(f"{request.mount}/threads?posted={message_id}")
+        return Response.redirect(f"{request.mount}/threads")
 
     @staticmethod
     def _messages(request: Request) -> Response:
@@ -149,14 +149,14 @@ class WorkspaceSite:
         messages = [message for message in _STORE["messages"] if message["id"] > since and message["thread"] != "quiet"]  # type: ignore[index]
         return Response.json({"messages": messages})
 
-    def _landing(self, lang: str) -> str:
+    def _landing(self, request: Request, lang: str) -> str:
         copy = _COPY[lang]
         return (
             f"<main class=landing><p class=eyebrow>Parallax</p><h1>{escape(copy['title'])}</h1>"
-            f"<p>{escape(copy['tagline'])}</p><a class=button href=/login>{escape(copy['login'])}</a></main>"
+            f"<p>{escape(copy['tagline'])}</p><a class=button href={request.mount}/login>{escape(copy['login'])}</a></main>"
         )
 
-    def _threads(self, lang: str, user: dict[str, str]) -> str:
+    def _threads(self, request: Request, lang: str, user: dict[str, str]) -> str:
         copy = _COPY[lang]
         rows = "".join(
             f"<article class=message><strong>{escape(message['author'])}</strong><span>{escape(message['text'])}</span></article>"
@@ -164,9 +164,9 @@ class WorkspaceSite:
         )
         return (
             "<main class=workspace><aside><h2>" + escape(copy["threads"]) + "</h2>"
-            f"<a href=#general>{escape(copy['general'])}</a><a href=#quiet>{escape(copy['quiet'])}</a></aside>"
+            f"<a href={request.mount}/threads#general>{escape(copy['general'])}</a><a href={request.mount}/threads#quiet>{escape(copy['quiet'])}</a></aside>"
             f"<section><h1>{escape(copy['general'])}</h1><div class=messages>{rows}</div>"
-            "<form class=composer method=post><div class=composer-tools><label><input type=radio name=thread value=general checked>"
+            f"<form class=composer method=post action={request.mount}/threads><div class=composer-tools><label><input type=radio name=thread value=general checked>"
             f"{escape(copy['general'])}</label><label><input type=radio name=thread value=quiet>{escape(copy['quiet'])}</label></div>"
             f"<label class=sr-only>{escape(copy['message'])}<input name=message required></label><button>{escape(copy['send'])}</button></form>"
             "</section></main>"
@@ -186,8 +186,8 @@ class WorkspaceSite:
         elif "theme" in request.query:
             theme_cookie = f"theme={theme}; Path=/; SameSite=Lax"
         header = (
-            f"<header><a href=/>{escape(copy['title'])}</a><nav><a href=/threads>{escape(copy['threads'])}</a>"
-            f"<a href=/settings>{escape(copy['settings'])}</a><a href=/billing>{escape(copy['billing'])}</a></nav></header>"
+            f"<header><a href={request.mount}/>{escape(copy['title'])}</a><nav><a href={request.mount}/threads>{escape(copy['threads'])}</a>"
+            f"<a href={request.mount}/settings>{escape(copy['settings'])}</a><a href={request.mount}/billing>{escape(copy['billing'])}</a></nav></header>"
         )
         return Response.html(
             f'<!doctype html><html lang="{lang}" dir="{direction}"><head><meta charset=utf-8><meta name=viewport content="width=device-width, initial-scale=1">'

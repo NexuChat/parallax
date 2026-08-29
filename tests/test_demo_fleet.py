@@ -34,6 +34,7 @@ def test_fleet_mounts_stub_and_translates_requests() -> None:
         Request(
             method="GET",
             path="/tasks",
+            mount="/stub",
             query={"lang": "ar", "theme": "dark"},
             cookies={"role": "owner", "lang": "en"},
             headers={"x-trace": "yes", "cookie": "role=owner; lang=en"},

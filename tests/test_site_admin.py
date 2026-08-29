@@ -1,3 +1,5 @@
+import re
+
 from demo.sites.admin import AdminSite
 from demo.sites.base import Request
 
@@ -41,3 +43,16 @@ def test_home_and_users_keep_their_correct_baseline_access() -> None:
     assert site.handle(request("/users")).status == 302
     assert site.handle(request("/users", "member")).status == 200
     assert site.handle(request("/users", "owner")).status == 200
+
+
+def test_mounted_pages_keep_links_and_actions_within_admin() -> None:
+    site = AdminSite()
+    for path, role in (("/", "anon"), ("/users", "member")):
+        markup = site.handle(Request(path=path, mount="/admin", cookies={} if role == "anon" else {"session": role})).body.decode()
+        assert all(url.startswith("/admin") for url in re.findall(r'(?:href|action)=["\']?([^"\' >]+)', markup))
+
+
+def test_mounted_protected_route_redirects_to_mounted_login() -> None:
+    response = AdminSite().handle(Request(path="/users", mount="/admin"))
+
+    assert response.headers["Location"] == "/admin/login"
