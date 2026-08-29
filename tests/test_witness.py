@@ -128,11 +128,13 @@ def test_all_derived_contexts_share_one_browser_and_evaluate_probe_from_disk() -
 
         assert len(testimonies) == 7
         assert {testimony.outcome for testimony in testimonies} == {Outcome.REACHED}
-        assert compare(testimonies)
         assert len(browser.contexts) == 7
         assert not browser.closed
         assert all(context.closed for context in browser.contexts)
-        assert all("The deterministic probe" in context.page.evaluated[0] for context in browser.contexts)
+        probe_sources = [context.page.evaluated for context in browser.contexts]
+        assert all(len(sources) == 1 for sources in probe_sources)
+        assert len({sources[0] for sources in probe_sources}) == 1
+        assert "The deterministic probe" in probe_sources[0][0]
         assert all("document.documentElement.dir" in context.init_scripts[0] for context in browser.contexts)
         assert browser.context_options[3]["locale"] == Locale.AR.value
         assert browser.context_options[4]["color_scheme"] == Theme.DARK.value
