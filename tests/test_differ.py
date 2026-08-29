@@ -200,11 +200,11 @@ def test_content_changing_with_theme_is_divergence() -> None:
 # Render invariants
 # --------------------------------------------------------------------------
 
-def test_rtl_defect_is_attributed_to_the_locale_axis() -> None:
+def test_single_witness_render_defect_is_a_baseline_observation() -> None:
     arabic = Context(locale=Locale.AR, varies=Axis.LOCALE)
     findings = compare([say(arabic, Outcome.REACHED, defects=[Defect.RTL_NOT_MIRRORED])])
     assert findings[0].kind is FindingKind.RENDER_DEFECT
-    assert findings[0].axis is Axis.LOCALE
+    assert findings[0].axis is Axis.BASELINE
     assert "mirrored" in findings[0].summary
 
 
@@ -214,12 +214,88 @@ def test_offscreen_control_is_high_severity() -> None:
     assert findings[0].severity is Severity.HIGH
 
 
-def test_render_defects_survive_without_a_baseline() -> None:
-    """Invariants need no second witness; they must still be reported."""
+def test_render_defect_survives_without_a_baseline() -> None:
+    """One witness is enough to report a page property."""
     dark = Context(theme=Theme.DARK, varies=Axis.THEME)
     findings = compare([say(dark, Outcome.REACHED, defects=[Defect.LOW_CONTRAST])])
     assert len(findings) == 1
-    assert findings[0].axis is Axis.THEME
+    assert findings[0].axis is Axis.BASELINE
+
+
+def test_render_defect_seen_by_every_witness_is_one_baseline_finding() -> None:
+    testimonies = [
+        say(context, Outcome.REACHED, defects=[Defect.LOW_CONTRAST])
+        for context in derive_witnesses()
+    ]
+    findings = compare(testimonies)
+
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.axis is Axis.BASELINE
+    assert finding.testimonies == testimonies
+    assert all(context.name not in finding.summary for context in derive_witnesses())
+
+
+def test_render_defect_seen_by_one_witness_names_the_comparison_axis_and_contexts() -> None:
+    witnesses = derive_witnesses()
+    mobile = next(context for context in witnesses if context.varies is Axis.VIEWPORT and context.viewport is MOBILE)
+    testimonies = [
+        say(context, Outcome.REACHED, defects=[Defect.CLIPPED] if context is mobile else [])
+        for context in witnesses
+    ]
+    findings = compare(testimonies)
+
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.axis is Axis.VIEWPORT
+    assert finding.testimonies == [testimonies[witnesses.index(mobile)]]
+    assert mobile.name in finding.summary
+    assert BASELINE.name in finding.summary
+    assert "not seen by" in finding.summary
+
+
+def test_render_defect_seen_on_different_axes_is_one_baseline_comparison() -> None:
+    arabic = Context(locale=Locale.AR, varies=Axis.LOCALE)
+    mobile = Context(viewport=MOBILE, varies=Axis.VIEWPORT)
+    testimonies = [
+        say(BASELINE, Outcome.REACHED),
+        say(arabic, Outcome.REACHED, defects=[Defect.CLIPPED]),
+        say(mobile, Outcome.REACHED, defects=[Defect.CLIPPED]),
+    ]
+    findings = compare(testimonies)
+
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.axis is Axis.BASELINE
+    assert finding.testimonies == testimonies[1:]
+    assert arabic.name in finding.summary
+    assert mobile.name in finding.summary
+
+
+def test_different_render_defects_on_one_surface_stay_separate_findings() -> None:
+    findings = compare(
+        [
+            say(BASELINE, Outcome.REACHED, defects=[Defect.CLIPPED]),
+            say(witness(), Outcome.REACHED, defects=[Defect.LOW_CONTRAST]),
+        ]
+    )
+
+    assert len(findings) == 2
+    assert any("clipped" in finding.summary for finding in findings)
+    assert any("contrast" in finding.summary for finding in findings)
+
+
+def test_same_render_defect_on_different_surfaces_stays_separate_findings() -> None:
+    other = Surface(kind=SurfaceKind.ROUTE, path="/settings")
+    findings = compare(
+        [
+            say(BASELINE, Outcome.REACHED, defects=[Defect.CLIPPED]),
+            say(BASELINE, Outcome.REACHED, surface=other, defects=[Defect.CLIPPED]),
+        ]
+    )
+
+    assert len(findings) == 2
+    assert {finding.surface for finding in findings} == {ADMIN, other}
 
 
 # --------------------------------------------------------------------------

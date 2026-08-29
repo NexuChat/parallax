@@ -175,24 +175,50 @@ def _equivalence_findings(
 
 
 def _render_findings(surface: Surface, group: list[Testimony]) -> list[Finding]:
-    """Per-witness invariants. No comparison needed, but the varied axis names the cause."""
+    """Compare each render defect across all witnesses with evidence."""
+    by_defect: dict[Defect, list[Testimony]] = defaultdict(list)
+    for testimony in group:
+        for defect in dict.fromkeys(testimony.defects):
+            by_defect[defect].append(testimony)
+
     findings: list[Finding] = []
-    for t in group:
-        for defect in t.defects:
+    for defect, affected in by_defect.items():
+        affected_ids = {id(testimony) for testimony in affected}
+        unaffected = [testimony for testimony in group if id(testimony) not in affected_ids]
+        phrasing = _DEFECT_PHRASING.get(defect, defect.value)
+
+        if not unaffected:
             findings.append(
                 Finding(
                     kind=FindingKind.RENDER_DEFECT,
                     severity=_DEFECT_SEVERITY.get(defect, Severity.LOW),
                     surface=surface,
-                    axis=t.context.varies,
-                    summary=(
-                        f"{surface.describe()} at {t.context.name}: "
-                        f"{_DEFECT_PHRASING.get(defect, defect.value)} "
-                        f"({_axis_cause(t.context)})"
-                    ),
-                    testimonies=[t],
+                    axis=Axis.BASELINE,
+                    summary=f"{surface.describe()}: {phrasing}",
+                    testimonies=affected,
                 )
             )
+            continue
+
+        affected_axes = {testimony.context.varies for testimony in affected}
+        axis = affected_axes.pop() if len(affected_axes) == 1 else Axis.BASELINE
+        seen_by = ", ".join(testimony.context.name for testimony in affected)
+        not_seen_by = ", ".join(testimony.context.name for testimony in unaffected)
+        findings.append(
+            Finding(
+                kind=FindingKind.RENDER_DEFECT,
+                # Comparison makes this report more useful, not intrinsically more harmful:
+                # retain the defect's severity so universal and discriminating cases agree.
+                severity=_DEFECT_SEVERITY.get(defect, Severity.LOW),
+                surface=surface,
+                axis=axis,
+                summary=(
+                    f"{surface.describe()}: {phrasing}; seen by {seen_by}, "
+                    f"not seen by {not_seen_by}"
+                ),
+                testimonies=affected,
+            )
+        )
     return findings
 
 
