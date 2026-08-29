@@ -34,6 +34,12 @@ def say(context: Context, outcome: Outcome, *, surface: Surface = ADMIN, **kw) -
     return Testimony(surface=surface, context=context, outcome=outcome, **kw)
 
 
+def offered(testimony: Testimony, *surfaces: Surface) -> Testimony:
+    """Attach the visible per-witness offer captured by the conductor."""
+    testimony.offered_surfaces = set(surfaces)  # type: ignore[attr-defined]
+    return testimony
+
+
 # --------------------------------------------------------------------------
 # Derivation
 # --------------------------------------------------------------------------
@@ -72,6 +78,43 @@ def test_arabic_locale_implies_rtl() -> None:
 # --------------------------------------------------------------------------
 # Privilege axis — a policy violation needs evidence of a policy
 # --------------------------------------------------------------------------
+
+def test_unoffered_anonymous_reach_of_an_owner_offer_is_an_escalation_without_a_denial() -> None:
+    home = Surface(kind=SurfaceKind.ROUTE, path="/")
+    owner_home = offered(say(BASELINE, Outcome.REACHED, surface=home), ADMIN)
+    anonymous_home = offered(say(witness(Privilege.ANON), Outcome.REACHED, surface=home))
+    owner = offered(say(BASELINE, Outcome.REACHED))
+    anonymous = offered(say(witness(Privilege.ANON), Outcome.REACHED))
+
+    findings = compare([owner_home, anonymous_home, owner, anonymous])
+
+    assert [finding.kind for finding in findings] == [FindingKind.ESCALATION]
+    assert findings[0].severity is Severity.HIGH
+    assert findings[0].testimonies == [owner_home, anonymous_home, anonymous]
+
+
+def test_surface_offered_and_reached_by_everyone_is_not_an_escalation() -> None:
+    findings = compare(
+        [
+            offered(say(BASELINE, Outcome.REACHED), ADMIN),
+            offered(say(witness(Privilege.MEMBER), Outcome.REACHED), ADMIN),
+            offered(say(witness(Privilege.ANON), Outcome.REACHED), ADMIN),
+        ]
+    )
+
+    assert findings == []
+
+
+def test_surface_offered_to_nobody_and_reached_by_nobody_is_dead() -> None:
+    findings = compare(
+        [
+            offered(say(BASELINE, Outcome.BLOCKED)),
+            offered(say(witness(Privilege.MEMBER), Outcome.BLOCKED)),
+            offered(say(witness(Privilege.ANON), Outcome.BLOCKED)),
+        ]
+    )
+
+    assert [finding.kind for finding in findings] == [FindingKind.DEAD_SURFACE]
 
 def test_public_surface_reached_by_all_privileges_is_not_an_escalation() -> None:
     """The old shared-reach escalation assertion encoded the false-positive defect."""

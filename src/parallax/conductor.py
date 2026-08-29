@@ -119,7 +119,11 @@ class Conductor:
             if moments:
                 surface_mosaics[surface.id] = moments[-1].mosaic
 
-            findings = compare(_with_mirror_observations(testimonies))
+            # Privilege offers can be observed on a navigation page while the
+            # reached surface is replayed later. Compare the run so far rather
+            # than only this surface; publication below still de-duplicates
+            # previously emitted findings.
+            findings = compare(_with_mirror_observations(all_testimonies))
             findings.extend(self._judge_specialists(feed_path, surface, moments, testimonies))
             findings = _unpublished_findings(findings, published_finding_ids)
             all_findings.extend(findings)
@@ -237,7 +241,9 @@ class Conductor:
                     await witness.start_screencast(consume)
                 except Exception:
                     pass
-                return await witness.visit(surface)
+                testimony = await witness.visit(surface)
+                await self._record_visible_offers(testimony, witness)
+                return testimony
             except Exception as error:
                 return Testimony(surface, context, Outcome.ERROR, note=f"conductor failed: {type(error).__name__}: {error}")
             finally:
@@ -358,6 +364,37 @@ class Conductor:
             return None
         return self.storage_states.get(context.privilege, self.storage_states.get(context.privilege.value))
 
+    async def _record_visible_offers(self, testimony: Testimony, witness: Witness) -> None:
+        """Attach this witness's own same-origin navigation offer to its testimony.
+
+        Discovery stays baseline-driven: it alone chooses the bounded crawl.
+        These per-witness observations merely preserve what each rendered page
+        offered, so the differ can distinguish a public page from a removed
+        privilege check.  A blocked-witness rule alone misses that worst case
+        because complete exposure leaves no witness blocked.
+        """
+        offers: set[Surface] = set()
+        page = witness.page
+        if testimony.is_evidence and page is not None:
+            try:
+                data = await page.evaluate(_DISCOVERY_SCRIPT)
+                page_url = _normal_url(str(getattr(page, "url", testimony.surface.path)))
+                if isinstance(data, dict):
+                    for href in data.get("links", []):
+                        if not isinstance(href, str):
+                            continue
+                        target = _normal_url(urljoin(page_url, href))
+                        if _origin(target) == _origin(self.start_url):
+                            offers.add(Surface(SurfaceKind.ROUTE, target))
+                    for action in data.get("affordances", []):
+                        if isinstance(action, dict) and isinstance(action.get("selector"), str):
+                            offers.add(Surface(SurfaceKind.AFFORDANCE, page_url, action["selector"], action.get("label")))
+            except Exception:
+                # Failure to observe navigation is silence, never evidence that
+                # the page hid it; the differ will still use denial evidence.
+                pass
+        testimony.offered_surfaces = offers  # type: ignore[attr-defined]
+
     def _write_mosaic(self, surface: Surface, moment: Moment) -> str:
         relative = Path("mosaics") / f"{surface.id}-{moment.mosaic.seq}.jpg"
         path = self.out_dir / relative
@@ -440,7 +477,14 @@ def _is_at_or_below_start_path(target: str, start_url: str) -> bool:
 
 def _with_mirror_observations(testimonies: Sequence[Testimony]) -> list[Testimony]:
     """Give the differ derived mirror observations without rewriting evidence."""
-    observations = [replace(testimony, defects=list(testimony.defects)) for testimony in testimonies]
+    observations = []
+    for testimony in testimonies:
+        observation = replace(testimony, defects=list(testimony.defects))
+        # Offers are run-local evidence attached by _record_visible_offers.
+        # ``replace`` copies declared dataclass fields only, so preserve them
+        # explicitly before the differ consumes this derived observation.
+        observation.offered_surfaces = set(getattr(testimony, "offered_surfaces", set()))  # type: ignore[attr-defined]
+        observations.append(observation)
     baseline = next((item for item in testimonies if item.context.varies is Axis.BASELINE), None)
     if baseline is None:
         return observations

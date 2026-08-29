@@ -83,14 +83,81 @@ def _group_by_surface(testimonies: Iterable[Testimony]) -> dict[str, list[Testim
     return grouped
 
 
+def _offered_surfaces(testimony: Testimony) -> set[Surface]:
+    """Return the visible navigation offer recorded beside this testimony.
+
+    The conductor attaches this run-local evidence without expanding Testimony's
+    persisted contract.  Hand-built testimonies and old recordings simply have
+    no offer evidence, so they retain the blocked-witness oracle below.
+    """
+    offered = getattr(testimony, "offered_surfaces", set())
+    return {surface for surface in offered if isinstance(surface, Surface)}
+
+
 def _privilege_findings(
-    surface: Surface, baseline: Testimony, variants: list[Testimony]
+    surface: Surface, baseline: Testimony, variants: list[Testimony], all_testimonies: Iterable[Testimony]
 ) -> list[Finding]:
-    """Report privilege breaches only where a blocked witness shows a policy exists."""
+    """Report lower-privilege reaches that contradict the application's own UI policy.
+
+    A blocked witness is useful evidence that an access policy exists, but it is
+    not a complete oracle: after a check is removed, every witness reaches the
+    page and there is nobody left to be blocked.  The application also expresses
+    its policy through navigation.  If an owner's rendered view offers a surface
+    and a lower-privilege witness's rendered view does not, that lower witness
+    reaching the surface is an escalation even with no denial to compare against.
+
+    A surface offered to everyone remains silent: shared navigation and shared
+    reach describe a public page, not a privilege breach.
+    """
     findings: list[Finding] = []
     blocked_variants = [t for t in variants if t.outcome is Outcome.BLOCKED]
     for t in variants:
-        if baseline.reached and t.reached and blocked_variants:
+        owner_offer = next(
+            (
+                candidate
+                for candidate in all_testimonies
+                if candidate.is_evidence
+                and candidate.context.privilege is baseline.context.privilege
+                and surface in _offered_surfaces(candidate)
+            ),
+            None,
+        )
+        lower_offer_view = next(
+            (
+                candidate
+                for candidate in all_testimonies
+                if candidate.is_evidence
+                and candidate.context.privilege is t.context.privilege
+                and candidate.surface == owner_offer.surface
+                and surface not in _offered_surfaces(candidate)
+            ),
+            None,
+        ) if owner_offer is not None else None
+        offer_bypassed = (
+            baseline.reached
+            and t.reached
+            and lower_offer_view is not None
+        )
+        if offer_bypassed:
+            evidence = [owner_offer]
+            for witness in (lower_offer_view, t):
+                if all(witness is not present for present in evidence):
+                    evidence.append(witness)
+            findings.append(
+                Finding(
+                    kind=FindingKind.ESCALATION,
+                    severity=_ESCALATION_SEVERITY.get(t.context.privilege, Severity.MEDIUM),
+                    surface=surface,
+                    axis=Axis.PRIVILEGE,
+                    summary=(
+                        f"{t.context.privilege.value} reached {surface.describe()}, "
+                        f"although it was offered only to {owner_offer.context.privilege.value} — "
+                        f"access policy was bypassed"
+                    ),
+                    testimonies=evidence,
+                )
+            )
+        elif baseline.reached and t.reached and blocked_variants:
             policy_witness = blocked_variants[0]
             findings.append(
                 Finding(
@@ -223,7 +290,7 @@ def _render_findings(surface: Surface, group: list[Testimony]) -> list[Finding]:
 
 
 def _analyse(
-    surface: Surface, group: list[Testimony], reached_route_paths: set[str]
+    surface: Surface, group: list[Testimony], reached_route_paths: set[str], all_testimonies: Iterable[Testimony]
 ) -> list[Finding]:
     findings = _render_findings(surface, group)
 
@@ -242,7 +309,7 @@ def _analyse(
         if t.context.varies not in (Axis.BASELINE, Axis.PRIVILEGE, Axis.RELATIONAL)
     ]
 
-    findings += _privilege_findings(surface, baseline, privilege_variants)
+    findings += _privilege_findings(surface, baseline, privilege_variants, all_testimonies)
     findings += _equivalence_findings(surface, baseline, equivalence_variants)
 
     # A control absent from an otherwise reached page is not a dead route: it
@@ -268,13 +335,14 @@ def _analyse(
 def compare(testimonies: Iterable[Testimony]) -> list[Finding]:
     """Compare all testimonies and return findings, most severe first."""
     findings: list[Finding] = []
-    groups = _group_by_surface(testimonies)
+    all_testimonies = list(testimonies)
+    groups = _group_by_surface(all_testimonies)
     reached_route_paths = {
         group[0].surface.path
         for group in groups.values()
         if group[0].surface.kind is SurfaceKind.ROUTE and any(t.reached for t in group)
     }
     for group in groups.values():
-        findings.extend(_analyse(group[0].surface, group, reached_route_paths))
+        findings.extend(_analyse(group[0].surface, group, reached_route_paths, all_testimonies))
     findings.sort(key=lambda f: (_SEVERITY_ORDER[f.severity], f.surface.path, f.kind.value))
     return findings

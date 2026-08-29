@@ -319,6 +319,48 @@ def test_discovery_prioritizes_unrepresented_routes_over_affordances(tmp_path: P
     asyncio.run(check())
 
 
+def test_conductor_records_each_witness_own_visible_offers(tmp_path: Path) -> None:
+    async def check() -> None:
+        privileged = Surface(SurfaceKind.ROUTE, f"{SITE}/settings")
+        owner_discovery = {f"{SITE}/": {"links": ["/settings"], "affordances": []}}
+        hidden_discovery = {f"{SITE}/": {"links": [], "affordances": []}}
+        browser = FakeBrowser(
+            [{"discovery": owner_discovery}]
+            + [{"discovery": owner_discovery}]
+            + [{"discovery": hidden_discovery} for _ in range(6)]
+        )
+
+        result = await Conductor(f"{SITE}/", tmp_path, browser=browser, max_surfaces=1, settle_ms=0).conduct()
+
+        owner = next(testimony for testimony in result.testimonies if testimony.context.varies is Axis.BASELINE)
+        anonymous = next(testimony for testimony in result.testimonies if testimony.context.privilege is Privilege.ANON)
+        assert privileged in owner.offered_surfaces  # type: ignore[attr-defined]
+        assert privileged not in anonymous.offered_surfaces  # type: ignore[attr-defined]
+
+    asyncio.run(check())
+
+
+def test_conductor_reports_an_unoffered_anonymous_reach_without_a_blocked_witness(tmp_path: Path) -> None:
+    async def check() -> None:
+        owner_discovery = {f"{SITE}/": {"links": ["/settings"], "affordances": []}}
+        hidden_discovery = {f"{SITE}/": {"links": [], "affordances": []}}
+        browser = FakeBrowser(
+            [{"discovery": owner_discovery}]
+            + [{"discovery": owner_discovery}]
+            + [{"discovery": hidden_discovery} for _ in range(6)]
+            + [{} for _ in range(7)]
+        )
+
+        result = await Conductor(f"{SITE}/", tmp_path, browser=browser, max_surfaces=2, settle_ms=0).conduct()
+
+        escalations = [finding for finding in result.findings if finding.kind is FindingKind.ESCALATION]
+        assert len(escalations) == 1
+        assert escalations[0].severity is Severity.HIGH
+        assert all(testimony.outcome is not Outcome.BLOCKED for testimony in escalations[0].testimonies)
+
+    asyncio.run(check())
+
+
 def test_moments_are_harvested_while_the_witnesses_are_still_working(tmp_path: Path) -> None:
     """Ticking once after everyone finishes would leave only an end-state snapshot."""
 
