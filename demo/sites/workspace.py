@@ -113,17 +113,17 @@ class WorkspaceSite:
                 _STORE["next_session"] = int(session_number) + 1
                 _STORE["sessions"][token] = form["email"]  # type: ignore[index]
                 return Response.redirect(f"{request.mount}/threads", **{"Set-Cookie": f"session={token}; Path=/; HttpOnly; SameSite=Lax"})
-            content = f"<p class=error>{escape(copy['bad_login'])}</p>"
+            content = f'<p class="error">{escape(copy["bad_login"])}</p>'
             return self._page(request, content + self._login_form(request, copy), lang, theme, status=401)
         return self._page(request, self._login_form(request, copy), lang, theme)
 
     @staticmethod
     def _login_form(request: Request, copy: dict[str, str]) -> str:
         return (
-            f"<main class=auth><h1>{escape(copy['welcome'])}</h1>"
-            f"<form method=post action={request.mount}/login><label>{escape(copy['email'])}<input name=email type=email required></label>"
-            f"<label>{escape(copy['password'])}<input name=password type=password required></label>"
-            f"<button>{escape(copy['login'])}</button></form></main>"
+            f'<main class="auth"><h1>{escape(copy["welcome"])}</h1>'
+            f'<form method="post" action="{request.mount}/login"><label>{escape(copy["email"])}<input name="email" type="email" required></label>'
+            f'<label>{escape(copy["password"])}<input name="password" type="password" required></label>'
+            f'<button type="submit">{escape(copy["login"])}</button></form></main>'
         )
 
     def _post_message(self, request: Request, user: dict[str, str]) -> Response:
@@ -153,23 +153,23 @@ class WorkspaceSite:
         copy = _COPY[lang]
         labels = ("Recent activity", "Thread previews", "Members", "Open threads", "Files shared", "© 2026 Parallax Workspace", "Avery moved the launch checklist to Ready · 14 minutes ago", "Design review", "Maya shared three notes from the customer call.", "Release planning", "Samira confirmed the Friday handoff.") if lang == "en" else ("النشاط الأخير", "معاينات المحادثات", "الأعضاء", "المحادثات المفتوحة", "الملفات المشتركة", "© 2026 مساحة عمل بارالاكس", "نقل أفيري قائمة الإطلاق إلى جاهزة · قبل 14 دقيقة", "مراجعة التصميم", "شاركت مايا ثلاث ملاحظات من مكالمة العملاء.", "تخطيط الإطلاق", "أكدت سميرة تسليم يوم الجمعة.")
         return (
-            f"<main class=landing><section><p class=eyebrow>Parallax</p><h1>{escape(copy['title'])}</h1><p>{escape(copy['tagline'])}</p><a class=button href={request.mount}/login>{escape(copy['login'])}</a></section>"
-            f"<section class=stats><article><strong>18</strong><span>{labels[2]}</span></article><article><strong>6</strong><span>{labels[3]}</span></article><article><strong>42</strong><span>{labels[4]}</span></article></section><section class=activity><p class=eyebrow>{labels[0]}</p><h2>{labels[6]}</h2><p class=eyebrow>{labels[1]}</p><div class=previews><article><span class=avatar>M</span><div><strong>{labels[7]}</strong><p>{labels[8]}</p><small>Today, 10:42</small></div></article><article><span class=avatar>S</span><div><strong>{labels[9]}</strong><p>{labels[10]}</p><small>Yesterday, 16:20</small></div></article></div></section><footer>{labels[5]}</footer></main>"
+            f'<main class="landing"><section><p class="eyebrow">Parallax</p><h1>{escape(copy["title"])}</h1><p>{escape(copy["tagline"])}</p><a class="button" href="{request.mount}/login">{escape(copy["login"])}</a></section>'
+            f'<section class="stats"><article><strong>18</strong><span>{labels[2]}</span></article><article><strong>6</strong><span>{labels[3]}</span></article><article><strong>42</strong><span>{labels[4]}</span></article></section><section class="activity"><p class="eyebrow">{labels[0]}</p><h2>{labels[6]}</h2><p class="eyebrow">{labels[1]}</p><div class="previews"><article><span class="avatar">M</span><div><strong>{labels[7]}</strong><p>{labels[8]}</p><small>Today, 10:42</small></div></article><article><span class="avatar">S</span><div><strong>{labels[9]}</strong><p>{labels[10]}</p><small>Yesterday, 16:20</small></div></article></div></section><footer>{labels[5]}</footer></main>'
         )
 
     def _threads(self, request: Request, lang: str, user: dict[str, str]) -> str:
         copy = _COPY[lang]
         rows = "".join(
-            f"<article class=message><span class=avatar>{escape(message['author'][0])}</span><div><strong>{escape(message['author'])}</strong><small>Today, 10:2{message['id']}</small><span>{escape(message['text'])}</span></div></article>"
+            f'<article class="message"><span class="avatar">{escape(message["author"][0])}</span><div><strong>{escape(message["author"])}</strong><small>Today, 10:2{message["id"]}</small><span>{escape(message["text"])}</span></div></article>'
             for message in _STORE["messages"]  # type: ignore[union-attr]
         )
         return (
-            "<main class=workspace><aside><h2>" + escape(copy["threads"]) + "</h2>"
-            f"<a href={request.mount}/threads#general>{escape(copy['general'])} <small>8</small></a><a href={request.mount}/threads#quiet>{escape(copy['quiet'])} <small>2</small></a><a href={request.mount}/threads#launch>Launch room</a><a href={request.mount}/threads#customer>Customer notes</a></aside>"
-            f"<section><p class=eyebrow>Team space</p><h1>{escape(copy['general'])}</h1><p class=muted>8 participants · Updated moments ago</p><div class=messages>{rows}</div>"
-            f"<form class=composer method=post action={request.mount}/threads><div class=composer-tools><label><input type=radio name=thread value=general checked>"
-            f"{escape(copy['general'])}</label><label><input type=radio name=thread value=quiet>{escape(copy['quiet'])}</label></div>"
-            f"<label class=sr-only>{escape(copy['message'])}<input name=message required></label><button>{escape(copy['send'])}</button></form>"
+            '<main class="workspace"><aside><h2>' + escape(copy["threads"]) + "</h2>"
+            f'<a href="{request.mount}/threads#general">{escape(copy["general"])} <small>8</small></a><a href="{request.mount}/threads#quiet">{escape(copy["quiet"])} <small>2</small></a><a href="{request.mount}/threads#launch">Launch room</a><a href="{request.mount}/threads#customer">Customer notes</a></aside>'
+            f'<section><p class="eyebrow">Team space</p><h1>{escape(copy["general"])}</h1><p class="muted">8 participants · Updated moments ago</p><div class="messages">{rows}</div>'
+            f'<form class="composer" method="post" action="{request.mount}/threads"><div class="composer-tools"><label><input type="radio" name="thread" value="general" checked>'
+            f'{escape(copy["general"])}</label><label><input type="radio" name="thread" value="quiet">{escape(copy["quiet"])}</label></div>'
+            f'<label class="sr-only">{escape(copy["message"])}<input name="message" type="text" required></label><button type="submit">{escape(copy["send"])}</button></form>'
             "</section></main>"
         )
 
@@ -187,11 +187,11 @@ class WorkspaceSite:
         elif "theme" in request.query:
             theme_cookie = f"theme={theme}; Path=/; SameSite=Lax"
         header = (
-            f"<header><a href={request.mount}/>{escape(copy['title'])}</a><nav><a href={request.mount}/threads>{escape(copy['threads'])}</a>"
-            f"<a href={request.mount}/settings>{escape(copy['settings'])}</a><a href={request.mount}/billing>{escape(copy['billing'])}</a></nav></header>"
+            f'<header><a href="{request.mount}/">{escape(copy["title"])}</a><nav><a href="{request.mount}/threads">{escape(copy["threads"])}</a>'
+            f'<a href="{request.mount}/settings">{escape(copy["settings"])}</a><a href="{request.mount}/billing">{escape(copy["billing"])}</a></nav></header>'
         )
         return Response.html(
-            f'<!doctype html><html lang="{lang}" dir="{direction}"><head><meta charset=utf-8><meta name=viewport content="width=device-width, initial-scale=1">'
+            f'<!doctype html><html lang="{lang}" dir="{direction}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             f"<title>{escape(self.title)}</title><style>{self._css(theme)}</style></head><body>{header}{content}</body></html>",
             status=status,
             **({"Set-Cookie": theme_cookie} if theme_cookie else {}),

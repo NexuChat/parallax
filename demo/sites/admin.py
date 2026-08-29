@@ -57,7 +57,7 @@ class AdminSite:
         else:
             error = ""
         w = self._words[request.lang]
-        content = f'<p class="eyebrow">{w["sign_in"]}</p><h1>{w["login_title"]}</h1>{error}<form method="post" action="{request.mount}/login"><label>{w["username"]}<input name="username" autocomplete="username"></label><label>{w["password"]}<input name="password" type="password" autocomplete="current-password"></label><button class="tap" type="submit">{w["submit"]}</button></form>'
+        content = f'<p class="eyebrow">{w["sign_in"]}</p><h1>{w["login_title"]}</h1>{error}<form method="post" action="{request.mount}/login"><label>{w["username"]}<input name="username" type="text" autocomplete="username"></label><label>{w["password"]}<input name="password" type="password" autocomplete="current-password"></label><button class="tap" type="submit">{w["submit"]}</button></form>'
         return self._page(request, content, "sign_in")
 
     def handle(self, request: Request) -> Response:
