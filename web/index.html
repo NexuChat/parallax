@@ -46,9 +46,13 @@
         <div class="section-heading"><p class="kicker">02 / LIVE WALL</p><h2 id="wall-title">Seven sessions, one image.</h2></div>
         <p class="section-intro">Seven sessions stream over CDP into one image; a finding highlights the tiles it rests on.</p>
         <div class="wall-frame">
-          <iframe id="console-frame" src="/console" title="Parallax live witness mosaic" loading="eager"></iframe>
+          <!-- The published run is the source in the markup itself. Pointing this
+               at /console and swapping it from JavaScript meant a visitor whose
+               script was stale, slow or blocked was shown the sample fixture on
+               the front page of a tool whose whole claim is measured evidence. -->
+          <iframe id="console-frame" src="/console?feed=%2Fconsole%2Fruns%2Flatest%2Ffeed.jsonl" title="Parallax live witness mosaic" loading="eager"></iframe>
         </div>
-        <p class="feed-status" id="feed-status" role="status">Fixture feed loaded. Pass <code>?run=&lt;id&gt;</code> to attach a published run.</p>
+        <p class="feed-status" id="feed-status" role="status">Attached to the published sweep at <code>/console/runs/latest/</code>.</p>
       </section>
 
       <section class="scoreboard section" id="scoreboard" aria-labelledby="scoreboard-title">

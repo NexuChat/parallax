@@ -3,7 +3,7 @@
 
   const severityRank = { high: 0, medium: 1, low: 2, info: 3 };
   const source = new URLSearchParams(location.search).get('feed') || 'fixtures/feed.jsonl';
-  const state = { seen: new Set(), findings: [], tiles: [], lastFileText: '', byteOffset: 0, activeWitnesses: [] };
+  const state = { seen: new Set(), findings: [], tiles: [], lastFileText: '', byteOffset: 0, activeWitnesses: [], eventCount: 0 };
   const $ = (id) => document.getElementById(id);
   const el = {
     image: $('mosaicImage'), stage: $('mosaicStage'), layer: $('tileLayer'), mosaicEmpty: $('mosaicEmpty'),
@@ -35,7 +35,7 @@
   function keyFor(event) { return event.kind === 'finding' ? `finding:${event.payload.id}` : `${event.kind}:${event.payload.seq || event.at}:${event.payload.message || ''}`; }
   function processLine(line) { try { const event = safeEvent(JSON.parse(line)); if (event) processEvent(event); } catch (_) { /* A bad feed line must never disturb the wall. */ } }
   function processEvent(event) {
-    const key = keyFor(event); if (state.seen.has(key)) return; state.seen.add(key);
+    const key = keyFor(event); if (state.seen.has(key)) return; state.seen.add(key); state.eventCount += 1;
     if (event.kind === 'mosaic') renderMosaic(event.payload);
     if (event.kind === 'finding') addFinding(event.payload);
     if (event.kind === 'status') renderStatus(event.payload);
@@ -110,10 +110,20 @@
     if (/\.(jsonl|json|txt)(\?|$)/i.test(source)) return;
     try { const stream = new EventSource(source); stream.onopen = () => setFeedMode('SSE LIVE'); stream.onmessage = (message) => processLine(message.data); stream.onerror = () => { stream.close(); setTimeout(poll, 100); }; } catch (_) { /* Polling remains available. */ }
   }
-  function boot() {
-    fallback.forEach(processEvent); setFeedMode(location.protocol === 'file:' ? 'OFFLINE FIXTURE' : 'FIXTURE + FEED');
+  function useFixture() {
+    fallback.forEach(processEvent);
+    setFeedMode(location.protocol === 'file:' ? 'OFFLINE SAMPLE' : 'SAMPLE — NO RUN FOUND');
+  }
+  async function boot() {
     $('clock').textContent = new Date().toISOString().slice(11, 19) + ' UTC'; setInterval(() => { $('clock').textContent = new Date().toISOString().slice(11, 19) + ' UTC'; }, 1000);
-    addEventListener('resize', layoutTiles); if (location.protocol !== 'file:') { poll(); setInterval(poll, 2500); connectSse(); }
+    addEventListener('resize', layoutTiles);
+    // The sample used to be drawn FIRST, unconditionally, so a console attached
+    // to a real sweep still opened on frame 42 and six invented findings. It is
+    // a fallback, not a seed: it appears only when no real feed can be read.
+    if (location.protocol === 'file:') { useFixture(); return; }
+    await poll();
+    if (!state.eventCount) useFixture();
+    setInterval(poll, 2500); connectSse();
   }
   boot();
 })();
