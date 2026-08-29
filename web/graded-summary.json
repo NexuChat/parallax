@@ -1,12 +1,12 @@
 {
   "host": "http://127.0.0.1:8099",
-  "generated_at": "2026-08-29T12:34:34.930222+00:00",
+  "generated_at": "2026-08-29T16:14:35.971674+00:00",
   "sites": {
     "admin": {
       "planted": 3,
       "found": 2,
       "missed": 1,
-      "false_positives": 27,
+      "false_positives": 24,
       "plants": [
         {
           "name": "Owners are redirected while members may read reports.",
@@ -105,14 +105,21 @@
     },
     "workspace": {
       "planted": 4,
-      "found": 1,
-      "missed": 3,
-      "false_positives": 37,
+      "found": 2,
+      "missed": 2,
+      "false_positives": 32,
       "plants": [
         {
           "name": "Composer controls use physical left spacing.",
           "defect": "rtl_not_mirrored",
           "axis": "locale",
+          "route": "/threads",
+          "verdict": "found"
+        },
+        {
+          "name": "Quiet-thread messages do not reach polling clients.",
+          "defect": "propagation",
+          "axis": "relational",
           "route": "/threads",
           "verdict": "found"
         },
@@ -129,21 +136,14 @@
           "axis": "theme",
           "route": "/threads",
           "verdict": "missed"
-        },
-        {
-          "name": "Quiet-thread messages do not reach polling clients.",
-          "defect": "propagation",
-          "axis": "relational",
-          "route": "/threads",
-          "verdict": "missed"
         }
       ]
     }
   },
   "totals": {
     "planted": 14,
-    "found": 7,
-    "missed": 7,
-    "false_positives": 118
+    "found": 8,
+    "missed": 6,
+    "false_positives": 110
   }
 }
