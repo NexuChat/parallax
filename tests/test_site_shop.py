@@ -17,6 +17,10 @@ def test_shop_declares_exactly_the_four_intentional_defects():
     ]
 
 
+def test_shop_declares_no_login_accounts():
+    assert ShopSite.accounts == []
+
+
 def test_shop_checkout_intentionally_has_offscreen_place_order_at_360px():
     markup = body("/checkout")
     assert ".checkout-action-row" in markup and "width:720px" in markup and "flex-wrap:nowrap" in markup

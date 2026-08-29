@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import parse_qs
 
 from parallax.types import Axis, Finding, FindingKind, Severity, Surface, SurfaceKind
 from scripts import run_demo_suite
-from sites.base import Planted
+from sites.base import Account, Planted
 
 
 def finding(kind: FindingKind, axis: Axis, url: str) -> Finding:
@@ -109,3 +110,75 @@ def test_storage_state_builder_turns_a_login_cookie_into_playwright_state() -> N
         }],
         "origins": [],
     }
+
+
+def test_storage_state_builder_uses_declared_accounts_without_reading_site_source(tmp_path, monkeypatch) -> None:
+    requests = []
+
+    class StubSite:
+        name = "stub"
+        accounts = [Account("reader", "declared@demo", "declared-password")]
+
+    class Response:
+        status = 302
+        headers = {"Set-Cookie": "session=reader; Path=/; HttpOnly"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    class Opener:
+        def open(self, request):
+            requests.append(request)
+            return Response()
+
+    monkeypatch.setattr(run_demo_suite, "build_opener", lambda *handlers: Opener())
+
+    states = run_demo_suite.build_storage_states(StubSite(), "http://127.0.0.1:8099", tmp_path)
+
+    assert set(states) == {"reader"}
+    assert parse_qs(requests[0].data.decode()) == {
+        "email": ["declared@demo"], "username": ["declared@demo"], "password": ["declared-password"],
+    }
+
+
+def test_storage_state_builder_sweeps_sites_without_accounts_anonymously(tmp_path, monkeypatch) -> None:
+    class StubSite:
+        name = "public"
+        accounts: list[Account] = []
+
+    monkeypatch.setattr(run_demo_suite, "build_opener", lambda *handlers: (_ for _ in ()).throw(AssertionError("anonymous sites do not log in")))
+
+    assert run_demo_suite.build_storage_states(StubSite(), "http://127.0.0.1:8099", tmp_path) == {}
+
+
+def test_storage_state_builder_reports_failed_login_and_continues_with_other_accounts(tmp_path, monkeypatch, capsys) -> None:
+    class StubSite:
+        name = "stub"
+        accounts = [Account("broken", "broken@demo", "wrong"), Account("member", "member@demo", "demo")]
+
+    class Response:
+        def __init__(self, cookie: str | None) -> None:
+            self.status = 200 if cookie is None else 302
+            self.headers = {} if cookie is None else {"Set-Cookie": cookie}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    responses = iter([Response(None), Response("session=member; Path=/; HttpOnly")])
+
+    class Opener:
+        def open(self, request):
+            return next(responses)
+
+    monkeypatch.setattr(run_demo_suite, "build_opener", lambda *handlers: Opener())
+
+    states = run_demo_suite.build_storage_states(StubSite(), "http://127.0.0.1:8099", tmp_path)
+
+    assert set(states) == {"member"}
+    assert "site stub, role broken, server returned HTTP 200" in capsys.readouterr().err

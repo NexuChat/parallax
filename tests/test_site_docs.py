@@ -16,6 +16,10 @@ def test_docs_declares_exactly_the_three_intentional_defects():
     ]
 
 
+def test_docs_declares_no_login_accounts():
+    assert DocsSite.accounts == []
+
+
 def test_docs_guide_intentionally_exposes_one_raw_translation_key_in_arabic():
     markup = body("/guide", query={"lang": "ar"})
     assert markup.count("guide.sections.limits.title") == 1

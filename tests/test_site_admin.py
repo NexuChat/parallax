@@ -55,3 +55,10 @@ def test_login_sets_session_cookie_and_mounted_links_stay_within_admin() -> None
     markup = site.handle(Request(path="/users", mount="/admin", cookies={"session": "owner"})).body.decode()
     assert all(url.startswith("/admin") for url in re.findall(r'(?:href|action)="([^"]+)', markup))
     assert site.handle(Request(path="/users", mount="/admin")).headers["Location"] == "/admin/login"
+
+
+def test_declared_accounts_authenticate_against_admin_login() -> None:
+    site = AdminSite()
+    for account in site.accounts:
+        response = site.handle(Request(method="POST", path="/login", body=f"username={account.email}&password={account.password}".encode()))
+        assert response.status == 302 and "Set-Cookie" in response.headers

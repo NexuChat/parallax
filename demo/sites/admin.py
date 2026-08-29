@@ -11,12 +11,13 @@ from __future__ import annotations
 from html import escape
 from urllib.parse import parse_qs
 
-from .base import Planted, Request, Response
+from .base import Account, Planted, Request, Response
 
 
 class AdminSite:
     name = "admin"
     title = "Northstar Operations"
+    accounts = [Account("owner", "owner", "owner-pass"), Account("member", "member", "member-pass")]
     planted = [
         Planted("inversion", "privilege", "/reports", "Owners are redirected while members may read reports."),
         Planted("drift", "locale", "/exports", "The English-only export route disappears in Arabic."),
