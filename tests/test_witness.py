@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from parallax.differ import compare
-from parallax.types import Context, Defect, Locale, Outcome, Privilege, Surface, SurfaceKind, Theme
+from parallax.types import Axis, Context, Defect, FindingKind, Locale, Outcome, Privilege, Surface, SurfaceKind, Theme
 from parallax.witness import Witness, run_witnesses
 
 
@@ -140,7 +140,7 @@ def test_all_derived_contexts_share_one_browser_and_evaluate_probe_from_disk() -
     asyncio.run(check())
 
 
-def test_lower_privilege_login_redirect_and_403_are_denied_not_errors() -> None:
+def test_http_statuses_distinguish_denial_absence_and_server_degradation() -> None:
     async def check() -> None:
         redirect = FakeBrowser([{"final_path": "/login"}])
         witness = Witness(Context(privilege=Privilege.ANON), redirect)
@@ -152,10 +152,25 @@ def test_lower_privilege_login_redirect_and_403_are_denied_not_errors() -> None:
         denied = await witness.visit(SURFACE)
         await witness.close()
 
+        absent = FakeBrowser([{"status": 404}, {"status": 404}])
+        testimonies = await run_witnesses(
+            SURFACE,
+            browser=absent,
+            contexts=[Context(), Context(privilege=Privilege.ANON, varies=Axis.PRIVILEGE)],
+        )
+
+        server_error = await Witness(Context(), FakeBrowser([{"status": 500}])).visit(SURFACE)
+
         assert redirected.outcome is Outcome.BLOCKED
         assert redirected.final_path == "/login"
         assert denied.outcome is Outcome.BLOCKED
         assert denied.http_status == 403
+        assert all(testimony.outcome is Outcome.BLOCKED for testimony in testimonies)
+        assert all("absent" in testimony.note for testimony in testimonies)
+        assert not any(finding.kind is FindingKind.ESCALATION for finding in compare(testimonies))
+        assert server_error.outcome is Outcome.PARTIAL
+        assert server_error.outcome is not Outcome.ERROR
+        assert server_error.note == "HTTP 500 server error"
 
     asyncio.run(check())
 
