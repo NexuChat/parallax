@@ -77,9 +77,13 @@ def test_each_finding_kind_emits_the_required_assertion() -> None:
     assert "status() === 403" in spec_for(finding(FindingKind.ESCALATION, testimonies=[owner, member]))
     assert "toBeTruthy()" in spec_for(finding(FindingKind.POLICY_INVERSION, testimonies=[owner, member]))
     assert "toBeTruthy()" in spec_for(finding(FindingKind.CAPABILITY_DRIFT, axis=Axis.VIEWPORT, testimonies=[owner, mobile]))
-    assert "contentSignature(page)" in spec_for(
+    divergence = spec_for(
         finding(FindingKind.CONTENT_DIVERGENCE, axis=Axis.VIEWPORT, testimonies=[owner, make_testimony(Context(viewport=MOBILE, varies=Axis.VIEWPORT), signature="baseline")])
     )
+    # It must recompute the signature the way probe.js did — FNV-1a, not SHA-256 —
+    # or the spec fails for a reason unrelated to the finding.
+    assert "Math.imul(h, 16777619)" in divergence
+    assert 'expect(contentSignature).toBe("baseline")' in divergence
     dead = spec_for(finding(FindingKind.DEAD_SURFACE))
     assert "test.skip(" in dead
     assert "No assertion is emitted" in dead
@@ -89,10 +93,11 @@ def test_render_defects_have_specific_invariants() -> None:
     expected = {
         Defect.HORIZONTAL_OVERFLOW: "scrollWidth <= document.documentElement.clientWidth",
         Defect.OFFSCREEN_CONTROL: "box.x + box.width <= window.innerWidth",
-        Defect.SMALL_TAP_TARGET: "Math.min(box.width, box.height)).toBeGreaterThanOrEqual(44)",
+        Defect.SMALL_TAP_TARGET: "Math.min(box!.width, box!.height)).toBeGreaterThanOrEqual(44)",
         Defect.LOW_CONTRAST: "contrastRatio",
         Defect.UNTRANSLATED: "rawI18nKey",
         Defect.RTL_NOT_MIRRORED: "toBe(\"rtl\")",
+        Defect.THEME_LAYOUT_SHIFT: 'emulateMedia({ colorScheme: "dark" })',
         Defect.CLIPPED: "box.x + box.width <= window.innerWidth",
     }
     for defect, assertion in expected.items():

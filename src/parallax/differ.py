@@ -201,8 +201,12 @@ def _analyse(surface: Surface, group: list[Testimony]) -> list[Finding]:
         return findings
 
     privilege_variants = [t for t in group if t.context.varies is Axis.PRIVILEGE]
+    # RELATIONAL is excluded on purpose: a sender/receiver pair is not a one-axis
+    # derivation, so comparing it against the baseline would manufacture drift
+    # findings out of two witnesses that were never supposed to match.
     equivalence_variants = [
-        t for t in group if t.context.varies not in (Axis.BASELINE, Axis.PRIVILEGE)
+        t for t in group
+        if t.context.varies not in (Axis.BASELINE, Axis.PRIVILEGE, Axis.RELATIONAL)
     ]
 
     findings += _privilege_findings(surface, baseline, privilege_variants)

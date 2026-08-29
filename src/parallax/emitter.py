@@ -70,7 +70,7 @@ def _render_assertion(finding: Finding) -> str:
     if defect is Defect.SMALL_TAP_TARGET:
         return f'''  const box = await {target}.boundingBox();
   expect(box).not.toBeNull();
-  expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(44);'''
+  expect(Math.min(box!.width, box!.height)).toBeGreaterThanOrEqual(44);'''
     if defect is Defect.LOW_CONTRAST:
         return f'''  const contrastRatio = await {target}.evaluate((element) => {{
     const rgb = (value: string) => value.match(/\\d+(?:\\.\\d+)?/g)?.slice(0, 3).map(Number) ?? [0, 0, 0];
@@ -82,6 +82,19 @@ def _render_assertion(finding: Finding) -> str:
     if defect is Defect.UNTRANSLATED:
         return '''  const rawI18nKey = await page.locator("body").evaluate((element) => /\\b[a-z][\\w-]*(?:\\.[a-z][\\w-]*)+\\b/i.test(element.textContent ?? ""));
   expect(rawI18nKey).toBeFalsy();'''
+    if defect is Defect.THEME_LAYOUT_SHIFT:
+        # Dark mode is allowed to recolour and nothing else, so the check is the
+        # same page measured twice: only the colour scheme may differ.
+        return '''  const fingerprint = () => page.evaluate(() => Array.from(
+    document.querySelectorAll("header, nav, main, footer, aside, section, button, a[href], h1, h2, [role]")
+  ).map((element) => {
+    const rect = element.getBoundingClientRect();
+    return element.tagName + ":" + Math.round(rect.x) + "," + Math.round(rect.y) + "," + Math.round(rect.width) + "," + Math.round(rect.height);
+  }).join("|"));
+  await page.emulateMedia({ colorScheme: "light" });
+  const lightLayout = await fingerprint();
+  await page.emulateMedia({ colorScheme: "dark" });
+  expect(await fingerprint()).toBe(lightLayout);'''
     if defect is Defect.RTL_NOT_MIRRORED:
         return f'''  expect(await page.locator("html").getAttribute("dir")).toBe("rtl");
   expect(await {target}.evaluate((element) => getComputedStyle(element).direction)).toBe("rtl");'''
@@ -93,13 +106,16 @@ def _content_assertion(finding: Finding) -> str:
     expected = baseline.content_signature if baseline else None
     if not expected:
         expected = next((t.content_signature for t in finding.testimonies if t.content_signature), "")
-    return f'''  async function contentSignature(page: import("@playwright/test").Page): Promise<string> {{
-    const content = await page.locator("body").innerText();
-    const bytes = new TextEncoder().encode(content.replace(/\\s+/g, " ").trim());
-    const digest = await crypto.subtle.digest("SHA-256", bytes);
-    return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
-  }}
-  expect(await contentSignature(page)).toBe({_ts(expected)});'''
+    # The recorded signature came from probe.js, which hashes with FNV-1a over the
+    # page's normalised innerText. Any other hash — SHA-256 included — would make
+    # this spec fail for a reason that has nothing to do with the finding.
+    return f'''  const contentSignature = await page.evaluate(() => {{
+    const text = (document.body.innerText || "").replace(/\\s+/g, " ").trim();
+    let h = 2166136261;
+    for (let i = 0; i < text.length; i++) {{ h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }}
+    return (h >>> 0).toString(16);
+  }});
+  expect(contentSignature).toBe({_ts(expected)});'''
 
 
 def spec_for(finding: Finding) -> str:

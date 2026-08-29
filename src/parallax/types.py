@@ -71,6 +71,7 @@ class Axis(str, Enum):
     LOCALE = "locale"
     THEME = "theme"
     VIEWPORT = "viewport"
+    RELATIONAL = "relational"   # not a derivation: two witnesses acting on each other
 
     @property
     def expects_equivalence(self) -> bool:
@@ -215,6 +216,7 @@ class FindingKind(str, Enum):
     CAPABILITY_DRIFT = "drift"         # equivalence axis: access changed when it must not have
     RENDER_DEFECT = "render"           # axis-specific invariant broken (RTL, overflow, contrast…)
     CONTENT_DIVERGENCE = "divergence"  # same surface, materially different content across an equivalence axis
+    PROPAGATION_FAILURE = "propagation"  # the sender acted and the receiver never saw it
     DEAD_SURFACE = "dead"              # nobody could reach it
 
 
