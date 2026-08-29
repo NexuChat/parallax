@@ -182,3 +182,21 @@ def test_storage_state_builder_reports_failed_login_and_continues_with_other_acc
 
     assert set(states) == {"member"}
     assert "site stub, role broken, server returned HTTP 200" in capsys.readouterr().err
+
+
+def test_relational_scenarios_read_a_site_declaration_instead_of_its_name() -> None:
+    class StubSite:
+        name = "collaboration"
+        relational_scenarios = [{
+            "surface": "/threads",
+            "sender": "owner",
+            "receiver": "member",
+            "action": {"type": "submit_form", "form": "form.composer", "fills": []},
+            "effect": {"type": "visible", "selector": ".message"},
+            "deadline_ms": 1000,
+        }]
+
+    scenarios = run_demo_suite._relational_scenarios(StubSite(), "http://127.0.0.1:8099")
+
+    assert len(scenarios) == 1
+    assert scenarios[0].surface.path == "http://127.0.0.1:8099/collaboration/threads"

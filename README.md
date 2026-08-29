@@ -23,6 +23,38 @@ To include authenticated contexts, supply Playwright storage-state files for the
 PYTHONPATH=src python -m parallax https://app.example.com --out runs/first --storage-state owner=.auth/owner.json --storage-state member=.auth/member.json --no-vision
 ```
 
+To test a sender-to-receiver claim while both role sessions are open, add `--relational-scenarios` with a data-only JSON file. It supports a fixed form submission action and either a visible receiver selector or a JSON response membership check—no JavaScript from the file is evaluated. For example, save this complete file as `scenarios.json`:
+
+```json
+{
+  "scenarios": [
+    {
+      "surface": "/threads",
+      "sender": "owner",
+      "receiver": "member",
+      "action": {
+        "type": "submit_form",
+        "form": "form.composer",
+        "checks": ["input[value='quiet']"],
+        "fills": [{"selector": "#message", "value": "Parallax propagation check"}]
+      },
+      "effect": {
+        "type": "json_contains",
+        "url": "api/messages?since=0",
+        "items": "messages",
+        "field": "text",
+        "equals": "Parallax propagation check"
+      },
+      "deadline_ms": 3000
+    }
+  ]
+}
+```
+
+Run it with the same role states: `PYTHONPATH=src python -m parallax https://app.example.com --storage-state owner=.auth/owner.json --storage-state member=.auth/member.json --relational-scenarios scenarios.json --no-vision`. Each scenario needs `surface`, `sender`, `receiver`, `action`, `effect`, and a positive `deadline_ms`; roles are `anon`, `member`, or `owner`. A `visible` effect is `{ "type": "visible", "selector": ".notification" }`. The final JSON summary reports both `relational_scenarios.ran` and `relational_scenarios.findings`.
+
+Demo sites can opt in without suite-specific code: declare a `relational_scenarios` list beside `accounts` and `planted`, with entries in this same format. Their `surface` may be the site-local path such as `/threads`; the suite mounts it below the site's name before passing it to the conductor.
+
 Open `console/index.html?feed=../runs/first/feed.jsonl` in the repository's console, or use the [live console](https://perallax.mlki.app). The local console reads the newline-delimited feed and its referenced mosaics; serving the repository with a static web server avoids browser `file:` restrictions.
 
 The command also accepts `--max-surfaces`, `--settle-ms`, and `--headed`. Omit `--no-vision` to enable the Gemini layout and i18n lens. It chooses the first available route: a configured Vertex AI project (`GOOGLE_CLOUD_PROJECT`, with optional `GOOGLE_CLOUD_LOCATION`, defaulting to `global`) using application-default credentials or a fresh `gcloud auth print-access-token` bearer token; then `GEMINI_API_KEY` for AI Studio. The CLI prints the selected route, or explains why the lens is disabled, before the sweep starts.

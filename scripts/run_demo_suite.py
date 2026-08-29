@@ -22,6 +22,7 @@ if str(DEMO_DIR) not in sys.path:
     sys.path.insert(0, str(DEMO_DIR))
 
 from parallax.conductor import Conductor, RelationalScenario  # noqa: E402
+from parallax.__main__ import relational_scenarios_from_data  # noqa: E402
 from parallax.emitter import spec_for  # noqa: E402
 from parallax.specialists import AccessSpecialist, LayoutI18nSpecialist, RealtimeSpecialist  # noqa: E402
 from parallax.types import Axis, BASELINE, Context, Finding, FindingKind, Outcome, Privilege, Severity, Surface, SurfaceKind, Testimony  # noqa: E402
@@ -149,38 +150,20 @@ def _specialists(no_vision: bool) -> list[object]:
 
 
 def _relational_scenarios(site: Site, host: str) -> list[RelationalScenario]:
-    """Declare the one demo claim which requires two concurrently open sessions."""
-    if site.name != "workspace":
+    """Read optional, data-only scenario declarations from a demo site."""
+    declarations = getattr(site, "relational_scenarios", [])
+    if not declarations:
         return []
-    plant = next(
-        (item for item in site.planted if item.defect == "propagation" and item.axis == "relational"),
-        None,
-    )
-    if plant is None:
-        return []
-    url = f"{host.rstrip('/')}/{site.name}{plant.route}"
-    message = f"Parallax relational check: {plant.note}"
-
-    async def post_to_quiet_thread(page: object) -> None:
-        await page.locator('input[value="quiet"]').check()
-        await page.locator("#message").fill(message)
-        await page.locator("form.composer").evaluate("form => form.requestSubmit()")
-
-    async def receiver_sees_message(page: object) -> bool:
-        return bool(await page.evaluate("""async (message) => {
-          const response = await fetch(new URL('api/messages?since=0', location.href));
-          const payload = await response.json();
-          return (payload.messages || []).some((item) => item.text === message);
-        }""", message))
-
-    return [RelationalScenario(
-        Surface(SurfaceKind.ROUTE, url),
-        sender=Context(privilege=Privilege.OWNER),
-        receiver=Context(privilege=Privilege.MEMBER),
-        action=post_to_quiet_thread,
-        effect=receiver_sees_message,
-        deadline_ms=3_000,
-    )]
+    mounted: list[dict[str, object]] = []
+    for declaration in declarations:
+        if not isinstance(declaration, dict):
+            raise SystemExit(f"site {site.name} relational scenarios: each declaration must be an object")
+        copy = dict(declaration)
+        surface = copy.get("surface")
+        if isinstance(surface, str) and not surface.startswith(("http://", "https://")):
+            copy["surface"] = f"{host.rstrip('/')}/{site.name}/{surface.lstrip('/')}"
+        mounted.append(copy)
+    return relational_scenarios_from_data(mounted, host, source=f"site {site.name} relational scenarios")
 
 
 def storage_state_from_login_response(response: object, origin: str) -> dict[str, object]:
