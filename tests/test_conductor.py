@@ -162,6 +162,61 @@ def test_conductor_discovers_bounds_runs_concurrently_and_publishes(tmp_path: Pa
     asyncio.run(check())
 
 
+def test_moments_are_harvested_while_the_witnesses_are_still_working(tmp_path: Path) -> None:
+    """Ticking once after everyone finishes would leave only an end-state snapshot."""
+
+    class StreamingCDPSession(FakeCDPSession):
+        def __init__(self) -> None:
+            super().__init__()
+            self.stream: asyncio.Task[None] | None = None
+
+        async def send(self, name: str, params: dict[str, Any] | None = None) -> None:
+            self.sent.append((name, params))
+            if name != "Page.startScreencast":
+                return
+            handler = self.handlers["Page.screencastFrame"]
+
+            async def emit() -> None:
+                for seq in range(1, 9):
+                    handler({"data": base64.b64encode(jpeg((seq * 25, 10, 10))).decode(), "metadata": {}, "sessionId": seq})
+                    await asyncio.sleep(0.006)
+
+            self.stream = asyncio.create_task(emit())
+
+        async def detach(self) -> None:
+            if self.stream is not None:
+                self.stream.cancel()
+
+    class SlowPage(FakePage):
+        async def goto(self, url: str, **_kwargs: Any) -> FakeResponse:
+            self.url = url
+            await asyncio.sleep(0.08)   # long enough for the wall to change under us
+            return FakeResponse()
+
+    class StreamingBrowser(FakeBrowser):
+        async def new_context(self, **_options: Any) -> FakeBrowserContext:
+            behavior = self.behaviors.pop(0) if self.behaviors else {}
+            context = FakeBrowserContext(self, behavior)
+            context.page = SlowPage(self, behavior)
+            context.cdp = StreamingCDPSession()
+            self.contexts.append(context)
+            return context
+
+    async def check() -> None:
+        browser = StreamingBrowser(
+            [{"discovery": {f"{SITE}/": {"links": [], "affordances": []}}}] + [{} for _ in range(8)]
+        )
+        result = await Conductor(
+            f"{SITE}/", tmp_path, browser=browser, max_surfaces=1, settle_ms=0, poll_ms=1
+        ).conduct()
+
+        events = [json.loads(line) for line in result.feed_path.read_text().splitlines()]
+        mosaics = [event for event in events if event["kind"] == "mosaic"]
+        assert len(mosaics) >= 2
+
+    asyncio.run(check())
+
+
 def test_mirror_defects_are_present_when_differ_runs_and_errors_do_not_abort(tmp_path: Path, monkeypatch: Any) -> None:
     async def check() -> None:
         import parallax.conductor as conductor_module

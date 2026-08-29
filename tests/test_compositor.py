@@ -60,6 +60,28 @@ def test_later_frame_replaces_the_contexts_earlier_frame_and_stale_delivery_is_i
     assert is_color(pixel(mosaic.jpeg, 6, 4), (0, 0, 240))
 
 
+def test_submitting_frames_does_not_rebuild_the_wall_every_time(monkeypatch) -> None:
+    """Seven witnesses streaming at CDP rates must not re-encode the wall per frame."""
+    composed = 0
+    original = Compositor._compose
+
+    def counting(self):
+        nonlocal composed
+        composed += 1
+        return original(self)
+
+    monkeypatch.setattr(Compositor, "_compose", counting)
+    compositor = Compositor(CONTEXTS)
+    for index in range(20):
+        compositor.submit(Frame(CONTEXTS[index % 7], jpeg((index * 10, 20, 40)), seq=index))
+
+    assert composed == 0            # nothing built while frames were only arriving
+    assert compositor.current_mosaic is not None
+    assert composed == 1            # built once, when someone finally looked
+    assert compositor.current_mosaic is not None
+    assert composed == 1            # and cached until the next frame
+
+
 def test_a_narrow_viewport_is_letterboxed_rather_than_stretched() -> None:
     """The mobile witness is 360 wide next to a 1440 desktop. It must not distort."""
     compositor = Compositor(CONTEXTS, tile_size=(40, 20))

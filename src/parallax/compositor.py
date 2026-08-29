@@ -57,11 +57,15 @@ class Compositor:
         # viewports. Callers running the real seven should pass one.
         self._tile_size: tuple[int, int] | None = tile_size
         self._current_mosaic: MosaicFrame | None = None
+        self._dirty = False
         self._action = ""
 
     @property
     def current_mosaic(self) -> MosaicFrame | None:
         """The latest wall, including placeholders for unseen contexts."""
+        if self._dirty and self._latest:
+            self._current_mosaic = self._compose()
+            self._dirty = False
         return self._current_mosaic
 
     @property
@@ -94,7 +98,11 @@ class Compositor:
 
         self._latest[frame.context_name] = (frame.seq, image)
         self._thumbnails[frame.context_name] = thumbnail
-        self._current_mosaic = self._compose()
+        # Deliberately NOT composed here. Seven witnesses streaming at CDP rates
+        # would otherwise re-encode the entire wall once per frame — measured at
+        # a quarter-second of blocked event loop per submit — and starve the very
+        # sessions being watched. The wall is only built when someone looks.
+        self._dirty = True
 
     def tick(self, now_ms: int) -> Moment | None:
         """Return one moment once changed tiles have been quiet long enough."""
@@ -103,14 +111,15 @@ class Compositor:
             for name in self._contexts
             if name in self._changed_at and now_ms - self._changed_at[name] >= self._settle_ms
         )
-        if not settled or self._current_mosaic is None:
+        mosaic = self.current_mosaic
+        if not settled or mosaic is None:
             return None
 
         settled_ms = min(now_ms - self._changed_at[name] for name in settled)
         for name in settled:
             del self._changed_at[name]
         return Moment(
-            mosaic=self._current_mosaic,
+            mosaic=mosaic,
             changed=settled,
             action=self._action,
             settled_ms=settled_ms,

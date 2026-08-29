@@ -61,6 +61,7 @@ class Conductor:
         storage_states: Mapping[Privilege | str, StorageState] | None = None,
         max_surfaces: int = 12,
         settle_ms: int = 500,
+        poll_ms: int = 50,
     ) -> None:
         if max_surfaces < 1:
             raise ValueError("max_surfaces must be at least 1")
@@ -72,6 +73,7 @@ class Conductor:
         self.storage_states = storage_states
         self.max_surfaces = max_surfaces
         self.settle_ms = settle_ms
+        self.poll_ms = max(1, poll_ms)
 
     async def conduct(self) -> ConductSummary:
         """Run the complete pipeline. A witness error remains testimony, never a crash."""
@@ -82,7 +84,7 @@ class Conductor:
         compositor = Compositor(
             [context.name for context in self.contexts],
             settle_ms=self.settle_ms,
-            tile_size=(self._baseline().viewport.width, self._baseline().viewport.height),
+            tile_size=_tile_size(self._baseline()),
         )
         sequence = {context.name: 0 for context in self.contexts}
         all_testimonies: list[Testimony] = []
@@ -182,10 +184,34 @@ class Conductor:
                 finally:
                     await witness.close()
 
-        testimonies = list(await asyncio.gather(*(run(context) for context in self.contexts)))
-        now = int(time.time() * 1000) + self.settle_ms
-        moment = compositor.tick(now)
-        return testimonies, ([] if moment is None else [replace(moment, surface=surface)])
+        # Moments have to be harvested WHILE the witnesses work. Letting them all
+        # finish and ticking once would reduce a live wall to a single end-state
+        # snapshot per surface and discard every instant in between — and those
+        # instants are the only thing the specialists are there to look at.
+        moments: list[Moment] = []
+        collecting = True
+
+        async def collect() -> None:
+            while collecting:
+                settled = compositor.tick(_now_ms())
+                if settled is not None:
+                    moments.append(replace(settled, surface=surface))
+                await asyncio.sleep(self.poll_ms / 1000)
+
+        collector = asyncio.create_task(collect())
+        try:
+            testimonies = list(await asyncio.gather(*(run(context) for context in self.contexts)))
+        finally:
+            collecting = False
+            collector.cancel()
+            await asyncio.gather(collector, return_exceptions=True)
+
+        # One last look, dated past the settle window, for a tile that moved and
+        # never got the chance to hold still before its witness closed.
+        final = compositor.tick(_now_ms() + self.settle_ms)
+        if final is not None:
+            moments.append(replace(final, surface=surface))
+        return testimonies, moments
 
     def _baseline(self) -> Context:
         return next((context for context in self.contexts if context.varies is Axis.BASELINE), self.contexts[0])
@@ -206,6 +232,25 @@ class Conductor:
     def _write(path: Path, kind: str, payload: dict[str, Any]) -> None:
         with path.open("a", encoding="utf-8") as feed:
             feed.write(json.dumps(FeedEvent(kind, payload).to_json(), separators=(",", ":")) + "\n")
+
+
+_TILE_WIDTH = 480
+
+
+def _tile_size(baseline: Context) -> tuple[int, int]:
+    """The baseline's proportions, but not its pixels.
+
+    A wall of full 1440x900 tiles is 5760x1800 — re-encoded every time anyone
+    looks at it and shipped to a model on every moment, for detail nobody can
+    resolve at tile scale.
+    """
+    scale = _TILE_WIDTH / baseline.viewport.width
+    return _TILE_WIDTH, max(1, round(baseline.viewport.height * scale))
+
+
+def _now_ms() -> int:
+    """The same clock domain the compositor keeps its settle windows in."""
+    return int(time.time() * 1000)
 
 
 def _normal_url(url: str) -> str:
