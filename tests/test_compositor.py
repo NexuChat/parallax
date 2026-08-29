@@ -51,6 +51,8 @@ def test_seven_frames_compose_into_a_stable_four_by_two_grid() -> None:
 
 def test_later_frame_replaces_the_contexts_earlier_frame_and_stale_delivery_is_ignored() -> None:
     compositor = Compositor(CONTEXTS)
+    for name in CONTEXTS[1:]:
+        compositor.submit(Frame(name, jpeg((0, 0, 240)), seq=1))
     compositor.submit(Frame(CONTEXTS[0], jpeg((240, 0, 0)), seq=1))
     compositor.submit(Frame(CONTEXTS[0], jpeg((0, 0, 240)), seq=2))
     compositor.submit(Frame(CONTEXTS[0], jpeg((0, 240, 0)), seq=1))
@@ -108,6 +110,8 @@ def test_changed_tile_emits_one_moment_after_settling() -> None:
     now = 0
     compositor = Compositor(CONTEXTS, clock=lambda: now, settle_ms=500)
     compositor.set_action("open billing")
+    for name in CONTEXTS[1:]:
+        compositor.submit(Frame(name, jpeg((20, 20, 20)), seq=1))
     compositor.submit(Frame(CONTEXTS[0], jpeg((10, 10, 10)), seq=1))
     now = 1
     compositor.submit(Frame(CONTEXTS[0], jpeg((220, 220, 220)), seq=2))
@@ -121,9 +125,53 @@ def test_changed_tile_emits_one_moment_after_settling() -> None:
     assert compositor.tick(1_000) is None
 
 
+def test_changed_tile_waits_for_every_context_to_paint_before_emitting() -> None:
+    now = 0
+    contexts = ("left", "right")
+    compositor = Compositor(contexts, clock=lambda: now, settle_ms=500)
+    compositor.submit(Frame("left", jpeg((10, 10, 10)), seq=1))
+    now = 1
+    compositor.submit(Frame("left", jpeg((220, 220, 220)), seq=2))
+
+    assert compositor.tick(501) is None
+
+    compositor.submit(Frame("right", jpeg((30, 30, 30)), seq=1))
+    moment = compositor.tick(501)
+    assert moment is not None
+    assert moment.changed == ("left",)
+
+
+def test_undecodable_later_frame_keeps_the_contexts_last_good_image() -> None:
+    compositor = Compositor(CONTEXTS)
+    for name in CONTEXTS[1:]:
+        compositor.submit(Frame(name, jpeg((0, 0, 240)), seq=1))
+    compositor.submit(Frame(CONTEXTS[0], jpeg((0, 0, 240)), seq=1))
+
+    with pytest.raises(ValueError, match="valid JPEG"):
+        compositor.submit(Frame(CONTEXTS[0], b"not a jpeg", seq=2))
+
+    mosaic = compositor.current_mosaic
+    assert mosaic is not None
+    assert is_color(pixel(mosaic.jpeg, 6, 4), (0, 0, 240))
+
+
+def test_only_never_painted_contexts_use_a_labelled_no_signal_tile() -> None:
+    compositor = Compositor(("painted", "never"), tile_size=(120, 80))
+    compositor.submit(Frame("painted", jpeg((0, 0, 240), size=(120, 80)), seq=1))
+
+    mosaic = compositor.current_mosaic
+    assert mosaic is not None
+    assert is_color(pixel(mosaic.jpeg, 60, 40), (0, 0, 240))
+    with Image.open(BytesIO(mosaic.jpeg)) as image:
+        label_area = image.convert("RGB").crop((140, 20, 220, 60))
+    assert any(not is_color(color, (36, 36, 36)) for color in label_area.get_flattened_data())
+
+
 def test_still_changing_inside_the_settle_window_emits_nothing_yet() -> None:
     now = 0
     compositor = Compositor(CONTEXTS, clock=lambda: now, settle_ms=500)
+    for name in CONTEXTS[1:]:
+        compositor.submit(Frame(name, jpeg((20, 20, 20)), seq=1))
     compositor.submit(Frame(CONTEXTS[0], jpeg((10, 10, 10)), seq=1))
     now = 1
     compositor.submit(Frame(CONTEXTS[0], jpeg((120, 120, 120)), seq=2))

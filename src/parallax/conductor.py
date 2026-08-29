@@ -234,7 +234,9 @@ class Conductor:
             await asyncio.gather(collector, return_exceptions=True)
 
         # One last look, dated past the settle window, for a tile that moved and
-        # never got the chance to hold still before its witness closed.
+        # never got the chance to hold still before its witness closed. ``tick``
+        # also enforces a fully painted wall, so this flush cannot publish a
+        # half-painted mosaic after one witness ends without a screencast frame.
         final = compositor.tick(_now_ms() + self.settle_ms)
         if final is not None:
             moments.append(replace(final, surface=surface))
