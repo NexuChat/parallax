@@ -21,10 +21,10 @@ DEMO_DIR = ROOT / "demo"
 if str(DEMO_DIR) not in sys.path:
     sys.path.insert(0, str(DEMO_DIR))
 
-from parallax.conductor import Conductor  # noqa: E402
+from parallax.conductor import Conductor, RelationalScenario  # noqa: E402
 from parallax.emitter import spec_for  # noqa: E402
 from parallax.specialists import AccessSpecialist, LayoutI18nSpecialist, RealtimeSpecialist  # noqa: E402
-from parallax.types import Axis, BASELINE, Finding, FindingKind, Outcome, Privilege, Severity, Surface, SurfaceKind, Testimony  # noqa: E402
+from parallax.types import Axis, BASELINE, Context, Finding, FindingKind, Outcome, Privilege, Severity, Surface, SurfaceKind, Testimony  # noqa: E402
 from serve import discover_sites  # noqa: E402
 from sites.base import Planted, Site  # noqa: E402
 
@@ -148,6 +148,41 @@ def _specialists(no_vision: bool) -> list[object]:
     return specialists
 
 
+def _relational_scenarios(site: Site, host: str) -> list[RelationalScenario]:
+    """Declare the one demo claim which requires two concurrently open sessions."""
+    if site.name != "workspace":
+        return []
+    plant = next(
+        (item for item in site.planted if item.defect == "propagation" and item.axis == "relational"),
+        None,
+    )
+    if plant is None:
+        return []
+    url = f"{host.rstrip('/')}/{site.name}{plant.route}"
+    message = f"Parallax relational check: {plant.note}"
+
+    async def post_to_quiet_thread(page: object) -> None:
+        await page.locator('input[value="quiet"]').check()
+        await page.locator("#message").fill(message)
+        await page.locator("form.composer").evaluate("form => form.requestSubmit()")
+
+    async def receiver_sees_message(page: object) -> bool:
+        return bool(await page.evaluate("""async (message) => {
+          const response = await fetch(new URL('api/messages?since=0', location.href));
+          const payload = await response.json();
+          return (payload.messages || []).some((item) => item.text === message);
+        }""", message))
+
+    return [RelationalScenario(
+        Surface(SurfaceKind.ROUTE, url),
+        sender=Context(privilege=Privilege.OWNER),
+        receiver=Context(privilege=Privilege.MEMBER),
+        action=post_to_quiet_thread,
+        effect=receiver_sees_message,
+        deadline_ms=3_000,
+    )]
+
+
 def storage_state_from_login_response(response: object, origin: str) -> dict[str, object]:
     """Convert a plain HTTP login response into Playwright's storage-state shape."""
     headers = getattr(response, "headers", {})
@@ -234,6 +269,7 @@ async def run(args: argparse.Namespace) -> dict[str, Grade]:
                     f"{host}/{site.name}/", run_dir, browser=browser,
                     specialists=_specialists(args.no_vision), max_surfaces=args.max_surfaces,
                     storage_states=build_storage_states(site, host, run_dir),
+                    relational_scenarios=_relational_scenarios(site, host),
                 ).conduct()
                 grades[site.name] = grade_findings(summary.findings, site.planted, site.name)
         finally:

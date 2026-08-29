@@ -52,6 +52,8 @@ class RelationalPair:
         action: PageAction,
         expectation: Expectation,
         deadline_ms: int,
+        *,
+        surface: Surface | None = None,
     ) -> list[Testimony] | Finding:
         """Act as one witness while the other polls for the resulting effect.
 
@@ -74,11 +76,22 @@ class RelationalPair:
                 receiver_error = error
             else:
                 assert self.sender.page is not None
-                action_task = asyncio.create_task(self._perform(action, self.sender.page))
+                if surface is not None:
+                    try:
+                        await asyncio.gather(
+                            self.sender.page.goto(surface.path, wait_until="domcontentloaded", timeout=5_000),
+                            self.receiver.page.goto(surface.path, wait_until="domcontentloaded", timeout=5_000),
+                        )
+                    except Exception as error:
+                        sender_error = error
+                        receiver_error = error
+                if sender_error is None:
+                    action_task = asyncio.create_task(self._perform(action, self.sender.page))
                 # Let the action enter the event loop before the first probe.
                 # This is a scheduler yield, not deadline waiting.
-                await asyncio.sleep(0)
-                while self._clock() <= deadline:
+                if action_task is not None:
+                    await asyncio.sleep(0)
+                while action_task is not None and self._clock() <= deadline:
                     try:
                         assert self.receiver.page is not None
                         received = await self._matches(self.receiver.page, expectation)
@@ -92,7 +105,9 @@ class RelationalPair:
                         break
                     await self._sleep(min(self._poll_interval, remaining))
 
-                if action_task.done():
+                if action_task is None:
+                    pass
+                elif action_task.done():
                     try:
                         action_task.result()
                     except Exception as error:

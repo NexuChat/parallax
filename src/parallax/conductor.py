@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -16,6 +16,7 @@ from .contracts import FeedEvent, Frame, Moment, Specialist, finding_payload, mo
 from .differ import compare
 from .emitter import emit_all
 from .mirror import mirror_defects
+from .relational import Expectation, RelationalPair
 from .types import Axis, Context, Finding, Outcome, Privilege, Surface, SurfaceKind, Testimony, derive_witnesses
 from .witness import StorageState, Witness
 
@@ -47,6 +48,18 @@ class ConductSummary:
     feed_path: Path
 
 
+@dataclass(frozen=True)
+class RelationalScenario:
+    """A caller-declared claim that requires two live, private sessions."""
+
+    surface: Surface
+    sender: Context
+    receiver: Context
+    action: Callable[[Any], Awaitable[None] | None]
+    effect: Expectation
+    deadline_ms: int
+
+
 class Conductor:
     """The single owner of the run-level ordering and the shared mosaic wall."""
 
@@ -62,6 +75,7 @@ class Conductor:
         max_surfaces: int = 12,
         settle_ms: int = 500,
         poll_ms: int = 50,
+        relational_scenarios: Sequence[RelationalScenario] | None = None,
     ) -> None:
         if max_surfaces < 1:
             raise ValueError("max_surfaces must be at least 1")
@@ -74,6 +88,7 @@ class Conductor:
         self.max_surfaces = max_surfaces
         self.settle_ms = settle_ms
         self.poll_ms = max(1, poll_ms)
+        self.relational_scenarios = list(relational_scenarios or [])
 
     async def conduct(self) -> ConductSummary:
         """Run the complete pipeline. A witness error remains testimony, never a crash."""
@@ -108,6 +123,26 @@ class Conductor:
             findings = compare(testimonies)
             for specialist in self.specialists:
                 findings.extend(specialist.judge(moments, testimonies))
+            all_findings.extend(findings)
+            for finding in findings:
+                self._write(feed_path, "finding", finding_payload(finding))
+
+        for scenario in self.relational_scenarios:
+            self._write(feed_path, "status", {
+                "surface": scenario.surface.describe(), "surface_id": scenario.surface.id, "state": "started",
+            })
+            testimonies, moments, observed_finding = await self._run_relational_scenario(scenario)
+            all_testimonies.extend(testimonies)
+            for moment in moments:
+                image = self._write_mosaic(scenario.surface, moment)
+                self._write(feed_path, "mosaic", mosaic_payload(moment.mosaic, image))
+
+            findings = compare(testimonies)
+            if observed_finding is not None:
+                findings.append(observed_finding)
+            for specialist in self.specialists:
+                findings.extend(specialist.judge(moments, testimonies))
+            findings = _unique_findings(findings)
             all_findings.extend(findings)
             for finding in findings:
                 self._write(feed_path, "finding", finding_payload(finding))
@@ -242,6 +277,79 @@ class Conductor:
             moments.append(replace(final, surface=surface))
         return testimonies, moments
 
+    async def _run_relational_scenario(
+        self, scenario: RelationalScenario
+    ) -> tuple[list[Testimony], list[Moment], Finding | None]:
+        """Observe a declared cross-session effect without borrowing ordinary witnesses.
+
+        This is intentionally a two-tile compositor: the sender and receiver are
+        the whole claim, and both tiles must be live while the action runs.
+        """
+        pair = RelationalPair(
+            scenario.sender, scenario.receiver, self.browser,
+            sender_storage_state=self._storage_for(scenario.sender),
+            receiver_storage_state=self._storage_for(scenario.receiver),
+            poll_interval_ms=self.poll_ms,
+        )
+        contexts = (pair.sender.context, pair.receiver.context)
+        compositor = Compositor(
+            [context.name for context in contexts], settle_ms=self.settle_ms, tile_size=_tile_size(self._baseline())
+        )
+        compositor.set_action(scenario.surface.describe())
+        sequence = {context.name: 0 for context in contexts}
+
+        def consumer(context: Context) -> Callable[[bytes, dict[str, Any]], Awaitable[None]]:
+            async def consume(jpeg: bytes, _metadata: dict[str, Any]) -> None:
+                sequence[context.name] += 1
+                try:
+                    compositor.submit(Frame(context.name, jpeg, sequence[context.name]))
+                except ValueError:
+                    pass
+            return consume
+
+        moments: list[Moment] = []
+        collecting = True
+
+        async def collect() -> None:
+            while collecting:
+                settled = compositor.tick(_now_ms())
+                if settled is not None:
+                    moments.append(replace(settled, surface=scenario.surface))
+                await asyncio.sleep(self.poll_ms / 1000)
+
+        try:
+            await pair.open()
+            for witness in (pair.sender, pair.receiver):
+                try:
+                    await witness.start_screencast(consumer(witness.context))
+                except Exception:
+                    pass
+            collector = asyncio.create_task(collect())
+            try:
+                observed = await pair.observe(
+                    scenario.action, scenario.effect, scenario.deadline_ms, surface=scenario.surface
+                )
+            finally:
+                collecting = False
+                collector.cancel()
+                await asyncio.gather(collector, return_exceptions=True)
+        except Exception as error:
+            testimonies = [
+                Testimony(scenario.surface, context, Outcome.ERROR, note=f"relational scenario failed: {type(error).__name__}: {error}")
+                for context in contexts
+            ]
+            return testimonies, moments, None
+        finally:
+            await asyncio.gather(pair.sender.stop_screencast(), pair.receiver.stop_screencast(), return_exceptions=True)
+            await pair.close()
+
+        final = compositor.tick(_now_ms() + self.settle_ms)
+        if final is not None:
+            moments.append(replace(final, surface=scenario.surface))
+        if isinstance(observed, Finding):
+            return observed.testimonies, moments, observed
+        return observed, moments, None
+
     def _baseline(self) -> Context:
         return next((context for context in self.contexts if context.varies is Axis.BASELINE), self.contexts[0])
 
@@ -307,3 +415,15 @@ def _is_at_or_below_start_path(target: str, start_url: str) -> bool:
     directory = start_path if start_path.endswith("/") else f"{start_path}/"
     target_path = urlsplit(target).path or "/"
     return target_path == start_path.rstrip("/") or target_path.startswith(directory)
+
+
+def _unique_findings(findings: Sequence[Finding]) -> list[Finding]:
+    """A direct pair observation is authoritative; visual lenses may corroborate it."""
+    unique: list[Finding] = []
+    seen: set[tuple[object, ...]] = set()
+    for finding in findings:
+        key = (finding.kind, finding.axis, finding.surface.id)
+        if key not in seen:
+            seen.add(key)
+            unique.append(finding)
+    return unique
