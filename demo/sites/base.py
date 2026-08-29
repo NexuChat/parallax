@@ -86,10 +86,26 @@ class Planted:
     note: str
 
 
+@dataclass(frozen=True)
+class Account:
+    """A seeded login, declared rather than discovered.
+
+    A grader that scrapes credentials out of a site's source with a regular
+    expression works right up until someone rewrites the site — which is exactly
+    what happened, and it took the whole graded run down with it. A site knows
+    its own accounts; it should say so.
+    """
+
+    role: str          # "owner" | "member"
+    email: str
+    password: str
+
+
 @runtime_checkable
 class Site(Protocol):
     name: str          # url prefix and run id, e.g. "workspace"
     title: str
     planted: list[Planted]
+    accounts: list[Account]   # empty when the site has no login at all
 
     def handle(self, request: Request) -> Response: ...
