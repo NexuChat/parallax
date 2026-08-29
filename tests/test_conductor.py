@@ -10,8 +10,8 @@ from typing import Any
 
 from PIL import Image
 
-from parallax.conductor import Conductor
-from parallax.types import Axis, Defect, Finding, FindingKind, Severity
+from parallax.conductor import Conductor, RelationalScenario
+from parallax.types import Axis, Context, Defect, Finding, FindingKind, Outcome, Privilege, Severity, Surface, SurfaceKind
 
 
 SITE = "https://app.example.test"
@@ -52,8 +52,11 @@ class FakeCDPSession:
 
 
 class FakeLocator:
+    def __init__(self, visible: bool = True) -> None:
+        self.visible = visible
+
     async def is_visible(self) -> bool:
-        return True
+        return self.visible
 
 
 class FakePage:
@@ -84,13 +87,14 @@ class FakePage:
         })
 
     def locator(self, _selector: str) -> FakeLocator:
-        return FakeLocator()
+        return FakeLocator(self.behavior.get("visible", True))
 
 
 class FakeBrowserContext:
     def __init__(self, browser: "FakeBrowser", behavior: dict[str, Any]) -> None:
         self.page = FakePage(browser, behavior)
         self.cdp = FakeCDPSession()
+        self.closed = False
 
     async def add_init_script(self, _script: str) -> None:
         pass
@@ -102,7 +106,7 @@ class FakeBrowserContext:
         return self.cdp
 
     async def close(self) -> None:
-        pass
+        self.closed = True
 
 
 class FakeBrowser:
@@ -355,5 +359,102 @@ def test_mirror_defects_are_present_when_differ_runs_and_errors_do_not_abort(tmp
         assert seen
         locale = next(testimony for testimony in seen[0] if testimony.context.varies is Axis.LOCALE)
         assert Defect.RTL_NOT_MIRRORED in locale.defects
+
+    asyncio.run(check())
+
+
+def _relational_scenario(action: Any, effect: str = "#message") -> RelationalScenario:
+    return RelationalScenario(
+        Surface(SurfaceKind.ROUTE, f"{SITE}/threads"),
+        sender=Context(privilege=Privilege.OWNER),
+        receiver=Context(privilege=Privilege.MEMBER),
+        action=action,
+        effect=effect,
+        deadline_ms=30,
+    )
+
+
+def test_sweep_without_relational_scenarios_preserves_ordinary_findings(tmp_path: Path) -> None:
+    async def check() -> None:
+        discovery = {f"{SITE}/": {"links": [], "affordances": []}}
+        first = await Conductor(
+            f"{SITE}/", tmp_path / "first", browser=FakeBrowser([{"discovery": discovery}] + [{} for _ in range(7)]), settle_ms=0
+        ).conduct()
+        second = await Conductor(
+            f"{SITE}/", tmp_path / "second", browser=FakeBrowser([{"discovery": discovery}] + [{} for _ in range(7)]), settle_ms=0,
+            relational_scenarios=[],
+        ).conduct()
+
+        assert [(finding.kind, finding.axis, finding.summary, finding.evidence_line()) for finding in first.findings] == [
+            (finding.kind, finding.axis, finding.summary, finding.evidence_line()) for finding in second.findings
+        ]
+        assert len(first.testimonies) == len(second.testimonies) == 7
+
+    asyncio.run(check())
+
+
+def test_relational_failure_is_published_emitted_and_keeps_sessions_overlapping(tmp_path: Path) -> None:
+    async def check() -> None:
+        discovery = {f"{SITE}/": {"links": [], "affordances": []}}
+        browser = FakeBrowser([{"discovery": discovery}] + [{} for _ in range(7)] + [{}, {"visible": False}])
+        overlap: list[bool] = []
+
+        async def send(_page: object) -> None:
+            overlap.append(len(browser.contexts) >= 10 and all(not context.closed for context in browser.contexts[-2:]))
+
+        result = await Conductor(
+            f"{SITE}/", tmp_path, browser=browser, settle_ms=0, poll_ms=1,
+            relational_scenarios=[_relational_scenario(send)],
+        ).conduct()
+
+        findings = [finding for finding in result.findings if finding.kind is FindingKind.PROPAGATION_FAILURE]
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.axis is Axis.RELATIONAL
+        assert {testimony.context.privilege for testimony in finding.testimonies} == {Privilege.OWNER, Privilege.MEMBER}
+        assert overlap == [True]
+        events = [json.loads(line) for line in result.feed_path.read_text().splitlines()]
+        assert any(event["kind"] == "finding" for event in events)
+        assert any(event["kind"] == "mosaic" for event in events)
+        assert any("propagation-relational" in path.name and path.exists() for path in result.spec_paths)
+
+    asyncio.run(check())
+
+
+def test_relational_effect_before_deadline_yields_no_propagation_finding(tmp_path: Path) -> None:
+    async def check() -> None:
+        discovery = {f"{SITE}/": {"links": [], "affordances": []}}
+        browser = FakeBrowser([{"discovery": discovery}] + [{} for _ in range(7)] + [{}, {"visible": False}])
+
+        async def send(_page: object) -> None:
+            browser.contexts[-1].page.behavior["visible"] = True
+
+        result = await Conductor(
+            f"{SITE}/", tmp_path, browser=browser, settle_ms=0,
+            relational_scenarios=[_relational_scenario(send)],
+        ).conduct()
+
+        assert not [finding for finding in result.findings if finding.kind is FindingKind.PROPAGATION_FAILURE]
+
+    asyncio.run(check())
+
+
+def test_relational_action_error_is_evidence_without_aborting_the_sweep(tmp_path: Path) -> None:
+    async def check() -> None:
+        discovery = {f"{SITE}/": {"links": [], "affordances": []}}
+        browser = FakeBrowser([{"discovery": discovery}] + [{} for _ in range(7)] + [{}, {"visible": False}])
+
+        async def broken_send(_page: object) -> None:
+            raise RuntimeError("send failed")
+
+        result = await Conductor(
+            f"{SITE}/", tmp_path, browser=browser, settle_ms=0,
+            relational_scenarios=[_relational_scenario(broken_send)],
+        ).conduct()
+
+        relational = [testimony for testimony in result.testimonies if testimony.context.varies is Axis.RELATIONAL]
+        assert len(relational) == 2
+        assert any(testimony.outcome is Outcome.ERROR and "send failed" in testimony.note for testimony in relational)
+        assert result.surfaces
 
     asyncio.run(check())
