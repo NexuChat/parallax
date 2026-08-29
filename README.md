@@ -65,5 +65,5 @@ Parallax observes rendered surfaces and discovered controls; it does not prove a
 The repository test suite is run with:
 
 ```bash
-PYTHONPATH=/home/dev/parallax-lanes/docs/src /home/dev/hackathon/parallax/.venv/bin/python -m pytest tests/ -q
+PYTHONPATH=src python -m pytest tests/ -q
 ```

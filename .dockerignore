@@ -1,0 +1,18 @@
+# Cloud Build uploads this directory before it reads the Dockerfile, so anything
+# left here is paid for on every build. The virtualenv alone is 327MB, and none
+# of it belongs in an image that installs its own dependencies.
+.venv/
+.git/
+.gitignore
+runs/
+demo/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.playwright-mcp/
+tests/
+docs/
+*.png
