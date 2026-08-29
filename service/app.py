@@ -20,17 +20,19 @@ Launcher = Callable[[list[str]], Any]
 
 
 class Application:
-    """Serve the console and isolate each long-running sweep in a run directory."""
+    """Serve the public face, console, and isolate each sweep in a run directory."""
 
     def __init__(
         self,
         runs_root: Path | str = "/data/runs",
         console_root: Path | str | None = None,
+        web_root: Path | str | None = None,
         launcher: Launcher = subprocess.Popen,
     ) -> None:
         self.runs_root = Path(runs_root)
         self.runs_root.mkdir(parents=True, exist_ok=True)
         self.console_root = Path(console_root) if console_root else Path(__file__).resolve().parents[1] / "console"
+        self.web_root = Path(web_root) if web_root else Path(__file__).resolve().parents[1] / "web"
         self.launcher = launcher
         self.runs: dict[str, dict[str, Any]] = {}
         self.lock = threading.Lock()
@@ -46,11 +48,15 @@ class Application:
         if path == "/healthz" and method == "GET":
             return self.json_response("200 OK", {"ok": True})
         if path == "/" and method == "GET":
-            return self.file_response(self.console_root / "index.html")
+            return self.file_response(self.web_root / "index.html")
+        if path in {"/console", "/console/"} and method == "GET":
+            return self.console_index_response()
         if path == "/runs" or path.startswith("/runs/"):
             return self.run_response(method, path, environ)
+        if path.startswith("/console/") and method == "GET":
+            return self.console_response(path.removeprefix("/console/"))
         if path.startswith("/") and method == "GET":
-            return self.console_response(path)
+            return self.web_response(path)
         return self.not_found()
 
     def console_response(self, path: str) -> Response:
@@ -58,6 +64,20 @@ class Application:
         if not self.safe_relative(relative):
             return self.not_found()
         return self.file_response(self.console_root / relative)
+
+    def web_response(self, path: str) -> Response:
+        relative = Path(path.lstrip("/"))
+        if not self.safe_relative(relative):
+            return self.not_found()
+        return self.file_response(self.web_root / relative)
+
+    def console_index_response(self) -> Response:
+        """Serve /console with an explicit base so its relative assets stay mounted."""
+        path = self.console_root / "index.html"
+        if not path.is_file():
+            return self.not_found()
+        body = path.read_bytes().replace(b"</head>", b'<base href="/console/">\n  </head>', 1)
+        return "200 OK", [("Content-Type", "text/html"), ("Content-Length", str(len(body)))], body
 
     def run_response(self, method: str, path: str, environ: dict[str, Any]) -> Response:
         parts = path.split("/")[2:]
