@@ -150,7 +150,10 @@ def test_realtime_flags_an_action_that_never_reaches_a_witness() -> None:
     silent = "owner-ar-light-desktop"
     findings = RealtimeSpecialist(deadline_ms=3_000).judge(
         [moment(changed=(actor,), action="create invoice")],
-        [say(BASELINE), say(Context(locale=Locale.AR, varies=Axis.LOCALE))],
+        [
+            say(Context(varies=Axis.RELATIONAL)),
+            say(Context(locale=Locale.AR, varies=Axis.RELATIONAL)),
+        ],
     )
     assert len(findings) == 1
     assert findings[0].kind is FindingKind.PROPAGATION_FAILURE
@@ -167,6 +170,22 @@ def test_realtime_stays_silent_when_the_effect_arrives_before_deadline() -> None
             moment(changed=(actor,), action="create invoice"),
             moment(changed=(witness,), at=NOW + timedelta(milliseconds=2_999)),
         ],
-        [],
+        [
+            say(Context(varies=Axis.RELATIONAL)),
+            say(Context(locale=Locale.AR, varies=Axis.RELATIONAL)),
+        ],
+    )
+    assert findings == []
+
+
+def test_realtime_says_nothing_about_an_ordinary_sweep() -> None:
+    """Every tile repaints as its page loads. That is not a failed propagation.
+
+    Without this guard a three-surface run produced sixty-nine HIGH findings,
+    one for every witness that did not happen to repaint after another did.
+    """
+    findings = RealtimeSpecialist(deadline_ms=3_000).judge(
+        [moment(changed=("owner-en-light-desktop",), action="/settings")],
+        [say(BASELINE), say(Context(locale=Locale.AR, varies=Axis.LOCALE))],
     )
     assert findings == []
