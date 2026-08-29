@@ -10,7 +10,7 @@ from ..types import Axis, Finding, FindingKind, Testimony
 
 
 class AccessSpecialist:
-    """Expose privilege comparison through the common specialist interface."""
+    """An explicit compatibility lens for consumers that request privilege findings alone."""
 
     name = "access"
 

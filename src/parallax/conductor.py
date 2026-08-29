@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 import json
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -104,6 +105,7 @@ class Conductor:
         sequence = {context.name: 0 for context in self.contexts}
         all_testimonies: list[Testimony] = []
         all_findings: list[Finding] = []
+        published_finding_ids: set[str] = set()
         surface_mosaics: dict[str, MosaicFrame] = {}
 
         for surface in surfaces:
@@ -117,15 +119,9 @@ class Conductor:
             if moments:
                 surface_mosaics[surface.id] = moments[-1].mosaic
 
-            baseline = next((item for item in testimonies if item.context.varies is Axis.BASELINE), None)
-            if baseline is not None:
-                for variant in testimonies:
-                    for defect in mirror_defects(baseline, variant):
-                        if defect not in variant.defects:
-                            variant.defects.append(defect)
-            findings = compare(testimonies)
-            for specialist in self.specialists:
-                findings.extend(specialist.judge(moments, testimonies))
+            findings = compare(_with_mirror_observations(testimonies))
+            findings.extend(self._judge_specialists(feed_path, surface, moments, testimonies))
+            findings = _unpublished_findings(findings, published_finding_ids)
             all_findings.extend(findings)
             for finding in findings:
                 self._write(feed_path, "finding", finding_payload(finding, mosaic=surface_mosaics.get(finding.surface.id)))
@@ -145,9 +141,8 @@ class Conductor:
             findings = compare(testimonies)
             if observed_finding is not None:
                 findings.append(observed_finding)
-            for specialist in self.specialists:
-                findings.extend(specialist.judge(moments, testimonies))
-            findings = _unique_findings(findings)
+            findings.extend(self._judge_specialists(feed_path, scenario.surface, moments, testimonies))
+            findings = _unpublished_findings(findings, published_finding_ids)
             all_findings.extend(findings)
             for finding in findings:
                 self._write(feed_path, "finding", finding_payload(finding, mosaic=scenario_mosaic))
@@ -370,6 +365,27 @@ class Conductor:
         path.write_bytes(moment.mosaic.jpeg)
         return relative.as_posix()
 
+    def _judge_specialists(
+        self, feed_path: Path, surface: Surface, moments: Sequence[Moment], testimonies: Sequence[Testimony]
+    ) -> list[Finding]:
+        """Run each lens against a private snapshot so it cannot poison another."""
+        findings: list[Finding] = []
+        for specialist in self.specialists:
+            try:
+                findings.extend(specialist.judge(deepcopy(moments), deepcopy(testimonies)))
+            except Exception as error:
+                # Lens errors are run diagnostics, not witness evidence. Keep
+                # them in the feed without allowing one optional lens to end
+                # the sweep or hide the remaining lenses' findings.
+                self._write(feed_path, "status", {
+                    "surface": surface.describe(),
+                    "surface_id": surface.id,
+                    "state": "error",
+                    "specialist": specialist.name,
+                    "error": f"{type(error).__name__}: {error}",
+                })
+        return findings
+
     @staticmethod
     def _write(path: Path, kind: str, payload: dict[str, Any]) -> None:
         with path.open("a", encoding="utf-8") as feed:
@@ -422,13 +438,26 @@ def _is_at_or_below_start_path(target: str, start_url: str) -> bool:
     return target_path == start_path.rstrip("/") or target_path.startswith(directory)
 
 
-def _unique_findings(findings: Sequence[Finding]) -> list[Finding]:
-    """A direct pair observation is authoritative; visual lenses may corroborate it."""
+def _with_mirror_observations(testimonies: Sequence[Testimony]) -> list[Testimony]:
+    """Give the differ derived mirror observations without rewriting evidence."""
+    observations = [replace(testimony, defects=list(testimony.defects)) for testimony in testimonies]
+    baseline = next((item for item in testimonies if item.context.varies is Axis.BASELINE), None)
+    if baseline is None:
+        return observations
+    for index, variant in enumerate(testimonies):
+        for defect in mirror_defects(baseline, variant):
+            if defect not in observations[index].defects:
+                observations[index].defects.append(defect)
+    return observations
+
+
+def _unpublished_findings(findings: Sequence[Finding], published_ids: set[str]) -> list[Finding]:
+    """One deterministic finding identity may be corroborated by many lenses."""
     unique: list[Finding] = []
-    seen: set[tuple[object, ...]] = set()
+    seen: set[str] = set()
     for finding in findings:
-        key = (finding.kind, finding.axis, finding.surface.id)
-        if key not in seen:
-            seen.add(key)
+        if finding.id not in seen and finding.id not in published_ids:
+            seen.add(finding.id)
             unique.append(finding)
+    published_ids.update(seen)
     return unique
