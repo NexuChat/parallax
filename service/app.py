@@ -168,7 +168,11 @@ class Application:
 
 def main() -> None:
     port = int(os.environ.get("PORT", "8080"))
-    with make_server("0.0.0.0", port, Application()) as server:
+    # /data is where the container mounts its writable volume; anywhere else —
+    # a developer's laptop, a systemd unit on a host — needs to say so rather
+    # than crash on a path it was never going to be allowed to create.
+    runs_root = os.environ.get("PARALLAX_RUNS_ROOT", "/data/runs")
+    with make_server("0.0.0.0", port, Application(runs_root=runs_root)) as server:
         server.serve_forever()
 
 
