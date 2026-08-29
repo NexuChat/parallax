@@ -88,7 +88,11 @@ class Witness:
         if not blocked and surface.kind is SurfaceKind.AFFORDANCE and surface.selector:
             blocked = not await self._affordance_is_visible(surface.selector)
 
-        outcome = Outcome.BLOCKED if blocked else Outcome.PARTIAL if defects else Outcome.REACHED
+        # HTTP status is evidence about the page, not a witness failure: 2xx and
+        # non-denial redirects reach it; 4xx block it (404/410 mean absent); 5xx
+        # observe a degraded page. Only a witness exception is Outcome.ERROR.
+        server_error = status is not None and 500 <= status < 600
+        outcome = Outcome.BLOCKED if blocked else Outcome.PARTIAL if server_error or defects else Outcome.REACHED
         note = self._note_for(outcome, status, final_path, defects)
         return Testimony(
             surface=surface,
@@ -228,8 +232,10 @@ class Witness:
 
     @staticmethod
     def _is_denied(status: int | None, requested: str, final_path: str) -> bool:
-        if status in (401, 403):
+        if status is not None and 400 <= status < 500:
             return True
+        if status is not None and 500 <= status < 600:
+            return False
         requested_path = Witness._path_of(requested)
         if requested_path == final_path:
             return False
@@ -243,8 +249,14 @@ class Witness:
     @staticmethod
     def _note_for(outcome: Outcome, status: int | None, final_path: str, defects: list[Defect]) -> str:
         if outcome is Outcome.BLOCKED:
-            return f"HTTP {status}" if status in (401, 403) else f"redirected to {final_path}"
+            if status in (404, 410):
+                return f"HTTP {status}: absent"
+            if status is not None and 400 <= status < 500:
+                return f"HTTP {status}"
+            return f"redirected to {final_path}"
         if outcome is Outcome.PARTIAL:
+            if status is not None and 500 <= status < 600:
+                return f"HTTP {status} server error"
             return f"{len(defects)} render defect(s)"
         return f"reached {final_path}"
 

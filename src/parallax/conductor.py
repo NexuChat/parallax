@@ -150,7 +150,12 @@ class Conductor:
                     if not isinstance(href, str):
                         continue
                     target = _normal_url(urljoin(route, href))
-                    if _origin(target) == origin and target not in visited and target not in pending:
+                    if (
+                        _origin(target) == origin
+                        and _is_at_or_below_start_path(target, self.start_url)
+                        and target not in visited
+                        and target not in pending
+                    ):
                         pending.append(target)
         finally:
             await witness.close()
@@ -262,3 +267,11 @@ def _normal_url(url: str) -> str:
 def _origin(url: str) -> tuple[str, str]:
     parts = urlsplit(url)
     return parts.scheme, parts.netloc
+
+
+def _is_at_or_below_start_path(target: str, start_url: str) -> bool:
+    """Keep discovery in the start path's directory, whether or not it ends in '/'."""
+    start_path = urlsplit(start_url).path or "/"
+    directory = start_path if start_path.endswith("/") else f"{start_path}/"
+    target_path = urlsplit(target).path or "/"
+    return target_path == start_path.rstrip("/") or target_path.startswith(directory)

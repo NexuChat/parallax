@@ -162,6 +162,23 @@ def test_conductor_discovers_bounds_runs_concurrently_and_publishes(tmp_path: Pa
     asyncio.run(check())
 
 
+def test_discovery_stays_within_the_start_path_and_origin(tmp_path: Path) -> None:
+    async def check() -> None:
+        for start in (f"{SITE}/shop", f"{SITE}/shop/"):
+            discovery = {
+                start: {"links": ["/shop/inside", "/sibling", "https://elsewhere.test/nope"], "affordances": []},
+                f"{SITE}/shop/inside": {"links": [], "affordances": []},
+            }
+            browser = FakeBrowser([{"discovery": discovery}])
+            conductor = Conductor(start, tmp_path, browser=browser)
+
+            surfaces = await conductor._discover()
+
+            assert [surface.path for surface in surfaces] == [start, f"{SITE}/shop/inside"]
+
+    asyncio.run(check())
+
+
 def test_moments_are_harvested_while_the_witnesses_are_still_working(tmp_path: Path) -> None:
     """Ticking once after everyone finishes would leave only an end-state snapshot."""
 
