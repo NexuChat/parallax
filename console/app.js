@@ -3,12 +3,12 @@
 
   const severityRank = { high: 0, medium: 1, low: 2, info: 3 };
   const source = new URLSearchParams(location.search).get('feed') || 'fixtures/feed.jsonl';
-  const state = { seen: new Set(), findings: [], tiles: [], lastFileText: '', byteOffset: 0, activeWitnesses: [], eventCount: 0 };
+  const state = { seen: new Set(), findings: [], mosaicsBySurface: new Map(), latestMosaic: null, tiles: [], lastFileText: '', byteOffset: 0, activeWitnesses: [], selectedFindingId: null, eventCount: 0 };
   const $ = (id) => document.getElementById(id);
   const el = {
     image: $('mosaicImage'), stage: $('mosaicStage'), layer: $('tileLayer'), mosaicEmpty: $('mosaicEmpty'),
     sequence: $('sequence'), findings: $('findings'), findingsEmpty: $('findingsEmpty'), runState: $('runState'),
-    feedIndicator: $('feedIndicator'), feedSource: $('feedSource'), caption: $('mosaicCaption')
+    feedIndicator: $('feedIndicator'), feedSource: $('feedSource'), caption: $('mosaicCaption'), title: $('mosaicTitle'), wallMode: $('wallMode')
   };
 
   const contexts = [
@@ -47,14 +47,51 @@
   }
   function renderMosaic(payload) {
     if (!Array.isArray(payload.tiles) || !payload.image) return;
-    state.tiles = payload.tiles; el.sequence.textContent = `FRAME ${payload.seq ?? '—'} · ${payload.tiles.length} WITNESSES`;
+    const surfaceId = typeof payload.surface_id === 'string' ? payload.surface_id : null;
+    if (surfaceId && Number.isFinite(payload.seq)) {
+      if (!state.mosaicsBySurface.has(surfaceId)) state.mosaicsBySurface.set(surfaceId, new Map());
+      state.mosaicsBySurface.get(surfaceId).set(payload.seq, payload);
+    }
+    state.latestMosaic = payload;
+    if (state.selectedFindingId) showSelectedFinding(); else showLiveMosaic();
+  }
+  function displayMosaic(payload, { title, mode, caption, dim = false } = {}) {
+    state.tiles = payload.tiles; el.title.textContent = title || 'Live witness mosaic'; el.wallMode.textContent = mode || 'LIVE FRAME';
+    el.wallMode.className = `wall-mode${mode === 'EVIDENCE FRAME' ? ' is-evidence' : ''}`;
+    el.sequence.textContent = `FRAME ${payload.seq ?? '—'} · ${payload.tiles.length} WITNESSES`;
+    el.stage.classList.toggle('is-unavailable', dim);
     el.image.onload = () => { el.image.style.display = 'block'; el.mosaicEmpty.style.display = 'none'; layoutTiles(); };
     // A mosaic path in the feed is relative to the FEED, not to this page. A run
     // published under runs/<id>/ names its images `mosaics/…`, and resolving that
     // against the document gave /console/mosaics/… — a broken image on every frame.
     el.image.src = /^(data:|https?:|\/)/.test(payload.image)
       ? payload.image
-      : new URL(payload.image, new URL(source, document.baseURI)).href; el.caption.textContent = `Frame ${payload.seq ?? '—'} · ${payload.tiles.length} contexts aligned to their source pixels. Active evidence is outlined in red.`;
+      : new URL(payload.image, new URL(source, document.baseURI)).href; el.caption.textContent = caption || `Live frame ${payload.seq ?? '—'} · ${payload.tiles.length} contexts aligned to their source pixels.`;
+  }
+  function showLiveMosaic() {
+    if (!state.latestMosaic) return;
+    displayMosaic(state.latestMosaic, { caption: `Live frame ${state.latestMosaic.seq ?? '—'} · ${state.latestMosaic.tiles.length} contexts aligned to their source pixels.` });
+  }
+  function showUnavailableEvidence(message, { showLatest = false } = {}) {
+    const latest = showLatest && state.latestMosaic;
+    if (latest) {
+      displayMosaic(latest, { title: 'Evidence frame unavailable', mode: 'EVIDENCE UNAVAILABLE', dim: true, caption: `${message} Showing the latest live frame only; it is not this finding's evidence.` });
+    } else {
+      state.tiles = []; el.layer.replaceChildren(); el.image.style.display = 'none'; el.stage.classList.add('is-unavailable');
+      el.title.textContent = 'Evidence frame unavailable'; el.wallMode.textContent = 'EVIDENCE UNAVAILABLE'; el.wallMode.className = 'wall-mode is-unavailable'; el.sequence.textContent = 'NO CAPTURED FRAME'; el.mosaicEmpty.textContent = message; el.mosaicEmpty.style.display = 'block'; el.caption.textContent = 'No pixels are being presented as evidence for this finding.';
+    }
+  }
+  function showSelectedFinding() {
+    const finding = state.findings.find((item) => item.id === state.selectedFindingId); if (!finding) return;
+    const reference = finding.mosaic;
+    if (!reference || typeof reference.surface_id !== 'string' || !Number.isFinite(reference.seq)) {
+      showUnavailableEvidence(reference === undefined ? 'This older feed has no evidence-frame reference for the selected finding.' : 'No settled mosaic frame was captured for the selected finding.', { showLatest: reference === undefined });
+      highlightWitnesses([]); return;
+    }
+    const mosaic = state.mosaicsBySurface.get(reference.surface_id)?.get(reference.seq);
+    if (!mosaic) { showUnavailableEvidence(`The captured mosaic for this finding (surface ${reference.surface_id}, frame ${reference.seq}) was not received.`); highlightWitnesses([]); return; }
+    displayMosaic(mosaic, { title: 'Finding evidence mosaic', mode: 'EVIDENCE FRAME', caption: `Evidence frame ${reference.seq} for this finding's surface. Outlined tiles are the witnesses behind the claim.` });
+    highlightWitnesses(finding.witnesses);
   }
   function layoutTiles() {
     const naturalWidth = el.image.naturalWidth, naturalHeight = el.image.naturalHeight;
@@ -80,15 +117,19 @@
     const card = document.createElement('article'); card.className = 'finding'; card.dataset.id = finding.id; card.style.setProperty('--severity', `var(--${finding.severity})`);
     card.innerHTML = `<div class="finding-head"><span class="pill">${escape(finding.severity).toUpperCase()}</span><span class="finding-kind">${escape(finding.kind).toUpperCase()}</span><span class="finding-axis">AXIS: ${escape(finding.axis)}</span></div><div class="finding-summary"></div><div class="finding-surface"></div><div class="evidence"><strong>EVIDENCE</strong> · <span></span></div>`;
     card.querySelector('.finding-summary').textContent = finding.summary; card.querySelector('.finding-surface').textContent = finding.surface || finding.surface_id || 'surface unknown'; card.querySelector('.evidence span').textContent = finding.evidence || 'No evidence line supplied';
-    card.addEventListener('mouseenter', () => activateFinding(finding.id)); card.addEventListener('focus', () => activateFinding(finding.id)); card.tabIndex = 0;
+    card.addEventListener('click', () => activateFinding(finding.id)); card.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activateFinding(finding.id); } }); card.tabIndex = 0; card.setAttribute('role', 'button'); card.setAttribute('aria-pressed', 'false');
     const before = [...el.findings.children].find((node) => {
       const existing = state.findings.find((item) => item.id === node.dataset.id);
       return existing && severityRank[existing.severity] >= severityRank[finding.severity];
     });
     el.findings.insertBefore(card, before || null); el.findingsEmpty?.remove(); updateTotals();
-    if (!el.findings.querySelector('.finding.is-active')) activateFinding(finding.id);
   }
-  function activateFinding(id) { const finding = state.findings.find((item) => item.id === id); if (!finding) return; el.findings.querySelectorAll('.finding').forEach((card) => card.classList.toggle('is-active', card.dataset.id === id)); highlightWitnesses(finding.witnesses); }
+  function activateFinding(id) {
+    const finding = state.findings.find((item) => item.id === id); if (!finding) return;
+    state.selectedFindingId = state.selectedFindingId === id ? null : id;
+    el.findings.querySelectorAll('.finding').forEach((card) => { const active = card.dataset.id === state.selectedFindingId; card.classList.toggle('is-active', active); card.setAttribute('aria-pressed', String(active)); });
+    if (state.selectedFindingId) showSelectedFinding(); else { highlightWitnesses([]); showLiveMosaic(); }
+  }
   function updateTotals() { const counts = { high:0, medium:0, low:0, info:0 }; state.findings.forEach((f) => { if (f.severity in counts) counts[f.severity] += 1; }); Object.entries(counts).forEach(([severity, count]) => { $(`${severity}Count`).textContent = count; }); $('findingCount').textContent = state.findings.length; }
   function escape(value) { const node = document.createElement('span'); node.textContent = value ?? ''; return node.innerHTML; }
   function setFeedMode(label) { el.feedIndicator.textContent = label; el.feedSource.textContent = `feed: ${source}`; }

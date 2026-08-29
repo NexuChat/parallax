@@ -12,7 +12,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urldefrag, urljoin, urlsplit, urlunsplit
 
 from .compositor import Compositor
-from .contracts import FeedEvent, Frame, Moment, Specialist, finding_payload, mosaic_payload
+from .contracts import FeedEvent, Frame, Moment, MosaicFrame, Specialist, finding_payload, mosaic_payload
 from .differ import compare
 from .emitter import emit_all
 from .mirror import mirror_defects
@@ -104,6 +104,7 @@ class Conductor:
         sequence = {context.name: 0 for context in self.contexts}
         all_testimonies: list[Testimony] = []
         all_findings: list[Finding] = []
+        surface_mosaics: dict[str, MosaicFrame] = {}
 
         for surface in surfaces:
             self._write(feed_path, "status", {"surface": surface.describe(), "surface_id": surface.id, "state": "started"})
@@ -112,7 +113,9 @@ class Conductor:
             all_testimonies.extend(testimonies)
             for moment in moments:
                 image = self._write_mosaic(surface, moment)
-                self._write(feed_path, "mosaic", mosaic_payload(moment.mosaic, image))
+                self._write(feed_path, "mosaic", mosaic_payload(moment.mosaic, image, surface_id=surface.id))
+            if moments:
+                surface_mosaics[surface.id] = moments[-1].mosaic
 
             baseline = next((item for item in testimonies if item.context.varies is Axis.BASELINE), None)
             if baseline is not None:
@@ -125,7 +128,7 @@ class Conductor:
                 findings.extend(specialist.judge(moments, testimonies))
             all_findings.extend(findings)
             for finding in findings:
-                self._write(feed_path, "finding", finding_payload(finding))
+                self._write(feed_path, "finding", finding_payload(finding, mosaic=surface_mosaics.get(finding.surface.id)))
 
         for scenario in self.relational_scenarios:
             self._write(feed_path, "status", {
