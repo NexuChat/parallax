@@ -9,16 +9,27 @@
   const note = document.getElementById('scoreboard-note');
   const feedStatus = document.getElementById('feed-status');
   const consoleFrame = document.getElementById('console-frame');
+  const generatedSpec = document.getElementById('generated-spec');
 
   function drawScoreboard(summary) {
     const rows = sites.map(([site, planted]) => {
       const run = summary && summary[site];
       const found = run && Number.isFinite(run.found) ? String(run.found) : '<span class="not-run">not yet run</span>';
+      const missed = run && Number.isFinite(run.missed) ? String(run.missed) : '<span class="not-run">not yet run</span>';
       const falsePositives = run && Number.isFinite(run.false_positives) ? String(run.false_positives) : '<span class="not-run">not yet run</span>';
-      return `<tr><td class="${site === 'control' ? 'control' : ''}">${site}${site === 'control' ? ' / clean control' : ''}</td><td>${planted}</td><td>${found}</td><td>${falsePositives}</td></tr>`;
+      const reportedPlants = run && Number.isFinite(run.planted) ? String(run.planted) : String(planted);
+      return `<tr><td class="${site === 'control' ? 'control' : ''}">${site}${site === 'control' ? ' / clean control' : ''}</td><td>${reportedPlants}</td><td>${found}</td><td>${missed}</td><td>${falsePositives}</td></tr>`;
     });
     table.innerHTML = rows.join('');
     if (summary) note.textContent = 'Run figures loaded from /graded-summary.json. Planted counts remain the demo declarations.';
+  }
+
+  async function loadGeneratedSpec() {
+    try {
+      const response = await fetch('/generated-example.spec.ts', { cache: 'no-store' });
+      if (!response.ok) return;
+      generatedSpec.textContent = await response.text();
+    } catch (_) { /* The committed example remains available when served. */ }
   }
 
   async function loadScoreboard() {
@@ -46,5 +57,6 @@
   }
 
   loadScoreboard();
+  loadGeneratedSpec();
   attachRun();
 })();
