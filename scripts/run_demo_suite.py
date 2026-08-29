@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from http.cookies import SimpleCookie
+import importlib
+import inspect
+import json
 import os
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,15 +41,25 @@ def _value(value: object) -> str:
 
 
 def _route_matches(planted_route: str, finding_route: str, site_name: str | None) -> bool:
-    expected = urlsplit(planted_route).path or "/"
-    actual = urlsplit(finding_route).path or "/"
+    expected = _path(planted_route)
+    actual = _path(finding_route)
     if site_name and actual == f"/{site_name}":
         actual = "/"
     elif site_name and actual.startswith(f"/{site_name}/"):
         actual = actual[len(site_name) + 1 :]
-    expected = "/" + expected.strip("/") if expected != "/" else "/"
-    actual = "/" + actual.strip("/") if actual != "/" else "/"
-    return expected == actual
+    expected_parts = expected.split("/")
+    actual_parts = actual.split("/")
+    if len(expected_parts) != len(actual_parts):
+        return False
+    return all(
+        bool(actual_part) if re.fullmatch(r"<[^/<>]+>", expected_part) else expected_part == actual_part
+        for expected_part, actual_part in zip(expected_parts, actual_parts)
+    )
+
+
+def _path(value: str) -> str:
+    path = urlsplit(value).path or "/"
+    return path if path.startswith("/") else f"/{path}"
 
 
 def _finding_defects(finding: Finding) -> set[str]:
@@ -86,6 +102,87 @@ def _specialists(no_vision: bool) -> list[object]:
     return specialists
 
 
+def storage_state_from_login_response(response: object, origin: str) -> dict[str, object]:
+    """Convert a plain HTTP login response into Playwright's storage-state shape."""
+    headers = getattr(response, "headers", {})
+    raw_cookies = headers.get_all("Set-Cookie") if hasattr(headers, "get_all") else None
+    if not raw_cookies:
+        raw_cookie = headers.get("Set-Cookie")
+        raw_cookies = [raw_cookie] if raw_cookie else []
+    host = urlsplit(origin).hostname
+    if not host:
+        raise ValueError(f"login origin has no host: {origin}")
+    cookies: list[dict[str, object]] = []
+    for raw_cookie in raw_cookies:
+        parsed = SimpleCookie(str(raw_cookie))
+        for morsel in parsed.values():
+            same_site = morsel["samesite"].capitalize() if morsel["samesite"] else "Lax"
+            cookies.append({
+                "name": morsel.key,
+                "value": morsel.value,
+                "domain": host,
+                "path": morsel["path"] or "/",
+                "httpOnly": bool(morsel["httponly"]),
+                "secure": bool(morsel["secure"]),
+                "sameSite": same_site,
+            })
+    if not cookies:
+        raise ValueError("login response did not set a session cookie")
+    return {"cookies": cookies, "origins": []}
+
+
+def _seeded_accounts(site: object) -> list[tuple[str, dict[str, str]]]:
+    """Read demo credentials from the site module instead of embedding them here."""
+    module = importlib.import_module(type(site).__module__)
+    text = inspect.getdoc(module) or ""
+    pairs = re.findall(r"``([^`/]+?)\s*/\s*([^`]+?)``", text)
+    if not pairs:
+        # Older demos omitted their account paragraph; still read credentials from
+        # the module that owns them, never from this runner.
+        source = inspect.getsource(module)
+        login_rule = next((line for line in source.splitlines() if line.lstrip().startswith("if ") and "password" in line and " in " in line), "")
+        pairs = re.findall(r"\(\s*[\"']([^\"']+)[\"']\s*,\s*[\"']([^\"']+)[\"']\s*\)", login_rule)
+    if pairs:
+        return [(name, {"username": name, "password": password}) for name, password in pairs]
+
+    values = re.findall(r"``([^`]+)``", text)
+    emails = [value for value in values if "@" in value]
+    password = next((value for value in reversed(values) if "@" not in value), None)
+    if emails and password:
+        return [(email.split("@", 1)[0], {"email": email, "password": password}) for email in emails]
+    return []
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, request: Request, fp: object, code: int, msg: str, headers: object, newurl: str) -> None:
+        return None
+
+    def http_error_302(self, request: Request, fp: object, code: int, msg: str, headers: object) -> object:
+        return fp
+
+    http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302
+
+
+def build_storage_states(site: object, host: str, run_dir: Path) -> dict[str, Path]:
+    """Log in each documented seeded role over HTTP and persist its cookie state."""
+    states: dict[str, Path] = {}
+    run_dir.mkdir(parents=True, exist_ok=True)
+    origin = host.rstrip("/")
+    for role, credentials in _seeded_accounts(site):
+        request = Request(
+            f"{origin}/{getattr(site, 'name')}/login",
+            data=urlencode(credentials).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method="POST",
+        )
+        with build_opener(_NoRedirect()).open(request) as response:
+            state = storage_state_from_login_response(response, origin)
+        path = run_dir / f"storage-{role}.json"
+        path.write_text(json.dumps(state), encoding="utf-8")
+        states[role] = path
+    return states
+
+
 async def run(args: argparse.Namespace) -> dict[str, Grade]:
     from playwright.async_api import async_playwright
 
@@ -98,9 +195,11 @@ async def run(args: argparse.Namespace) -> dict[str, Grade]:
         browser = await playwright.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
         try:
             for site in sites:
+                run_dir = ROOT / "runs" / site.name
                 summary = await Conductor(
-                    f"{host}/{site.name}/", ROOT / "runs" / site.name, browser=browser,
+                    f"{host}/{site.name}/", run_dir, browser=browser,
                     specialists=_specialists(args.no_vision), max_surfaces=args.max_surfaces,
+                    storage_states=build_storage_states(site, host, run_dir),
                 ).conduct()
                 grades[site.name] = grade_findings(summary.findings, site.planted, site.name)
         finally:
@@ -115,6 +214,12 @@ def print_report(grades: dict[str, Grade]) -> None:
             f"false+:{_value(finding.kind)}@{urlsplit(finding.surface.path).path}" for finding in grade.false_positives
         ]) or "ok"
         print(f"{name:<10} {len(grade.found):>5}  {len(grade.missed):>6}  {len(grade.false_positives):>6}  {details}")
+    found = sum(len(grade.found) for grade in grades.values())
+    missed = sum(len(grade.missed) for grade in grades.values())
+    false_positives = sum(len(grade.false_positives) for grade in grades.values())
+    code = exit_code(grades)
+    result = "PASS" if code == 0 else "FAIL"
+    print(f"total      {found:>5}  {missed:>6}  {false_positives:>6}  {result} (exit {code})")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -122,7 +227,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--host", default="http://127.0.0.1:8080")
     parser.add_argument("--only")
     parser.add_argument("--no-vision", action="store_true")
-    parser.add_argument("--max-surfaces", type=int, default=12)
+    parser.add_argument("--max-surfaces", type=int, default=64)
     return parser.parse_args(argv)
 
 
