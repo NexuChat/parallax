@@ -9,6 +9,8 @@
   const applicationOrder = ['workspace', 'shop', 'admin', 'docs', 'control'];
   const table = document.getElementById('scoreboard-data');
   const note = document.getElementById('scoreboard-note');
+  const controlFigures = document.getElementById('control-figures');
+  const controlRatio = document.getElementById('control-ratio');
   const gallery = document.getElementById('app-gallery');
   const feedStatus = document.getElementById('feed-status');
   const consoleFrame = document.getElementById('console-frame');
@@ -27,6 +29,22 @@
     if (summary) note.textContent = 'Run figures loaded from /graded-summary.json. Planted counts remain the demo declarations.';
   }
 
+  function drawControlSummary(data) {
+    const summary = data && data.sites ? data.sites : data;
+    const totals = data && data.totals;
+    const control = summary && summary.control;
+    const planted = totals && totals.planted;
+    const found = totals && totals.found;
+    const falsePositives = control && control.false_positives;
+    if (![planted, found, falsePositives].every(Number.isFinite)) {
+      controlFigures.innerHTML = '<span class="control-figure"><b>Unavailable</b><small>defects found</small></span><span class="control-figure"><b>Unavailable</b><small>defects planted</small></span><span class="control-figure"><b>Unavailable</b><small>findings on control</small></span>';
+      controlRatio.textContent = 'Control result unavailable: /graded-summary.json could not provide the measured figures.';
+      return;
+    }
+    controlFigures.innerHTML = `<span class="control-figure"><b>${found}</b><small>defects found</small></span><span class="control-figure"><b>${planted}</b><small>defects planted</small></span><span class="control-figure"><b>${falsePositives}</b><small>findings on control</small></span>`;
+    controlRatio.textContent = `${found} of ${planted} defects found. ${falsePositives} findings appeared on the clean control.`;
+  }
+
   async function loadGeneratedSpec() {
     try {
       const response = await fetch('/generated-example.spec.ts', { cache: 'no-store' });
@@ -39,10 +57,14 @@
     drawScoreboard(null);
     try {
       const response = await fetch(summaryUrl, { cache: 'no-store' });
-      if (!response.ok) return;
+      if (!response.ok) throw new Error('summary unavailable');
       const data = await response.json();
-      if (data && typeof data === 'object') drawScoreboard(data.sites || data);
-    } catch (_) { /* Declared plants remain the offline baseline. */ }
+      if (!data || typeof data !== 'object') throw new Error('summary invalid');
+      drawScoreboard(data.sites || data);
+      drawControlSummary(data);
+    } catch (_) {
+      drawControlSummary(null);
+    }
   }
 
   function feedUrl(entry) {

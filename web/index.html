@@ -13,8 +13,8 @@
     <header class="masthead">
       <a class="wordmark" href="#thesis" aria-label="Parallax home"><span>P</span> PARALLAX</a>
       <nav aria-label="Page sections">
-        <a href="#wall">Live wall</a>
         <a href="#scoreboard">Scoreboard</a>
+        <a href="#wall">Live wall</a>
         <a href="#output">Output</a>
       </nav>
     </header>
@@ -24,6 +24,17 @@
         <div class="hero-copy">
           <p class="kicker">RELATIONAL BROWSER TESTING</p>
           <h1 id="thesis-title">One eye sees no depth.<br>Two do.</h1>
+          <section class="measured-control" aria-labelledby="control-title" aria-describedby="control-explanation">
+            <p class="kicker">MEASURED CONTROL</p>
+            <h2 id="control-title">The result includes being wrong.</h2>
+            <div class="control-figures" id="control-figures" role="status" aria-live="polite">
+              <span class="control-figure"><b>Loading</b><small>defects found</small></span>
+              <span class="control-figure"><b>Loading</b><small>defects planted</small></span>
+              <span class="control-figure"><b>Loading</b><small>findings on control</small></span>
+            </div>
+            <p class="control-ratio" id="control-ratio">Measured control result loading.</p>
+            <p class="control-explanation" id="control-explanation">The control is an application deliberately built correct, so any finding on it is a false positive by definition; that makes the error rate measured rather than claimed. No other entrant reports how often they are wrong.</p>
+          </section>
           <p class="lede">A single browsing session cannot know what it is missing. A member does not know that the page it just opened should have denied them. The evidence is in the relationship between accounts.</p>
           <p class="lede secondary">Parallax runs seven isolated browser contexts at the same instant, changes exactly one axis from a baseline, then reads the disagreement.</p>
         </div>
@@ -42,8 +53,20 @@
         </div>
       </section>
 
+      <section class="scoreboard section" id="scoreboard" aria-labelledby="scoreboard-title">
+        <div class="section-heading"><p class="kicker">02 / GRADED DEMO FLEET</p><h2 id="scoreboard-title">The full result, including every false positive.</h2></div>
+        <p class="section-intro">Five applications declare their deliberate defects in code. The headline control figure is expanded here for inspection.</p>
+        <div class="scoreboard-wrap">
+          <table>
+            <thead><tr><th scope="col">Application</th><th scope="col">Defects planted</th><th scope="col">Defects found</th><th scope="col">Defects missed</th><th scope="col">False positives</th></tr></thead>
+            <tbody id="scoreboard-data"></tbody>
+          </table>
+        </div>
+        <p class="table-note" id="scoreboard-note">Run figures are not yet run. Planted counts come from each demo site's declared <code>planted</code> list.</p>
+      </section>
+
       <section class="wall section" id="wall" aria-labelledby="wall-title">
-        <div class="section-heading"><p class="kicker">02 / PUBLISHED SWEEPS</p><h2 id="wall-title">Five applications, one method.</h2></div>
+        <div class="section-heading"><p class="kicker">03 / PUBLISHED SWEEPS</p><h2 id="wall-title">Five applications, one method.</h2></div>
         <p class="section-intro">Choose an application to inspect its seven-session wall. Each sweep preserves the same witnesses while changing only one axis at a time.</p>
         <div class="app-gallery" id="app-gallery" aria-label="Published application sweeps" aria-busy="true">
           <p class="gallery-loading">Loading published application sweeps.</p>
@@ -52,18 +75,6 @@
           <iframe id="console-frame" src="/console?feed=%2Fconsole%2Fruns%2Flatest%2Ffeed.jsonl" title="Parallax live witness mosaic" loading="eager"></iframe>
         </div>
         <p class="feed-status" id="feed-status" role="status">Loading the published sweep index.</p>
-      </section>
-
-      <section class="scoreboard section" id="scoreboard" aria-labelledby="scoreboard-title">
-        <div class="section-heading"><p class="kicker">03 / GRADED DEMO FLEET</p><h2 id="scoreboard-title">The result includes being wrong.</h2></div>
-        <p class="section-intro">Five applications declare their deliberate defects in code. The control has nothing planted: any finding there is a false positive by definition. That makes the error rate measurable, not implied.</p>
-        <div class="scoreboard-wrap">
-          <table>
-            <thead><tr><th scope="col">Application</th><th scope="col">Defects planted</th><th scope="col">Defects found</th><th scope="col">Defects missed</th><th scope="col">False positives</th></tr></thead>
-            <tbody id="scoreboard-data"></tbody>
-          </table>
-        </div>
-        <p class="table-note" id="scoreboard-note">Run figures are not yet run. Planted counts come from each demo site's declared <code>planted</code> list.</p>
       </section>
 
       <section class="output section" id="output" aria-labelledby="output-title">
