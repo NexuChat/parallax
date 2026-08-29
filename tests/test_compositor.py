@@ -3,7 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from parallax.compositor import Compositor
 from parallax.contracts import Frame
@@ -15,6 +15,17 @@ CONTEXTS = tuple(f"witness-{index}" for index in range(7))
 def jpeg(color: tuple[int, int, int], size: tuple[int, int] = (12, 8)) -> bytes:
     buffer = BytesIO()
     Image.new("RGB", size, color).save(buffer, format="JPEG", quality=100, subsampling=0)
+    return buffer.getvalue()
+
+
+def split_jpeg(
+    top: tuple[int, int, int], bottom: tuple[int, int, int], size: tuple[int, int]
+) -> bytes:
+    """Make a frame whose top and bottom remain distinguishable after JPEG encoding."""
+    image = Image.new("RGB", size, top)
+    ImageDraw.Draw(image).rectangle((0, size[1] // 2, size[0], size[1]), fill=bottom)
+    buffer = BytesIO()
+    image.save(buffer, format="JPEG", quality=100, subsampling=0)
     return buffer.getvalue()
 
 
@@ -84,15 +95,73 @@ def test_submitting_frames_does_not_rebuild_the_wall_every_time(monkeypatch) -> 
     assert composed == 1            # and cached until the next frame
 
 
-def test_a_narrow_viewport_is_letterboxed_rather_than_stretched() -> None:
-    """The mobile witness is 360 wide next to a 1440 desktop. It must not distort."""
+def test_a_portrait_viewport_fills_the_tile_width_without_background_columns() -> None:
+    """Portrait witnesses use every horizontal pixel of their comparison tile."""
     compositor = Compositor(CONTEXTS, tile_size=(40, 20))
     compositor.submit(Frame(CONTEXTS[0], jpeg((240, 0, 0), size=(10, 20)), seq=1))
 
     mosaic = compositor.current_mosaic
     assert mosaic is not None
-    assert is_color(pixel(mosaic.jpeg, 20, 10), (240, 0, 0))   # the frame, centred
-    assert is_color(pixel(mosaic.jpeg, 2, 10), (36, 36, 36))   # padding, not stretched pixels
+    assert all(not is_color(pixel(mosaic.jpeg, x, 10), (36, 36, 36)) for x in range(40))
+    assert is_color(pixel(mosaic.jpeg, 0, 10), (240, 0, 0))
+    assert is_color(pixel(mosaic.jpeg, 20, 10), (240, 0, 0))
+    assert is_color(pixel(mosaic.jpeg, 38, 10), (240, 0, 0))
+
+
+def test_fit_to_width_crops_a_portrait_frame_from_its_top() -> None:
+    compositor = Compositor(CONTEXTS, tile_size=(40, 20))
+    compositor.submit(
+        Frame(
+            CONTEXTS[0],
+            split_jpeg((240, 0, 0), (0, 0, 240), size=(10, 30)),
+            seq=1,
+        )
+    )
+
+    mosaic = compositor.current_mosaic
+    assert mosaic is not None
+    assert is_color(pixel(mosaic.jpeg, 20, 2), (240, 0, 0))
+    assert is_color(pixel(mosaic.jpeg, 20, 18), (240, 0, 0))
+
+
+def test_a_landscape_frame_is_scaled_to_width_and_cropped_from_the_top() -> None:
+    compositor = Compositor(CONTEXTS, tile_size=(40, 20))
+    compositor.submit(
+        Frame(
+            CONTEXTS[0],
+            split_jpeg((240, 0, 0), (0, 240, 0), size=(60, 40)),
+            seq=1,
+        )
+    )
+
+    mosaic = compositor.current_mosaic
+    assert mosaic is not None
+    assert is_color(pixel(mosaic.jpeg, 0, 2), (240, 0, 0))
+    assert is_color(pixel(mosaic.jpeg, 38, 18), (0, 240, 0))
+
+
+def test_a_wide_short_frame_is_centred_on_the_tile_background() -> None:
+    compositor = Compositor(CONTEXTS, tile_size=(40, 20))
+    compositor.submit(Frame(CONTEXTS[0], jpeg((240, 0, 0), size=(100, 20)), seq=1))
+
+    mosaic = compositor.current_mosaic
+    assert mosaic is not None
+    assert is_color(pixel(mosaic.jpeg, 20, 2), (36, 36, 36))
+    assert is_color(pixel(mosaic.jpeg, 20, 10), (240, 0, 0))
+    assert is_color(pixel(mosaic.jpeg, 20, 18), (36, 36, 36))
+
+
+def test_fit_to_width_does_not_change_reported_tile_boxes() -> None:
+    compositor = Compositor(("portrait", "landscape"), tile_size=(40, 20))
+    compositor.submit(Frame("portrait", jpeg((240, 0, 0), size=(10, 30)), seq=1))
+    compositor.submit(Frame("landscape", jpeg((0, 240, 0), size=(60, 40)), seq=1))
+
+    mosaic = compositor.current_mosaic
+    assert mosaic is not None
+    assert [(tile.context_name, tile.x, tile.y, tile.w, tile.h) for tile in mosaic.tiles] == [
+        ("portrait", 0, 0, 40, 20),
+        ("landscape", 40, 0, 40, 20),
+    ]
 
 
 def test_unchanged_tile_emits_no_moment() -> None:

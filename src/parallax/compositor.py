@@ -88,7 +88,7 @@ class Compositor:
         image = _decode(frame.jpeg)
         if self._tile_size is None:
             self._tile_size = image.size
-        image = _fit(image, self._tile_size)
+        image = _fit_to_width(image, self._tile_size)
         thumbnail = image.convert("L").resize(_THUMBNAIL_SIZE, Image.Resampling.BILINEAR)
 
         old_thumbnail = self._thumbnails.get(frame.context_name)
@@ -170,23 +170,30 @@ def _decode(jpeg: bytes) -> Image.Image:
         raise ValueError("frame is not a valid JPEG") from error
 
 
-def _fit(image: Image.Image, size: tuple[int, int]) -> Image.Image:
-    """Scale a frame into its tile without distorting it.
+def _fit_to_width(image: Image.Image, size: tuple[int, int]) -> Image.Image:
+    """Fill the tile width without distortion, retaining the frame's top edge.
 
-    Witnesses do not share a viewport — 360x740 sits next to 1440x900 — so
-    stretching every frame to one tile size would leave the mobile witness
-    looking broken and destroy the comparison the wall exists to make. Letterbox
-    instead: the tile keeps its slot, the frame keeps its proportions.
+    Letterboxing made the portrait witnesses ineffective: on the published
+    mosaic, owner-en-light-mobile (480x300) was 69% padding and
+    owner-en-light-tablet was 53%, while every desktop witness was 1%. Scale to
+    width and crop vertically from the top instead, because the page top is the
+    shared comparison anchor and viewport differences emerge below it.
+
+    Keep the conductor's existing landscape tile aspect for this wall: it keeps
+    the fixed 4x2 grid compact and now contains image pixels rather than bars.
+    A future conductor-level experiment could choose taller tiles, but must not
+    alter the compositor's stable Tile boxes as part of this fitting change.
     """
-    if image.size == size:
-        return image
-    scale = min(size[0] / image.width, size[1] / image.height)
+    scale = size[0] / image.width
     scaled = image.resize(
         (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
         Image.Resampling.LANCZOS,
     )
     canvas = Image.new("RGB", size, _PLACEHOLDER)
-    canvas.paste(scaled, ((size[0] - scaled.width) // 2, (size[1] - scaled.height) // 2))
+    if scaled.height <= size[1]:
+        canvas.paste(scaled, (0, (size[1] - scaled.height) // 2))
+    else:
+        canvas.paste(scaled.crop((0, 0, size[0], size[1])), (0, 0))
     return canvas
 
 
