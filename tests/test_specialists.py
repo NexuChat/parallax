@@ -84,13 +84,13 @@ def test_every_specialist_satisfies_the_protocol() -> None:
 
 def test_access_delegates_to_differ_and_keeps_only_privilege_findings() -> None:
     member = Context(privilege=Privilege.MEMBER, varies=Axis.PRIVILEGE)
-    mobile = Context(viewport=BASELINE.viewport, varies=Axis.VIEWPORT)
+    anonymous = Context(privilege=Privilege.ANON, varies=Axis.PRIVILEGE)
     findings = AccessSpecialist().judge(
         [],
         [
             say(BASELINE),
             say(member),
-            say(mobile, Outcome.BLOCKED),
+            say(anonymous, Outcome.BLOCKED),
         ],
     )
     assert [finding.kind for finding in findings] == [FindingKind.ESCALATION]
