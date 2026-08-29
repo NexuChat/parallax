@@ -34,12 +34,30 @@ class Request:
 
     @property
     def lang(self) -> str:
-        """Arabic when asked for by query, cookie, or Accept-Language — in that order."""
+        """Return an explicit language choice first, then a safe header fallback.
+
+        Query and cookie choices are deliberate preferences and therefore win.
+        Otherwise English remains the default: Accept-Language yields Arabic only
+        when it contains a valid Arabic tag and no valid English tag. This keeps
+        English-primary visitors who also accept Arabic in English while retaining
+        Arabic for the locale witness, which sends ``Accept-Language: ar``.
+        Missing, malformed, and other-language headers fall back to English.
+        """
         explicit = self.query.get("lang") or self.cookies.get("lang")
         if explicit in ("ar", "en"):
             return explicit
-        accept = self.headers.get("accept-language", "").lower()
-        return "ar" if accept.startswith("ar") else "en"
+
+        languages = set()
+        for item in self.headers.get("accept-language", "").split(","):
+            tag = item.split(";", 1)[0].strip().lower()
+            subtags = tag.split("-")
+            if tag and all(
+                1 <= len(subtag) <= 8 and subtag.isascii() and subtag.isalnum()
+                for subtag in subtags
+            ) and subtags[0].isalpha():
+                languages.add(subtags[0])
+
+        return "ar" if "ar" in languages and "en" not in languages else "en"
 
     @property
     def theme(self) -> str:
