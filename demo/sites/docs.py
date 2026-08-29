@@ -85,7 +85,9 @@ class DocsSite:
         path = request.path.rstrip("/") or "/"
         if path not in {"/", "/guide", "/api", "/faq"}:
             return Response.not_found()
-        return Response.html(self._page(_T[request.lang], request.lang, request.theme, path, request.mount))
+        markup = self._page(_T[request.lang], request.lang, request.theme, path, request.mount)
+        overrides = ".topbar{flex-wrap:wrap;gap:12px 24px}.toc a,.related-questions a{display:inline-flex;align-items:center;min-block-size:44px}.code-head,.code-head button{min-block-size:44px}"
+        return Response.html(markup.replace("</style>", f"{overrides}</style>", 1))
 
     def _page(self, t: dict[str, str], lang: str, theme: str, path: str, mount: str) -> str:
         direction = "rtl" if lang == "ar" else "ltr"
