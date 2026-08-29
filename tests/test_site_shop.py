@@ -1,3 +1,5 @@
+import re
+
 from demo.sites.base import Request
 from demo.sites.shop import ShopSite
 
@@ -45,3 +47,9 @@ def test_shop_catalogue_is_responsive_and_does_not_leak_route_defects():
 def test_shop_arabic_uses_rtl_and_unknown_paths_are_404():
     assert '<html lang="ar" dir="rtl"' in body("/", query={"lang": "ar"})
     assert ShopSite().handle(Request(path="/missing")).status == 404
+
+
+def test_mounted_pages_keep_links_and_actions_within_shop():
+    for path in ("/", "/cart"):
+        markup = body(path, mount="/shop")
+        assert all(url.startswith("/shop") for url in re.findall(r'(?:href|action)=["\']?([^"\' >]+)', markup))

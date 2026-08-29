@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from urllib.parse import parse_qs
 
 from sites.base import Request
@@ -20,6 +21,20 @@ def test_anonymous_user_is_redirected_from_settings() -> None:
     response = WorkspaceSite().handle(Request(path="/settings"))
 
     assert (response.status, response.headers["Location"]) == (302, "/login")
+
+
+def test_mounted_pages_keep_links_and_actions_within_workspace() -> None:
+    site = WorkspaceSite()
+    cookies = _login(site, "owner@demo")
+    for path, request_cookies in (("/", {}), ("/threads", cookies)):
+        markup = site.handle(Request(path=path, mount="/workspace", cookies=request_cookies)).body.decode()
+        assert all(url.startswith("/workspace") for url in re.findall(r'(?:href|action)=["\']?([^"\' >]+)', markup))
+
+
+def test_mounted_protected_route_redirects_to_mounted_login() -> None:
+    response = WorkspaceSite().handle(Request(path="/settings", mount="/workspace"))
+
+    assert response.headers["Location"] == "/workspace/login"
 
 
 def test_anonymous_user_wrongly_receives_audit_content_as_planted() -> None:

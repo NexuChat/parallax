@@ -75,6 +75,7 @@ class Fleet:
         request = Request(
             method=method.upper(),
             path=local_path,
+            mount=f"/{site.name}",
             query=dict(parse_qsl(parts.query, keep_blank_values=True)),
             cookies=_cookies(normalized_headers.get("cookie", "")),
             headers=normalized_headers,

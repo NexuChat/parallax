@@ -41,8 +41,8 @@ class AdminSite:
         w = self._words[lang]
         role = self._role(request)
         query = f"?lang={lang}&theme={request.theme}"
-        nav = "".join(f'<a class="tap" href="{path}{query}">{w[key]}</a>' for path, key in (("/", "home"), ("/users", "users"), ("/reports", "reports"), ("/exports", "exports"), ("/legacy", "legacy")))
-        account = f'<a class="tap" href="/login{query}">{w["sign_in"]}</a>' if role == "anon" else f'<span class="muted">{w["role"]}: {w[role]}</span>'
+        nav = "".join(f'<a class="tap" href="{request.mount}{path}{query}">{w[key]}</a>' for path, key in (("/", "home"), ("/users", "users"), ("/reports", "reports"), ("/exports", "exports"), ("/legacy", "legacy")))
+        account = f'<a class="tap" href="{request.mount}/login{query}">{w["sign_in"]}</a>' if role == "anon" else f'<span class="muted">{w["role"]}: {w[role]}</span>'
         markup = f'<!doctype html><html lang="{lang}" dir="{"rtl" if lang == "ar" else "ltr"}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">{self._style(request.theme)}<title>{escape(w["brand"])} — {escape(w[page])}</title></head><body><div class="shell"><header><div class="mast"><span class="brand">{escape(w["brand"])}</span>{account}</div><nav aria-label="{escape(w["home"])}">{nav}</nav></header><main>{content}</main></div></body></html>'
         return Response.html(markup)
 
@@ -52,12 +52,12 @@ class AdminSite:
             account = values.get("username", [""])[0]
             password = values.get("password", [""])[0]
             if (account, password) in {("owner", "owner-pass"), ("member", "member-pass")}:
-                return Response.redirect("/", **{"Set-Cookie": f"session={account}; Path=/; HttpOnly"})
+                return Response.redirect(f"{request.mount}/", **{"Set-Cookie": f"session={account}; Path=/; HttpOnly"})
             error = '<p role="alert">' + self._words[request.lang]["bad_login"] + "</p>"
         else:
             error = ""
         w = self._words[request.lang]
-        content = f'<p class="eyebrow">{w["sign_in"]}</p><h1>{w["login_title"]}</h1>{error}<form method="post"><label>{w["username"]}<input name="username" autocomplete="username"></label><label>{w["password"]}<input name="password" type="password" autocomplete="current-password"></label><button class="tap" type="submit">{w["submit"]}</button></form>'
+        content = f'<p class="eyebrow">{w["sign_in"]}</p><h1>{w["login_title"]}</h1>{error}<form method="post" action="{request.mount}/login"><label>{w["username"]}<input name="username" autocomplete="username"></label><label>{w["password"]}<input name="password" type="password" autocomplete="current-password"></label><button class="tap" type="submit">{w["submit"]}</button></form>'
         return self._page(request, content, "sign_in")
 
     def handle(self, request: Request) -> Response:
@@ -71,18 +71,18 @@ class AdminSite:
             return self._page(request, f'<p class="eyebrow">{w["role"]}: {w[role]}</p><h1>{w["welcome"]}</h1><p>{w["intro"]}</p>', "home")
         if request.path == "/users":
             if role == "anon":
-                return Response.redirect("/login")
+                return Response.redirect(f"{request.mount}/login")
             return self._page(request, f'<p class="eyebrow">{w["users"]}</p><h1>{w["users_title"]}</h1><div class="grid"><article class="card">Ada — {w["owner"]}</article><article class="card">Sam — {w["member"]}</article></div>', "users")
         if request.path == "/reports":
             # Intentionally backwards: a lower privilege is the only one admitted.
             if role != "member":
-                return Response.redirect("/login")
+                return Response.redirect(f"{request.mount}/login")
             return self._page(request, f'<p class="eyebrow">{w["reports"]}</p><h1>{w["reports_title"]}</h1><p>{w["note"]}</p>', "reports")
         if request.path == "/exports":
             # Intentionally hard-coded to the English route resolution.
             if request.lang != "en":
                 return Response.not_found()
             if role == "anon":
-                return Response.redirect("/login")
+                return Response.redirect(f"{request.mount}/login")
             return self._page(request, f'<p class="eyebrow">{w["exports"]}</p><h1>{w["exports_title"]}</h1><p>{w["note"]}</p>', "exports")
         return Response.not_found()

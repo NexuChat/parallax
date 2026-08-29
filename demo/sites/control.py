@@ -30,8 +30,8 @@ class ControlSite:
     def _page(self, request: Request, body: str, label: str) -> Response:
         lang, words, role = request.lang, self._copy[request.lang], self._role(request)
         query = f"?lang={lang}&theme={request.theme}"
-        nav = "".join(f'<a class="tap" href="{path}{query}">{words[key]}</a>' for path, key in (("/", "home"), ("/team", "team"), ("/reports", "reports")))
-        account = f'<a class="tap" href="/login{query}">{words["sign_in"]}</a>' if role == "anon" else f'<span class="muted">{words["role"]}: {words[role]}</span>'
+        nav = "".join(f'<a class="tap" href="{request.mount}{path}{query}">{words[key]}</a>' for path, key in (("/", "home"), ("/team", "team"), ("/reports", "reports")))
+        account = f'<a class="tap" href="{request.mount}/login{query}">{words["sign_in"]}</a>' if role == "anon" else f'<span class="muted">{words["role"]}: {words[role]}</span>'
         return Response.html(f'<!doctype html><html lang="{lang}" dir="{"rtl" if lang == "ar" else "ltr"}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">{self._css(request.theme)}<title>{escape(words["brand"])} — {escape(words[label])}</title></head><body><div class="shell"><header><div class="mast"><span class="brand">{escape(words["brand"])}</span>{account}</div><nav aria-label="{escape(words["home"])}">{nav}</nav></header><main>{body}</main></div></body></html>')
 
     def _login(self, request: Request) -> Response:
@@ -41,9 +41,9 @@ class ControlSite:
             form = parse_qs(request.body.decode("utf-8", "replace"))
             username, password = form.get("username", [""])[0], form.get("password", [""])[0]
             if (username, password) in (("owner", "owner-pass"), ("member", "member-pass")):
-                return Response.redirect("/", **{"Set-Cookie": f"session={username}; Path=/; HttpOnly"})
+                return Response.redirect(f"{request.mount}/", **{"Set-Cookie": f"session={username}; Path=/; HttpOnly"})
             notice = f'<p role="alert">{words["wrong"]}</p>'
-        return self._page(request, f'<p class="eyebrow">{words["sign_in"]}</p><h1>{words["login_title"]}</h1>{notice}<form method="post"><label>{words["username"]}<input name="username" autocomplete="username"></label><label>{words["password"]}<input name="password" type="password" autocomplete="current-password"></label><button class="tap" type="submit">{words["continue"]}</button></form>', "sign_in")
+        return self._page(request, f'<p class="eyebrow">{words["sign_in"]}</p><h1>{words["login_title"]}</h1>{notice}<form method="post" action="{request.mount}/login"><label>{words["username"]}<input name="username" autocomplete="username"></label><label>{words["password"]}<input name="password" type="password" autocomplete="current-password"></label><button class="tap" type="submit">{words["continue"]}</button></form>', "sign_in")
 
     def handle(self, request: Request) -> Response:
         words, role = self._copy[request.lang], self._role(request)
@@ -53,10 +53,10 @@ class ControlSite:
             return self._page(request, f'<p class="eyebrow">{words["role"]}: {words[role]}</p><h1>{words["home_title"]}</h1><p>{words["home_text"]}</p>', "home")
         if request.path == "/team":
             if role == "anon":
-                return Response.redirect("/login")
+                return Response.redirect(f"{request.mount}/login")
             return self._page(request, f'<p class="eyebrow">{words["team"]}</p><h1>{words["team_title"]}</h1><div class="grid"><article class="card">Mina — {words["owner"]}</article><article class="card">Noor — {words["member"]}</article></div>', "team")
         if request.path == "/reports":
             if role != "owner":
-                return Response.redirect("/login")
+                return Response.redirect(f"{request.mount}/login")
             return self._page(request, f'<p class="eyebrow">{words["reports"]}</p><h1>{words["reports_title"]}</h1><p>{words["report_text"]}</p>', "reports")
         return Response.not_found()

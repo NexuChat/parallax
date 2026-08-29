@@ -58,3 +58,16 @@ def test_control_has_no_raw_i18n_keys_and_all_declared_taps_are_44px() -> None:
         blocks = re.findall(re.escape(selector) + r"\{([^}]*)\}", css)
         heights = [int(match.group(1)) for block in blocks if (match := re.search(r"min-block-size:(\d+)px", block))]
         assert heights and min(heights) >= 44
+
+
+def test_mounted_pages_keep_links_and_actions_within_control() -> None:
+    site = ControlSite()
+    for path, cookies in (("/", {}), ("/team", {"session": "member"})):
+        markup = site.handle(Request(path=path, mount="/control", cookies=cookies)).body.decode()
+        assert all(url.startswith("/control") for url in re.findall(r'(?:href|action)=["\']?([^"\' >]+)', markup))
+
+
+def test_mounted_protected_route_redirects_to_mounted_login() -> None:
+    response = ControlSite().handle(Request(path="/team", mount="/control"))
+
+    assert response.headers["Location"] == "/control/login"

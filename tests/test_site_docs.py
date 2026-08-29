@@ -1,3 +1,5 @@
+import re
+
 from demo.sites.base import Request
 from demo.sites.docs import DocsSite
 
@@ -36,3 +38,9 @@ def test_docs_faq_intentionally_drops_related_questions_below_768px():
 def test_docs_arabic_is_rtl_and_unknown_paths_are_404():
     assert '<html lang="ar" dir="rtl"' in body("/api", query={"lang": "ar"})
     assert DocsSite().handle(Request(path="/nope")).status == 404
+
+
+def test_mounted_pages_keep_links_and_actions_within_docs():
+    for path in ("/", "/guide"):
+        markup = body(path, mount="/docs")
+        assert all(url.startswith("/docs") for url in re.findall(r'(?:href|action)=["\']?([^"\' >]+)', markup))
