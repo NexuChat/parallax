@@ -10,7 +10,7 @@ from __future__ import annotations
 from html import escape
 from urllib.parse import parse_qs
 
-from .base import Planted, Request, Response
+from .base import Account, Planted, Request, Response
 
 
 _STORE: dict[str, object] = {
@@ -61,6 +61,7 @@ _COPY = {
 class WorkspaceSite:
     name = "workspace"
     title = "Parallax Fieldnotes"
+    accounts = [Account("owner", "owner@demo", "demo"), Account("member", "member@demo", "demo")]
     planted = [
         Planted("escalation", "privilege", "/audit", "The audit template is accidentally public."),
         Planted("rtl_not_mirrored", "locale", "/threads", "Composer controls use physical left spacing."),

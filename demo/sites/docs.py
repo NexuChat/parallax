@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from html import escape
 
-from .base import Planted, Request, Response
+from .base import Account, Planted, Request, Response
 
 
 _T = {
@@ -74,6 +74,7 @@ _T = {
 class DocsSite:
     name = "docs"
     title = "Northstar Docs"
+    accounts: list[Account] = []
     planted = [
         Planted("untranslated", "locale", "/guide", "Arabic renders one guide heading as its translation key."),
         Planted("low_contrast", "theme", "/", "Dark-only secondary help text uses #6b6b6b."),

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from html import escape
 
-from .base import Planted, Request, Response
+from .base import Account, Planted, Request, Response
 
 
 _COPY = {
@@ -60,6 +60,7 @@ _PRODUCTS = {
 class ShopSite:
     name = "shop"
     title = "Folio Supply"
+    accounts: list[Account] = []
     planted = [
         Planted("offscreen_control", "viewport", "/checkout", "The fixed 720px action row puts Place order beyond 360px."),
         Planted("horizontal_overflow", "viewport", "/cart", "The cart table has a fixed minimum width."),

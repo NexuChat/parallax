@@ -15,6 +15,13 @@ def _login(site: WorkspaceSite, email: str) -> dict[str, str]:
     return {"session": response.headers["Set-Cookie"].split(";", 1)[0].split("=", 1)[1]}
 
 
+def test_declared_accounts_authenticate_against_workspace_login() -> None:
+    site = WorkspaceSite()
+    for account in site.accounts:
+        response = site.handle(Request(method="POST", path="/login", body=f"email={account.email}&password={account.password}".encode()))
+        assert response.status == 302 and "Set-Cookie" in response.headers
+
+
 def test_anonymous_user_is_redirected_from_owner_routes() -> None:
     site = WorkspaceSite()
     for path in ("/settings", "/billing"):

@@ -5,8 +5,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 from http.cookies import SimpleCookie
-import importlib
-import inspect
 import json
 import os
 import re
@@ -28,7 +26,7 @@ from parallax.emitter import spec_for  # noqa: E402
 from parallax.specialists import AccessSpecialist, LayoutI18nSpecialist, RealtimeSpecialist  # noqa: E402
 from parallax.types import Axis, BASELINE, Finding, FindingKind, Outcome, Privilege, Severity, Surface, SurfaceKind, Testimony  # noqa: E402
 from serve import discover_sites  # noqa: E402
-from sites.base import Planted  # noqa: E402
+from sites.base import Planted, Site  # noqa: E402
 
 
 @dataclass
@@ -179,28 +177,6 @@ def storage_state_from_login_response(response: object, origin: str) -> dict[str
     return {"cookies": cookies, "origins": []}
 
 
-def _seeded_accounts(site: object) -> list[tuple[str, dict[str, str]]]:
-    """Read demo credentials from the site module instead of embedding them here."""
-    module = importlib.import_module(type(site).__module__)
-    text = inspect.getdoc(module) or ""
-    pairs = re.findall(r"``([^`/]+?)\s*/\s*([^`]+?)``", text)
-    if not pairs:
-        # Older demos omitted their account paragraph; still read credentials from
-        # the module that owns them, never from this runner.
-        source = inspect.getsource(module)
-        login_rule = next((line for line in source.splitlines() if line.lstrip().startswith("if ") and "password" in line and " in " in line), "")
-        pairs = re.findall(r"\(\s*[\"']([^\"']+)[\"']\s*,\s*[\"']([^\"']+)[\"']\s*\)", login_rule)
-    if pairs:
-        return [(name, {"username": name, "password": password}) for name, password in pairs]
-
-    values = re.findall(r"``([^`]+)``", text)
-    emails = [value for value in values if "@" in value]
-    password = next((value for value in reversed(values) if "@" not in value), None)
-    if emails and password:
-        return [(email.split("@", 1)[0], {"email": email, "password": password}) for email in emails]
-    return []
-
-
 class _NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, request: Request, fp: object, code: int, msg: str, headers: object, newurl: str) -> None:
         return None
@@ -211,23 +187,33 @@ class _NoRedirect(HTTPRedirectHandler):
     http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302
 
 
-def build_storage_states(site: object, host: str, run_dir: Path) -> dict[str, Path]:
-    """Log in each documented seeded role over HTTP and persist its cookie state."""
+def build_storage_states(site: Site, host: str, run_dir: Path) -> dict[str, Path]:
+    """Log in each account declared by a site and persist its cookie state."""
     states: dict[str, Path] = {}
     run_dir.mkdir(parents=True, exist_ok=True)
     origin = host.rstrip("/")
-    for role, credentials in _seeded_accounts(site):
+    for account in site.accounts:
         request = Request(
-            f"{origin}/{getattr(site, 'name')}/login",
-            data=urlencode(credentials).encode(),
+            f"{origin}/{site.name}/login",
+            data=urlencode({"email": account.email, "username": account.email, "password": account.password}).encode(),
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             method="POST",
         )
-        with build_opener(_NoRedirect()).open(request) as response:
-            state = storage_state_from_login_response(response, origin)
-        path = run_dir / f"storage-{role}.json"
+        response: object | None = None
+        try:
+            with build_opener(_NoRedirect()).open(request) as response:
+                state = storage_state_from_login_response(response, origin)
+        except Exception as error:
+            status = getattr(response, "status", getattr(error, "code", "unknown"))
+            print(
+                f"login failed for site {site.name}, role {account.role}, "
+                f"server returned HTTP {status}: {error}",
+                file=sys.stderr,
+            )
+            continue
+        path = run_dir / f"storage-{account.role}.json"
         path.write_text(json.dumps(state), encoding="utf-8")
-        states[role] = path
+        states[account.role] = path
     return states
 
 
