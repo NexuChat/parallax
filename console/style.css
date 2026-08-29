@@ -1,7 +1,10 @@
 :root { --bg:#090d12; --panel:#101720; --line:#27333f; --muted:#91a0ae; --text:#e9f0f5; --cyan:#56d3e6; --high:#ff5e66; --medium:#ffad52; --low:#e6d267; --info:#6ed7a3; }
 * { box-sizing:border-box; }
 body { margin:0; min-width:320px; background:var(--bg); color:var(--text); font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-.console-shell { max-width:1800px; margin:auto; min-height:100vh; padding:18px; display:flex; flex-direction:column; gap:14px; }
+/* Height, not min-height: an operations wall that scrolls the page is a wall
+   nobody can read. Capping the shell forces the findings list to scroll inside
+   its own panel and keeps the mosaic whole on one screen. */
+.console-shell { max-width:1800px; margin:auto; height:100vh; padding:18px; display:flex; flex-direction:column; gap:14px; }
 .topbar, .metrics, .panel, .footer { border:1px solid var(--line); background:var(--panel); }
 .topbar { min-height:58px; display:flex; align-items:center; justify-content:space-between; padding:0 16px; gap:16px; }
 .brand { display:flex; align-items:center; gap:10px; letter-spacing:.13em; font-weight:800; font-size:18px; }
@@ -23,5 +26,5 @@ body { margin:0; min-width:320px; background:var(--bg); color:var(--text); font-
 .mosaic-caption { margin:0; padding:11px 16px; border-top:1px solid var(--line); color:var(--muted); font-size:11px; line-height:1.45; }
 .findings { overflow:auto; flex:1; padding:9px; background:#0b1016; }.findings-empty { color:var(--muted); text-align:center; padding:40px 18px; font-size:13px; line-height:1.6; }
 .finding { border:1px solid var(--line); border-left:5px solid var(--severity); margin-bottom:8px; padding:11px; background:#111923; cursor:pointer; }.finding:hover,.finding.is-active { background:#162331; border-color:#607386; }.finding-head { display:flex; gap:7px; align-items:center; flex-wrap:wrap; }.pill { padding:3px 6px; font-weight:800; font-size:10px; letter-spacing:.05em; background:var(--severity); color:#0b1016; }.finding-kind { color:#d3dfe8; font-size:11px; }.finding-axis { margin-left:auto; color:var(--muted); font-size:10px; }.finding-summary { margin:9px 0 7px; font:600 14px/1.4 ui-sans-serif,system-ui,sans-serif; }.finding-surface { color:var(--cyan); font-size:11px; }.evidence { border-top:1px solid #283541; padding-top:7px; margin-top:7px; color:#b8c6d0; font-size:10px; line-height:1.45; }.evidence strong { color:var(--muted); font-weight:700; }.footer { padding:10px 13px; display:flex; justify-content:space-between; gap:10px; }
-@media (max-width:900px) { .wall-grid{grid-template-columns:1fr}.findings-panel{min-height:420px}.mosaic-stage img{max-height:none}.metrics{grid-template-columns:1fr 1fr}.severity-totals{grid-column:1/-1;border-top:1px solid var(--line)} }
+@media (max-width:900px) { .console-shell{height:auto;min-height:100vh}.wall-grid{grid-template-columns:1fr}.findings-panel{min-height:420px}.mosaic-stage img{max-height:none}.metrics{grid-template-columns:1fr 1fr}.severity-totals{grid-column:1/-1;border-top:1px solid var(--line)} }
 @media (max-width:600px) { .console-shell{padding:8px}.run-state{display:none}.topbar{padding:0 10px}.metrics{grid-template-columns:1fr 1fr}.metric{padding:12px}.metric-value{font-size:30px}.severity-totals{flex-wrap:wrap;justify-content:flex-start}.footer{flex-direction:column}.mosaic-stage{min-height:260px}.tile-label{font-size:7px;padding:2px}.finding-summary{font-size:13px} }

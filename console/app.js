@@ -99,6 +99,10 @@
   }
   function connectSse() {
     if (!('EventSource' in window) || location.protocol === 'file:') return;
+    // A static feed file is not an event stream. Opening an EventSource on one
+    // still works — polling takes over — but it logs a MIME-type error, and a
+    // red console line during a live demo reads as a broken product.
+    if (/\.(jsonl|json|txt)(\?|$)/i.test(source)) return;
     try { const stream = new EventSource(source); stream.onopen = () => setFeedMode('SSE LIVE'); stream.onmessage = (message) => processLine(message.data); stream.onerror = () => { stream.close(); setTimeout(poll, 100); }; } catch (_) { /* Polling remains available. */ }
   }
   function boot() {
