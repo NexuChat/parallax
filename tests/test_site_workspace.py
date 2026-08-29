@@ -74,7 +74,7 @@ def test_anonymous_user_wrongly_receives_audit_content_as_planted() -> None:
 
 def test_arabic_query_renders_rtl_and_translated_copy() -> None:
     response = WorkspaceSite().handle(Request(path="/", query={"lang": "ar"}))
-    assert b'<html lang="ar" dir="rtl">' in response.body
+    assert b'<html lang="ar" dir="rtl" data-theme="system">' in response.body
     assert "مكان أوضح للعمل معًا".encode() in response.body
 
 
@@ -83,8 +83,11 @@ def test_dark_stylesheet_has_header_border_that_light_stylesheet_lacks() -> None
     cookies = _login(site, "owner@demo")
     light = site.handle(Request(path="/threads", query={"theme": "light"}, cookies=cookies)).body.decode()
     dark = site.handle(Request(path="/threads", query={"theme": "dark"}, cookies=cookies)).body.decode()
-    assert ".site-header{border-block-end:3px solid" not in light
-    assert ".site-header{border-block-end:3px solid" in dark
+    assert 'html[data-theme="light"] .site-header{border-block-end:1px solid' in light
+    assert 'html[data-theme="dark"]{--canvas:#111b22' in dark
+    assert "@media (prefers-color-scheme: dark)" in dark
+    assert 'html[data-theme="dark"] .site-header{border-block-end:3px solid var(--accent)}' in dark
+    assert 'html[data-theme="system"] .site-header{border-block-end:3px solid var(--accent)}' in dark
 
 
 def test_message_posted_in_one_session_is_visible_to_another_session_poll() -> None:
