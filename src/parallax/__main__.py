@@ -220,6 +220,8 @@ async def _run(args: argparse.Namespace) -> int:
     counts: dict[str, int] = {}
     for finding in summary.findings:
         counts[finding.severity.value] = counts.get(finding.severity.value, 0) + 1
+    exercised = [decision for decision in summary.axis_applicability if decision.applicable]
+    not_applicable = [decision for decision in summary.axis_applicability if not decision.applicable]
     print(json.dumps({
         "surfaces": len(summary.surfaces),
         "testimonies": len(summary.testimonies),
@@ -227,6 +229,11 @@ async def _run(args: argparse.Namespace) -> int:
         "by_severity": {level.value: counts.get(level.value, 0) for level in Severity},
         "feed": str(summary.feed_path),
         "specs": len(summary.spec_paths),
+        "axis_summary": f"{len(exercised)} axes exercised, {len(not_applicable)} not applicable",
+        "axis_applicability": [
+            {"axis": decision.axis.value, "applicable": decision.applicable, "reason": decision.reason}
+            for decision in summary.axis_applicability
+        ],
         "relational_scenarios": {
             "ran": len(relational_scenarios or []),
             "findings": sum(finding.axis.value == "relational" for finding in summary.findings),

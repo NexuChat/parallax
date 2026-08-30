@@ -84,6 +84,15 @@ class Axis(str, Enum):
 
 
 @dataclass(frozen=True)
+class AxisApplicability:
+    """Whether the application claims an axis and why the run did or did not exercise it."""
+
+    axis: Axis
+    applicable: bool
+    reason: str
+
+
+@dataclass(frozen=True)
 class Context:
     """One witness's full configuration."""
 
@@ -191,6 +200,8 @@ class Testimony:
     content_signature: str | None = None  # hash of visible text/structure, for parity checks
     layout_signature: str | None = None   # hash of geometry alone: must not move on the theme axis
     geometry: list[dict[str, Any]] = field(default_factory=list)  # landmark boxes, for the mirror test
+    document_lang: str | None = None
+    support: dict[str, bool] = field(default_factory=dict)
     defects: list[Defect] = field(default_factory=list)
     note: str = ""
     screenshot: str | None = None      # object path, never bytes
@@ -198,12 +209,14 @@ class Testimony:
 
     @property
     def is_evidence(self) -> bool:
-        """A witness that crashed proves nothing — never let ERROR imply 'blocked'."""
-        return self.outcome is not Outcome.ERROR
+        """A failed or 5xx witness proves no application state or policy."""
+        return self.outcome is not Outcome.ERROR and not (
+            self.http_status is not None and 500 <= self.http_status < 600
+        )
 
     @property
     def reached(self) -> bool:
-        return self.outcome in (Outcome.REACHED, Outcome.PARTIAL)
+        return self.is_evidence and self.outcome in (Outcome.REACHED, Outcome.PARTIAL)
 
 
 # --------------------------------------------------------------------------

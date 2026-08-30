@@ -26,6 +26,36 @@
   const defects = [];
   const add = (type, detail, selector) => defects.push({ type, detail, selector });
 
+  const hasMediaQuery = (needle) => {
+    const hasRule = (rules) => [...rules].some((rule) => {
+      const condition = `${rule.conditionText || ''} ${rule.media ? rule.media.mediaText : ''}`.toLowerCase();
+      if (condition.includes(needle)) return true;
+      try { return rule.cssRules && hasRule(rule.cssRules); } catch (_) { return false; }
+    });
+    return [...document.styleSheets].some((sheet) => {
+      try { return hasRule(sheet.cssRules); } catch (_) { return false; }
+    });
+  };
+  const controlMentions = (pattern) => [...document.querySelectorAll(
+    'button, input, select, [role="button"], [aria-pressed]'
+  )].some((element) => pattern.test([
+    element.id, element.className, element.getAttribute('name'), element.getAttribute('aria-label'),
+    element.getAttribute('title'), element.textContent,
+  ].filter(Boolean).join(' ')));
+  const visibleText = document.body ? document.body.innerText : '';
+  const nonLatinText = [...visibleText].some((character) =>
+    /\p{Letter}/u.test(character) && !/\p{Script=Latin}/u.test(character)
+  );
+  const support = {
+    localeAlternate: Boolean(document.querySelector('link[rel~="alternate"][hreflang], a[rel~="alternate"][hreflang]')),
+    languageSwitcher: Boolean(document.querySelector('a[hreflang]')) || controlMentions(/\b(language|locale|lang)\b/i),
+    nonLatinText,
+    themeMedia: hasMediaQuery('prefers-color-scheme'),
+    themeToggle: controlMentions(/\b(theme|dark mode|light mode|color scheme)\b/i),
+    viewportMeta: Boolean(document.querySelector('meta[name="viewport"]')),
+    viewportMedia: hasMediaQuery('width'),
+  };
+
   // ---------------------------------------------------------------- selectors
   const pathTo = (el) => {
     if (!el || el.nodeType !== 1) return null;
@@ -210,6 +240,7 @@
     title: document.title,
     defects,
     geometry,
+    support,
     contentSignature: hash(document.body.innerText.replace(/\s+/g, ' ').trim()),
     layoutSignature: hash(geometry.map((g) => `${g.tag}:${g.x},${g.y},${g.w},${g.h}`).join('|')),
     consoleErrorCount: window.__parallaxConsoleErrors || 0,

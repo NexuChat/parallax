@@ -18,7 +18,7 @@ from .differ import compare
 from .emitter import emit_all
 from .mirror import mirror_defects
 from .relational import Expectation, RelationalPair
-from .types import Axis, Context, Finding, Outcome, Privilege, Surface, SurfaceKind, Testimony, derive_witnesses
+from .types import Axis, AxisApplicability, Context, Finding, Outcome, Privilege, Surface, SurfaceKind, Testimony, derive_witnesses
 from .witness import StorageState, Witness
 
 
@@ -47,6 +47,7 @@ class ConductSummary:
     findings: list[Finding]
     spec_paths: list[Path]
     feed_path: Path
+    axis_applicability: list[AxisApplicability]
 
 
 @dataclass(frozen=True)
@@ -113,6 +114,7 @@ class Conductor:
         all_findings: list[Finding] = []
         published_finding_ids: set[str] = set()
         surface_mosaics: dict[str, MosaicFrame] = {}
+        specialist_runs: list[tuple[Surface, list[Moment], list[Testimony]]] = []
 
         for surface in surfaces:
             self._write(feed_path, "status", {"surface": surface.describe(), "surface_id": surface.id, "state": "started"})
@@ -125,16 +127,25 @@ class Conductor:
             if moments:
                 surface_mosaics[surface.id] = moments[-1].mosaic
 
-            # Privilege offers can be observed on a navigation page while the
-            # reached surface is replayed later. Compare the run so far rather
-            # than only this surface; publication below still de-duplicates
-            # previously emitted findings.
-            findings = compare(_with_mirror_observations(all_testimonies))
-            findings.extend(self._judge_specialists(feed_path, surface, moments, testimonies))
-            findings = _unpublished_findings(findings, published_finding_ids)
-            all_findings.extend(findings)
-            for finding in findings:
-                self._write(feed_path, "finding", finding_payload(finding, mosaic=surface_mosaics.get(finding.surface.id)))
+            specialist_runs.append((surface, moments, testimonies))
+
+        axis_applicability = assess_axis_applicability(all_testimonies, self.storage_states)
+        for decision in axis_applicability:
+            self._write(feed_path, "status", {
+                "state": "axis_applicability",
+                "axis": decision.axis.value,
+                "applicable": decision.applicable,
+                "reason": decision.reason,
+            })
+        exercised = {decision.axis for decision in axis_applicability if decision.applicable}
+        findings = compare(_with_mirror_observations(_applicable_testimonies(all_testimonies, exercised)))
+        for surface, moments, testimonies in specialist_runs:
+            specialist_findings = self._judge_specialists(feed_path, surface, moments, testimonies)
+            findings.extend(_applicable_findings(specialist_findings, exercised))
+        findings = _unpublished_findings(findings, published_finding_ids)
+        all_findings.extend(findings)
+        for finding in findings:
+            self._write(feed_path, "finding", finding_payload(finding, mosaic=surface_mosaics.get(finding.surface.id)))
 
         for scenario in self.relational_scenarios:
             self._write(feed_path, "status", {
@@ -158,7 +169,7 @@ class Conductor:
                 self._write(feed_path, "finding", finding_payload(finding, mosaic=scenario_mosaic))
 
         spec_paths = emit_all(all_findings, self.out_dir / "specs")
-        return ConductSummary(surfaces, all_testimonies, all_findings, spec_paths, feed_path)
+        return ConductSummary(surfaces, all_testimonies, all_findings, spec_paths, feed_path, axis_applicability)
 
     async def _discover(self) -> list[Surface]:
         """Use only the baseline context to make the replay set causal and comparable.
@@ -441,6 +452,116 @@ class Conductor:
     def _write(path: Path, kind: str, payload: dict[str, Any]) -> None:
         with path.open("a", encoding="utf-8") as feed:
             feed.write(json.dumps(FeedEvent(kind, payload).to_json(), separators=(",", ":")) + "\n")
+
+
+def assess_axis_applicability(
+    testimonies: Sequence[Testimony], storage_states: Mapping[Privilege | str, StorageState] | None
+) -> list[AxisApplicability]:
+    """Accept only page claims and supplied sessions as grounds for a comparison."""
+    support = {
+        key
+        for testimony in testimonies
+        if testimony.is_evidence
+        for key, present in testimony.support.items()
+        if present
+    }
+    baseline = next((testimony for testimony in testimonies if testimony.context.varies is Axis.BASELINE), None)
+    locale_langs = {
+        testimony.document_lang.lower()
+        for testimony in testimonies
+        if testimony.is_evidence
+        and testimony.context.varies is Axis.LOCALE
+        and isinstance(testimony.document_lang, str)
+        and testimony.document_lang
+    }
+    lang_changed = (
+        baseline is not None
+        and isinstance(baseline.document_lang, str)
+        and bool(locale_langs)
+        and baseline.document_lang.lower() not in locale_langs
+    )
+    locale_reason = _support_reason(
+        support,
+        (
+            ("localeAlternate", "page declares localized alternatives"),
+            ("languageSwitcher", "page exposes a language switcher"),
+            ("nonLatinText", "page serves non-Latin text"),
+        ),
+        "no localized alternate, language switcher, changed lang attribute, or non-Latin text observed",
+    )
+    if lang_changed:
+        locale_reason = "page lang attribute changes between contexts"
+    theme_reason = _support_reason(
+        support,
+        (
+            ("themeMedia", "stylesheets use prefers-color-scheme"),
+            ("themeToggle", "page exposes a theme toggle"),
+        ),
+        "no prefers-color-scheme media query or theme toggle observed",
+    )
+    viewport_reason = _support_reason(
+        support,
+        (
+            ("viewportMeta", "page declares a viewport meta tag"),
+            ("viewportMedia", "stylesheets use viewport media queries"),
+        ),
+        "no viewport meta tag or media query observed",
+    )
+    privilege_reason = _privilege_reason(storage_states)
+    return [
+        AxisApplicability(
+            Axis.PRIVILEGE,
+            privilege_reason is not None,
+            privilege_reason or "no distinct role storage states were supplied",
+        ),
+        AxisApplicability(
+            Axis.LOCALE,
+            bool(support & {"localeAlternate", "languageSwitcher", "nonLatinText"}) or lang_changed,
+            locale_reason,
+        ),
+        AxisApplicability(Axis.THEME, bool(support & {"themeMedia", "themeToggle"}), theme_reason),
+        AxisApplicability(Axis.VIEWPORT, bool(support & {"viewportMeta", "viewportMedia"}), viewport_reason),
+    ]
+
+
+def _support_reason(support: set[str], options: tuple[tuple[str, str], ...], absent: str) -> str:
+    return next((reason for key, reason in options if key in support), absent)
+
+
+def _privilege_reason(storage_states: Mapping[Privilege | str, StorageState] | None) -> str | None:
+    if storage_states is None:
+        return None
+    supplied = [
+        state for privilege in Privilege
+        if (state := storage_states.get(privilege, storage_states.get(privilege.value))) is not None
+    ]
+    distinct = {_storage_state_key(state) for state in supplied}
+    return "distinct role storage states were supplied" if len(distinct) >= 2 else None
+
+
+def _storage_state_key(state: StorageState) -> str:
+    if isinstance(state, Path):
+        return f"path:{state}"
+    if isinstance(state, str):
+        return f"path:{state}"
+    try:
+        return json.dumps(state, sort_keys=True, separators=(",", ":"))
+    except TypeError:
+        return repr(state)
+
+
+def _applicable_testimonies(testimonies: Sequence[Testimony], exercised: set[Axis]) -> list[Testimony]:
+    return [
+        testimony for testimony in testimonies
+        if testimony.context.varies in exercised | {Axis.BASELINE, Axis.RELATIONAL}
+    ]
+
+
+def _applicable_findings(findings: Sequence[Finding], exercised: set[Axis]) -> list[Finding]:
+    return [
+        finding for finding in findings
+        if finding.axis in exercised | {Axis.BASELINE, Axis.RELATIONAL}
+    ]
 
 
 _TILE_WIDTH = 480

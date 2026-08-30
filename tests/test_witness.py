@@ -71,6 +71,8 @@ class FakePage:
         )
 
     def locator(self, _selector: str) -> "FakeLocator":
+        if self.behavior.get("locator_error"):
+            raise self.behavior["locator_error"]
         return FakeLocator(self.behavior.get("visible", True))
 
 
@@ -135,7 +137,7 @@ def test_all_derived_contexts_share_one_browser_and_evaluate_probe_from_disk() -
         assert all(len(sources) == 1 for sources in probe_sources)
         assert len({sources[0] for sources in probe_sources}) == 1
         assert "The deterministic probe" in probe_sources[0][0]
-        assert all("document.documentElement.dir" in context.init_scripts[0] for context in browser.contexts)
+        assert all(not context.init_scripts for context in browser.contexts)
         assert browser.context_options[3]["locale"] == Locale.AR.value
         assert browser.context_options[4]["color_scheme"] == Theme.DARK.value
 
@@ -173,6 +175,19 @@ def test_http_statuses_distinguish_denial_absence_and_server_degradation() -> No
         assert server_error.outcome is Outcome.PARTIAL
         assert server_error.outcome is not Outcome.ERROR
         assert server_error.note == "HTTP 500 server error"
+
+    asyncio.run(check())
+
+
+def test_affordance_lookup_failure_is_witness_error_not_a_policy_denial() -> None:
+    async def check() -> None:
+        control = Surface(SurfaceKind.AFFORDANCE, f"{SITE}/admin", "[broken")
+        testimony = await Witness(
+            Context(), FakeBrowser([{"locator_error": RuntimeError("invalid selector")}])
+        ).visit(control)
+
+        assert testimony.outcome is Outcome.ERROR
+        assert testimony.note.startswith("affordance failed:")
 
     asyncio.run(check())
 

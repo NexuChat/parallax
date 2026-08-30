@@ -10,9 +10,9 @@ from typing import Any
 
 from PIL import Image
 
-from parallax.conductor import Conductor, RelationalScenario
+from parallax.conductor import Conductor, RelationalScenario, assess_axis_applicability
 from parallax.contracts import finding_payload
-from parallax.types import Axis, Context, Defect, Finding, FindingKind, Outcome, Privilege, Severity, Surface, SurfaceKind
+from parallax.types import Axis, Context, Defect, Finding, FindingKind, Locale, Outcome, Privilege, Severity, Surface, SurfaceKind, Testimony
 
 
 SITE = "https://app.example.test"
@@ -134,6 +134,46 @@ class Specialist:
         self.calls.append((moments, testimonies))
         testimony = list(testimonies)[0]
         return [Finding(FindingKind.RENDER_DEFECT, Severity.LOW, testimony.surface, Axis.BASELINE, "specialist", [testimony])]
+
+
+def test_axis_applicability_requires_page_claims_and_distinct_role_states() -> None:
+    surface = Surface(SurfaceKind.ROUTE, f"{SITE}/")
+    baseline = Testimony(surface, Context(), Outcome.REACHED, document_lang="en", support={
+        "localeAlternate": True, "themeMedia": True, "viewportMeta": True,
+    })
+    arabic = Testimony(surface, Context(locale=Locale.AR, varies=Axis.LOCALE), Outcome.REACHED, document_lang="ar")
+    decisions = assess_axis_applicability(
+        [baseline, arabic], {"owner": {"cookies": ["owner"]}, "member": {"cookies": ["member"]}},
+    )
+
+    assert all(decision.applicable for decision in decisions)
+
+
+def test_axis_applicability_reports_every_missing_claim() -> None:
+    surface = Surface(SurfaceKind.ROUTE, f"{SITE}/")
+    decisions = assess_axis_applicability([Testimony(surface, Context(), Outcome.REACHED)], None)
+
+    assert {decision.axis for decision in decisions} == {Axis.PRIVILEGE, Axis.LOCALE, Axis.THEME, Axis.VIEWPORT}
+    assert all(not decision.applicable for decision in decisions)
+    assert all(decision.reason for decision in decisions)
+
+
+def test_conductor_publishes_not_applicable_axes_without_their_findings(tmp_path: Path) -> None:
+    async def check() -> None:
+        behaviors = [{"discovery": {f"{SITE}/": {"links": [], "affordances": []}}}]
+        for index in range(7):
+            defects = [{"type": "offscreen_control"}] if index == 5 else []
+            behaviors.append({"probe": {"defects": defects}})
+        result = await Conductor(f"{SITE}/", tmp_path, browser=FakeBrowser(behaviors), settle_ms=0).conduct()
+
+        events = [json.loads(line) for line in result.feed_path.read_text().splitlines()]
+        decisions = [event["payload"] for event in events if event["payload"].get("state") == "axis_applicability"]
+
+        assert result.findings == []
+        assert len(decisions) == 4
+        assert all(not decision["applicable"] and decision["reason"] for decision in decisions)
+
+    asyncio.run(check())
 
 
 def test_finding_payload_carries_its_mosaic_reference() -> None:
@@ -351,7 +391,10 @@ def test_conductor_reports_an_unoffered_anonymous_reach_without_a_blocked_witnes
             + [{} for _ in range(7)]
         )
 
-        result = await Conductor(f"{SITE}/", tmp_path, browser=browser, max_surfaces=2, settle_ms=0).conduct()
+        result = await Conductor(
+            f"{SITE}/", tmp_path, browser=browser, max_surfaces=2, settle_ms=0,
+            storage_states={"owner": {"cookies": ["owner"]}, "member": {"cookies": ["member"]}},
+        ).conduct()
 
         escalations = [finding for finding in result.findings if finding.kind is FindingKind.ESCALATION]
         assert len(escalations) == 1
@@ -466,7 +509,10 @@ def test_mirror_observations_reach_the_differ_without_mutating_witness_evidence(
         arabic = [{"selector": "#nav", "tag": "nav", "x": 20, "y": 10, "w": 200, "h": 40, "text": ""}]
         behaviors = [{"discovery": {f"{SITE}/": {"links": [], "affordances": []}}}]
         for index in range(7):
-            probe = {"defects": [], "contentSignature": "same", "layoutSignature": "same", "geometry": arabic if index == 3 else geometry}
+            probe = {
+                "defects": [], "contentSignature": "same", "layoutSignature": "same",
+                "geometry": arabic if index == 3 else geometry, "support": {"localeAlternate": True},
+            }
             behaviors.append({"probe": probe, "error": index == 6})
         result = await Conductor(f"{SITE}/", tmp_path, browser=FakeBrowser(behaviors), settle_ms=0).conduct()
 
@@ -503,7 +549,10 @@ def test_specialists_are_isolated_deduplicated_and_failures_are_reported(tmp_pat
 
     async def check() -> None:
         duplicate = DuplicateLens()
-        browser = FakeBrowser([{"discovery": {f"{SITE}/": {"links": [], "affordances": []}}}] + [{} for _ in range(7)])
+        browser = FakeBrowser(
+            [{"discovery": {f"{SITE}/": {"links": [], "affordances": []}}}]
+            + [{"probe": {"support": {"localeAlternate": True}}} for _ in range(7)]
+        )
         result = await Conductor(
             f"{SITE}/", tmp_path, browser=browser, specialists=[BrokenLens(), duplicate], settle_ms=0
         ).conduct()

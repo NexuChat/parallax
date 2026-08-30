@@ -184,6 +184,16 @@ def test_partial_still_counts_as_reached_for_an_observed_policy_escalation() -> 
     assert any(f.kind is FindingKind.ESCALATION for f in findings)
 
 
+def test_server_error_never_evidences_an_access_policy() -> None:
+    owner = say(BASELINE, Outcome.PARTIAL, http_status=500)
+    anonymous = say(witness(Privilege.ANON), Outcome.PARTIAL, http_status=500)
+    member = say(witness(Privilege.MEMBER), Outcome.BLOCKED, http_status=403)
+
+    assert not owner.reached
+    assert not anonymous.reached
+    assert compare([owner, anonymous, member]) == []
+
+
 # --------------------------------------------------------------------------
 # Equivalence axes — difference is the bug
 # --------------------------------------------------------------------------

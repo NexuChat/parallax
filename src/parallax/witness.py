@@ -62,7 +62,6 @@ class Witness:
             extra_http_headers={"Accept-Language": self.context.locale.value},
             storage_state=self.storage_state,
         )
-        await self.browser_context.add_init_script(self._document_settings_script())
         self.page = await self.browser_context.new_page()
 
     async def visit(self, surface: Surface) -> Testimony:
@@ -86,11 +85,13 @@ class Witness:
         defects = self._map_defects(self.last_probe.get("defects"))
         blocked = self._is_denied(status, surface.path, final_path)
         if not blocked and surface.kind is SurfaceKind.AFFORDANCE and surface.selector:
-            blocked = not await self._affordance_is_visible(surface.selector)
+            try:
+                blocked = not await self._affordance_is_visible(surface.selector)
+            except Exception as error:
+                return self._error_testimony(surface, "affordance", error)
 
-        # HTTP status is evidence about the page, not a witness failure: 2xx and
-        # non-denial redirects reach it; 4xx block it (404/410 mean absent); 5xx
-        # observe a degraded page. Only a witness exception is Outcome.ERROR.
+        # Preserve a 5xx as a degradation diagnostic without letting it answer an
+        # access question: no role reached a server error page.
         server_error = status is not None and 500 <= status < 600
         outcome = Outcome.BLOCKED if blocked else Outcome.PARTIAL if server_error or defects else Outcome.REACHED
         note = self._note_for(outcome, status, final_path, defects)
@@ -105,6 +106,8 @@ class Witness:
             # witness cannot judge either — only the comparison across two can.
             layout_signature=self.last_probe.get("layoutSignature"),
             geometry=list(self.last_probe.get("geometry") or []),
+            document_lang=self._document_lang(self.last_probe),
+            support=self._support(self.last_probe),
             defects=defects,
             note=note,
         )
@@ -176,10 +179,7 @@ class Witness:
             await wait("networkidle", timeout=5_000)
 
     async def _affordance_is_visible(self, selector: str) -> bool:
-        try:
-            return bool(await self.page.locator(selector).is_visible())
-        except Exception:
-            return False
+        return bool(await self.page.locator(selector).is_visible())
 
     async def _deliver_frame(self, session: Any, event: dict[str, Any], consumer: FrameConsumer) -> None:
         try:
@@ -200,13 +200,6 @@ class Witness:
 
     def _load_probe(self) -> str:
         return self._probe_source or Path(__file__).with_name("probe.js").read_text(encoding="utf-8")
-
-    def _document_settings_script(self) -> str:
-        return (
-            f"document.documentElement.lang = {self.context.locale.value!r};"
-            f"document.documentElement.dir = {self.context.direction!r};"
-            f"document.documentElement.dataset.parallaxTheme = {self.context.theme.value!r};"
-        )
 
     def _error_testimony(self, surface: Surface, stage: str, error: Exception) -> Testimony:
         return Testimony(
@@ -229,6 +222,22 @@ class Witness:
             if defect not in defects:
                 defects.append(defect)
         return defects
+
+    @staticmethod
+    def _document_lang(probe: dict[str, Any]) -> str | None:
+        view = probe.get("view")
+        lang = view.get("lang") if isinstance(view, dict) else None
+        return lang if isinstance(lang, str) and lang else None
+
+    @staticmethod
+    def _support(probe: dict[str, Any]) -> dict[str, bool]:
+        raw = probe.get("support")
+        if not isinstance(raw, dict):
+            return {}
+        return {
+            key: value for key, value in raw.items()
+            if isinstance(key, str) and isinstance(value, bool)
+        }
 
     @staticmethod
     def _is_denied(status: int | None, requested: str, final_path: str) -> bool:
