@@ -95,6 +95,53 @@ There are two expectations. Privilege is the exception: access should narrow as 
 
 Parallax observes rendered surfaces and discovered controls; it does not prove application policy, API authorization, or behavior outside the exercised browser flow. It uses the role storage states you supply, so a missing or incorrect role state limits what its privilege witnesses can establish. Evidence is tiered on purpose. Anything a page can be measured for — overflow, contrast ratio, mirrored geometry, tap-target size — is decided by the in-page probe, because a measurement is repeatable and a model's opinion is not; that is what makes a live unedited run reproducible. Gemini 3.5 Flash is given the one question geometry cannot express: shown all seven witness tiles composed into a single frame, which tile disagrees with its peers. Its verdicts are accepted only when they name a real tile, and they are labelled with their source in the feed. Running with `--no-vision` therefore removes cross-tile visual comparison and leaves every measured check intact.
 
+## Revocation lag
+
+Every organisation can say when it revoked a permission. None can say when access
+actually stopped. OWASP ASVS V3 requires that all active sessions be revoked when
+an account is disabled, the OWASP testing guide describes checking that by hand,
+and no automated verifier exists; Microsoft's own continuous-access documentation
+admits propagation latency of up to fifteen minutes and leaves the last mile to
+the application.
+
+Parallax measures that last mile. An owner revokes a member in one live session
+while the member's already-open session is held open in another, and the sweep
+reports how many milliseconds the open session kept working. This cannot be done
+sequentially: run the roles one after another and the already-open session — the
+entire subject of the test — is gone before the second role starts.
+
+The result names which of four planes failed, because they fail independently:
+the revoke was **recorded**, it **propagated** to the backend, a **new** request
+is refused — and the session already open kept reading anyway. That last plane is
+the one nobody measures, and the bundled workspace demo plants exactly that
+failure, a per-session membership cache re-read on a delay:
+
+```
+REVOCATION · HIGH
+Revocation authority ceased after 2,499ms; failed plane: effects
+```
+
+Authority is not what a rendered page still shows — markup survives revocation
+indefinitely — so the assertion has to be a live request from the open session.
+Declare one the same way as any other relational scenario, with `"type":
+"revocation"`.
+
+## Axis applicability
+
+An axis is judged only where the application shows evidence of claiming it: a
+localized alternate or language switcher for locale, a `prefers-color-scheme`
+query or theme toggle for theme, a viewport meta for viewport, supplied role
+states for privilege. Anything else is reported as not applicable, with the
+reason, and produces no findings.
+
+This is a correctness rule, not a convenience. Forcing `dir="rtl"` onto an
+application with no Arabic support and then reporting it for not mirroring is the
+tool inventing its own evidence. Every run prints what it did not test:
+
+```
+"axis_summary": "1 axes exercised, 3 not applicable"
+```
+
 ## Reproducing the published figures
 
 The figures on the front page come from a graded sweep of five bundled demo

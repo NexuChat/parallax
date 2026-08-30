@@ -4,22 +4,22 @@
   "mosaics": 12,
   "findings": 31,
   "by_severity": {
+   "high": 1,
    "medium": 19,
    "low": 10,
-   "info": 1,
-   "high": 1
+   "info": 1
   },
   "by_kind": {
-   "render": 13,
-   "divergence": 10,
    "escalation": 6,
+   "render": 13,
    "inversion": 1,
+   "divergence": 10,
    "dead": 1
   }
  },
  "control": {
   "feed": "runs/control/feed.jsonl",
-  "mosaics": 2,
+  "mosaics": 3,
   "findings": 2,
   "by_severity": {
    "medium": 2
@@ -32,40 +32,40 @@
  "docs": {
   "feed": "runs/docs/feed.jsonl",
   "mosaics": 9,
-  "findings": 16,
+  "findings": 13,
   "by_severity": {
-   "medium": 15,
+   "medium": 12,
    "low": 1
   },
   "by_kind": {
-   "render": 15,
+   "render": 12,
    "divergence": 1
   }
  },
  "shop": {
   "feed": "runs/shop/feed.jsonl",
-  "mosaics": 14,
-  "findings": 33,
+  "mosaics": 16,
+  "findings": 31,
   "by_severity": {
-   "medium": 22,
+   "medium": 20,
    "low": 11
   },
   "by_kind": {
-   "render": 22,
+   "render": 20,
    "divergence": 11
   }
  },
  "workspace": {
   "feed": "runs/workspace/feed.jsonl",
   "mosaics": 14,
-  "findings": 28,
+  "findings": 26,
   "by_severity": {
+   "high": 8,
    "medium": 8,
-   "high": 9,
-   "low": 11
+   "low": 10
   },
   "by_kind": {
-   "render": 18,
+   "render": 16,
    "escalation": 5,
    "divergence": 3,
    "propagation": 1,
