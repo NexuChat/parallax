@@ -11,7 +11,9 @@ from typing import Any
 from PIL import Image
 
 from parallax.conductor import Conductor, RelationalScenario, assess_axis_applicability
+from parallax.__main__ import relational_scenarios_from_data
 from parallax.contracts import finding_payload
+from parallax.proposer import ProposalBatch, ProposalCandidate
 from parallax.types import Axis, Context, Defect, Finding, FindingKind, Locale, Outcome, Privilege, Severity, Surface, SurfaceKind, Testimony as WitnessTestimony
 
 
@@ -683,6 +685,75 @@ def test_sweep_without_relational_scenarios_preserves_ordinary_findings(tmp_path
             (finding.kind, finding.axis, finding.summary, finding.evidence_line()) for finding in second.findings
         ]
         assert len(first.testimonies) == len(second.testimonies) == 7
+
+    asyncio.run(check())
+
+
+def test_conductor_validates_and_runs_proposals_alongside_declared_scenarios(tmp_path: Path) -> None:
+    class FakeProposer:
+        route = "injected"
+        calls_attempted = 1
+        calls_succeeded = 1
+        last_error = None
+
+        def propose(self, observation: object) -> ProposalBatch:
+            assert {item.kind for item in observation.affordances} == {"form"}
+            assert set(observation.roles) == {"anon", "member", "owner"}
+            return ProposalBatch(1, (ProposalCandidate(1, {"surface": "/threads"}),), ())
+
+    async def check() -> None:
+        discovery = {
+            f"{SITE}/": {
+                "links": [],
+                "affordances": [],
+                "forms": [{"selector": "form.revoke", "label": "Remove member"}],
+            },
+        }
+        browser = FakeBrowser(
+            [{"discovery": discovery}] + [{} for _ in range(7)] + [{}, {"visible": True}] + [{}, {"visible": True}]
+        )
+        declared = _relational_scenario(lambda _page: None)
+        proposed = _relational_scenario(lambda _page: None)
+
+        def validate(data: object, start_url: str, *, source: str) -> list[RelationalScenario]:
+            assert data == [{"surface": "/threads"}]
+            assert start_url == f"{SITE}/"
+            assert source == "proposal 1"
+            return [proposed]
+
+        result = await Conductor(
+            f"{SITE}/", tmp_path, browser=browser, settle_ms=0, poll_ms=1,
+            storage_states={"owner": {"cookies": ["owner"]}, "member": {"cookies": ["member"]}},
+            relational_scenarios=[declared], scenario_proposer=FakeProposer(), proposal_validator=validate,
+        ).conduct()
+
+        assert result.proposal_report.proposed == result.proposal_report.validated == 1
+        assert len([item for item in result.testimonies if item.context.varies is Axis.RELATIONAL]) == 4
+
+    asyncio.run(check())
+
+
+def test_conductor_records_validator_rejections_without_running_them(tmp_path: Path) -> None:
+    class FakeProposer:
+        route = "injected"
+        calls_attempted = 1
+        calls_succeeded = 1
+        last_error = None
+
+        def propose(self, _observation: object) -> ProposalBatch:
+            return ProposalBatch(1, (ProposalCandidate(1, {"surface": "/threads"}),), ())
+
+    async def check() -> None:
+        result = await Conductor(
+            f"{SITE}/", tmp_path,
+            browser=FakeBrowser([{"discovery": {f"{SITE}/": {"links": [], "affordances": []}}}] + [{} for _ in range(7)]),
+            settle_ms=0, scenario_proposer=FakeProposer(), proposal_validator=relational_scenarios_from_data,
+        ).conduct()
+
+        assert result.proposal_report.proposed == 1
+        assert result.proposal_report.validated == 0
+        assert "scenario 1.sender" in result.proposal_report.rejections[0].reason
+        assert len(result.testimonies) == 7
 
     asyncio.run(check())
 

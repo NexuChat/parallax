@@ -5,6 +5,7 @@
     ['workspace', 5], ['shop', 4], ['docs', 3], ['admin', 3], ['control', 0],
   ];
   const summaryUrl = '/graded-summary.json';
+  const generatedSpecVerificationUrl = '/generated-spec-verification.json';
   const sweepIndexUrl = '/console/runs/index.json';
   const applicationOrder = ['workspace', 'shop', 'admin', 'docs', 'control'];
   const table = document.getElementById('scoreboard-data');
@@ -15,6 +16,8 @@
   const feedStatus = document.getElementById('feed-status');
   const consoleFrame = document.getElementById('console-frame');
   const generatedSpec = document.getElementById('generated-spec');
+  const generatedSpecFigures = document.getElementById('generated-spec-figures');
+  const generatedSpecSummaryNote = document.getElementById('generated-spec-summary-note');
 
   function drawScoreboard(summary) {
     const rows = sites.map(([site, planted]) => {
@@ -45,12 +48,45 @@
     controlRatio.textContent = `${found} of ${planted} defects found. ${falsePositives} findings appeared on the clean control.`;
   }
 
+  function unavailableGeneratedSpec() {
+    generatedSpecFigures.innerHTML = '<span class="generated-spec-figure"><b>Unavailable</b><small>expected</small></span><span class="generated-spec-figure"><b>Unavailable</b><small>total</small></span><span class="generated-spec-figure"><b>Unavailable</b><small>failed</small></span><span class="generated-spec-figure"><b>Unavailable</b><small>passed</small></span><span class="generated-spec-figure"><b>Unavailable</b><small>skipped</small></span><span class="generated-spec-figure"><b>Unavailable</b><small>setup failures</small></span>';
+    generatedSpecSummaryNote.textContent = 'Generated spec figures are unavailable: /generated-spec-verification.json could not be loaded.';
+  }
+
+  function drawGeneratedSpec(data) {
+    const expected = Number(data && data.expected);
+    const total = Number(data && data.total);
+    const failed = Number(data && data.failed);
+    const passed = Number(data && data.passed);
+    const skipped = Number(data && data.skipped);
+    const setupFailures = Array.isArray(data && data.setup_failures) ? data.setup_failures.length : Number(data && data.setup_failures);
+    if (![expected, total, failed, passed, skipped, setupFailures].every(Number.isFinite)) {
+      unavailableGeneratedSpec();
+      return;
+    }
+    generatedSpecFigures.innerHTML = `<span class=\"generated-spec-figure\"><b>${expected}</b><small>expected</small></span><span class=\"generated-spec-figure\"><b>${total}</b><small>total</small></span><span class=\"generated-spec-figure\"><b>${failed}</b><small>failed</small></span><span class=\"generated-spec-figure\"><b>${passed}</b><small>passed</small></span><span class=\"generated-spec-figure\"><b>${skipped}</b><small>skipped</small></span><span class=\"generated-spec-figure\"><b>${setupFailures}</b><small>setup failures</small></span>`;
+    const verdict = typeof data.verdict === 'string' ? data.verdict.toUpperCase() : '';
+    generatedSpecSummaryNote.textContent = `${verdict || 'PASS'} is the gate result here: each generated spec is a planted-defect assertion. A passing generated spec means the planted defect did not reproduce in this check, so failures are the expected signal.`;
+  }
+
   async function loadGeneratedSpec() {
     try {
       const response = await fetch('/generated-example.spec.ts', { cache: 'no-store' });
       if (!response.ok) return;
       generatedSpec.textContent = await response.text();
     } catch (_) { /* The committed example remains available when served. */ }
+  }
+
+  async function loadGeneratedSpecVerification() {
+    try {
+      const response = await fetch(generatedSpecVerificationUrl, { cache: 'no-store' });
+      if (!response.ok) throw new Error('spec verification unavailable');
+      const data = await response.json();
+      if (!data || typeof data !== 'object') throw new Error('spec verification invalid');
+      drawGeneratedSpec(data);
+    } catch (_) {
+      unavailableGeneratedSpec();
+    }
   }
 
   async function loadScoreboard() {
@@ -124,5 +160,6 @@
 
   loadScoreboard();
   loadGeneratedSpec();
+  loadGeneratedSpecVerification();
   loadGallery();
 })();

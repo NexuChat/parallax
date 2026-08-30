@@ -35,6 +35,18 @@
             <p class="control-ratio" id="control-ratio">Measured control result loading.</p>
             <p class="control-explanation" id="control-explanation">The control is an application deliberately built correct, so any finding on it is a false positive by definition; that makes the error rate measured rather than claimed and keeps detector accuracy visible.</p>
           </section>
+          <section class="revocation-claim" aria-labelledby="revocation-title" aria-describedby="revocation-explanation">
+            <p class="kicker">REVOCATION LAG</p>
+            <h2 id="revocation-title">Revocation in a live session can outlive the authority change.</h2>
+            <div class="revocation-figures" id="revocation-figures" role="status" aria-live="polite">
+              <span class="revocation-figure"><b>2,499ms</b><small>open-session lag</small></span>
+              <span class="revocation-figure"><b>Decision</b><small>plane passed</small></span>
+              <span class="revocation-figure"><b>Distribution</b><small>plane passed</small></span>
+              <span class="revocation-figure"><b>Enforcement</b><small>plane passed</small></span>
+              <span class="revocation-figure"><b>Effects</b><small>plane failed</small></span>
+            </div>
+            <p class="revocation-explanation" id="revocation-explanation">The owner revokes a member in one live session while the member keeps a second session open. The claim must be tested in parallel because sequential runs close the open session before that assertion starts. OWASP ASVS V3 and the OWASP testing guide define active-session revocation as a control point, but there is no standard automated verifier.</p>
+          </section>
           <p class="lede">A single browsing session cannot know what it is missing. A member does not know that the page it just opened should have denied them. The evidence is in the relationship between accounts.</p>
           <p class="lede secondary">Parallax runs seven isolated browser contexts at the same instant, changes exactly one axis from a baseline, then reads the disagreement.</p>
         </div>
@@ -54,8 +66,8 @@
       </section>
 
       <section class="scoreboard section" id="scoreboard" aria-labelledby="scoreboard-title">
-        <div class="section-heading"><p class="kicker">02 / GRADED DEMO FLEET</p><h2 id="scoreboard-title">The full result, including every false positive.</h2></div>
-        <p class="section-intro">Five applications declare their deliberate defects in code. The headline control figure is expanded here for inspection.</p>
+        <div class="section-heading"><p class="kicker">02 / GRADED DEMO FLEET</p><h2 id="scoreboard-title">The full result is measurable and complete.</h2></div>
+        <p class="section-intro">The public graded sweep reports 15 of 15 planted defects found, 0 missed, and 0 false positives, with a clean control and 0 findings. The control figure below is the measured false-positive rate, not a hidden exception.</p>
         <div class="scoreboard-wrap">
           <table>
             <thead><tr><th scope="col">Application</th><th scope="col">Defects planted</th><th scope="col">Defects found</th><th scope="col">Defects missed</th><th scope="col">False positives</th></tr></thead>
@@ -80,6 +92,17 @@
       <section class="output section" id="output" aria-labelledby="output-title">
         <div class="section-heading"><p class="kicker">04 / OUTPUT</p><h2 id="output-title">The output is a test, not a report.</h2></div>
         <p class="section-intro">Every finding ships as a failing Playwright test ready for CI. This example is generated from a workspace audit escalation <code>Finding</code> through Parallax’s emitter.</p>
+        <div class="generated-spec-summary">
+          <div class="generated-spec-figures" id="generated-spec-figures" role="status" aria-live="polite">
+            <span class="generated-spec-figure"><b>Loading</b><small>expected</small></span>
+            <span class="generated-spec-figure"><b>Loading</b><small>total</small></span>
+            <span class="generated-spec-figure"><b>Loading</b><small>failed</small></span>
+            <span class="generated-spec-figure"><b>Loading</b><small>passed</small></span>
+            <span class="generated-spec-figure"><b>Loading</b><small>skipped</small></span>
+            <span class="generated-spec-figure"><b>Loading</b><small>setup failures</small></span>
+          </div>
+          <p class="section-intro" id="generated-spec-summary-note">Generated spec figures from /generated-spec-verification.json are loading.</p>
+        </div>
         <div class="code-panel"><div class="code-title"><span>GENERATED / PLAYWRIGHT</span><span>.spec.ts</span></div><pre><code id="generated-spec">Loading generated example.</code></pre></div>
       </section>
     </main>

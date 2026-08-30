@@ -17,6 +17,9 @@ from typing import Any
 from urllib.parse import urljoin
 
 from .conductor import Conductor, RelationalScenario
+from .differ import configure_semantics
+from .proposer import ProposalReport, ScenarioProposer
+from .semantics import SemanticComparator
 from .specialists import LayoutI18nSpecialist, RealtimeSpecialist
 from .triage import GemmaTriage
 from .types import EffectExpectation, FormAction, Context, Privilege, RelationalReplay, Severity, Surface, SurfaceKind
@@ -33,6 +36,11 @@ def _parse(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         metavar="PATH",
         help="JSON file of sender/receiver scenarios to exercise concurrently",
+    )
+    parser.add_argument(
+        "--propose-scenarios",
+        action="store_true",
+        help="ask Gemini to propose observed-data relational scenarios",
     )
     parser.add_argument("--headed", action="store_true", help="show the browsers (a demo, not a run)")
     parser.add_argument(
@@ -95,6 +103,35 @@ def _model_report(specialists: list[object]) -> dict[str, object]:
             report["last_error"] = lens.last_error
         return report
     return {"route": "disabled", "calls_attempted": 0, "calls_succeeded": 0}
+
+
+def _scenario_proposer(enabled: bool) -> ScenarioProposer | None:
+    if not enabled:
+        return None
+    proposer = ScenarioProposer()
+    if proposer.route == "disabled":
+        print("scenario proposer disabled: set GOOGLE_CLOUD_PROJECT for Vertex AI", file=sys.stderr)
+    else:
+        print(f"scenario proposer route: {proposer.route}", file=sys.stderr)
+    return proposer
+
+
+def _proposal_report(report: ProposalReport) -> dict[str, object]:
+    """State whether Gemini proposed useful scenarios and why it did not."""
+    payload: dict[str, object] = {
+        "enabled": report.enabled,
+        "proposed": report.proposed,
+        "validated": report.validated,
+        "rejected": [{"index": item.index, "reason": item.reason} for item in report.rejections],
+        "calls_attempted": report.calls_attempted,
+        "calls_succeeded": report.calls_succeeded,
+        "route": report.route,
+    }
+    if report.last_error:
+        payload["last_error"] = report.last_error
+    if report.note:
+        payload["note"] = report.note
+    return payload
 
 
 def _scenario_error(source: str, problem: str) -> SystemExit:
@@ -247,12 +284,15 @@ async def _run(args: argparse.Namespace) -> int:
     # Built once and kept, because the run summary has to report what the lens
     # actually did and cannot ask a list the conductor threw away.
     specialists = _specialists(args.no_vision)
+    semantics = SemanticComparator()
+    configure_semantics(semantics)
+    proposer = _scenario_proposer(args.propose_scenarios)
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(
             headless=not args.headed, args=["--no-sandbox", "--disable-dev-shm-usage"]
         )
         try:
-            summary = await _conduct(args, browser, relational_scenarios, specialists)
+            summary = await _conduct(args, browser, relational_scenarios, specialists, proposer)
         finally:
             await browser.close()
 
@@ -281,6 +321,8 @@ async def _run(args: argparse.Namespace) -> int:
         # Whether the mandatory model was actually reached, not whether a key
         # happened to be set. A run that could not call it says so here.
         "model": _model_report(specialists),
+        "semantics": semantics.report(),
+        "proposal": _proposal_report(summary.proposal_report),
         # Grouping is a wording judgement, not a measurement, so it is reported
         # separately from the findings themselves and never alters them.
         "triage": {
@@ -299,6 +341,7 @@ async def _run(args: argparse.Namespace) -> int:
 async def _conduct(
     args: argparse.Namespace, browser: object, relational_scenarios: list[RelationalScenario] | None,
     specialists: list[object] | None = None,
+    proposer: ScenarioProposer | None = None,
 ) -> object:
     """Make the CLI-to-conductor contract testable without launching Chromium."""
     options: dict[str, object] = {
@@ -310,6 +353,9 @@ async def _conduct(
     }
     if relational_scenarios is not None:
         options["relational_scenarios"] = relational_scenarios
+    if args.propose_scenarios:
+        options["scenario_proposer"] = proposer or ScenarioProposer()
+        options["proposal_validator"] = relational_scenarios_from_data
     return await Conductor(args.url, args.out, **options).conduct()
 
 

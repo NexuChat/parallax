@@ -1,6 +1,8 @@
 # Parallax
 
-Parallax is a browser-based regression investigator for an existing web application. It visits the same discovered surfaces from seven isolated contexts, records what each context can reach and what it renders, then turns broken expectations into findings and Playwright regression specs. The live console is available at [perallax.mlki.app](https://perallax.mlki.app).
+Parallax is a relational browser regression system. It runs seven isolated contexts together, then turns witness disagreement into failing Playwright specs. The published demo target, `https://demo.mlki.app`, currently reports 15 of 15 planted defects found, 0 missed, and 0 false positives on five demo sites, while the clean control stays at zero.
+
+It also reports revocation lag in an open session: the owner revokes one member while the member’s other live session is still open, and the remaining authority window is measured at 2,499ms. In that measured run, decision, distribution, and enforcement pass; effects fails.
 
 ![Parallax architecture](docs/architecture.png)
 

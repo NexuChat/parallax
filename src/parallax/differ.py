@@ -16,7 +16,15 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable
+from dataclasses import dataclass
 
+from .semantics import (
+    SEMANTIC_EQUIVALENCE_THRESHOLD,
+    SemanticComparator,
+    SemanticPair,
+    SemanticPairKind,
+    SemanticResult,
+)
 from .types import (
     Axis,
     Context,
@@ -62,6 +70,22 @@ _DEFECT_PHRASING = {
 }
 
 _SEVERITY_ORDER = {Severity.HIGH: 0, Severity.MEDIUM: 1, Severity.LOW: 2, Severity.INFO: 3}
+_MAX_REGION_CHARS = 1_000
+
+_configured_semantics: SemanticComparator | None = None
+
+
+@dataclass(frozen=True)
+class _SemanticCandidate:
+    pair: SemanticPair
+    baseline: Testimony
+    variant: Testimony
+
+
+def configure_semantics(comparator: SemanticComparator | None) -> None:
+    """Set the run-owned comparator whose usage the CLI will report."""
+    global _configured_semantics
+    _configured_semantics = comparator
 
 
 def _axis_cause(context: Context) -> str:
@@ -197,57 +221,6 @@ def _privilege_findings(
     return findings
 
 
-def _equivalence_findings(
-    surface: Surface, baseline: Testimony, variants: list[Testimony]
-) -> list[Finding]:
-    """Locale, theme, viewport: access must not move. Difference is the bug."""
-    findings: list[Finding] = []
-    for t in variants:
-        cause = _axis_cause(t.context)
-
-        if baseline.reached != t.reached:
-            gained, lost = (t, baseline) if t.reached else (baseline, t)
-            findings.append(
-                Finding(
-                    kind=FindingKind.CAPABILITY_DRIFT,
-                    severity=Severity.HIGH,
-                    surface=surface,
-                    axis=t.context.varies,
-                    summary=(
-                        f"{surface.describe()} is reachable at {gained.context.name} "
-                        f"but not at {lost.context.name} — changing {cause} must not "
-                        f"change what a user can reach"
-                    ),
-                    testimonies=[baseline, t],
-                )
-            )
-            continue
-
-        # Both reached it: the content itself should still correspond.
-        if (
-            baseline.reached
-            and baseline.content_signature
-            and t.content_signature
-            and baseline.content_signature != t.content_signature
-            and t.context.varies in (Axis.THEME, Axis.VIEWPORT)
-        ):
-            # Locale is excluded on purpose: translated text *should* differ.
-            findings.append(
-                Finding(
-                    kind=FindingKind.CONTENT_DIVERGENCE,
-                    severity=Severity.LOW,
-                    surface=surface,
-                    axis=t.context.varies,
-                    summary=(
-                        f"{surface.describe()} shows different content when {cause} — "
-                        f"content is not expected to depend on this axis"
-                    ),
-                    testimonies=[baseline, t],
-                )
-            )
-    return findings
-
-
 def _render_findings(surface: Surface, group: list[Testimony]) -> list[Finding]:
     """Compare each render defect across all witnesses with evidence."""
     if surface.kind is SurfaceKind.AFFORDANCE:
@@ -256,6 +229,10 @@ def _render_findings(surface: Surface, group: list[Testimony]) -> list[Finding]:
     by_defect: dict[Defect, list[Testimony]] = defaultdict(list)
     for testimony in group:
         for defect in dict.fromkeys(testimony.defects):
+            # The browser's key/Latin scan is raw evidence only. Locale meaning
+            # now belongs to the Translation plus embedding comparison below.
+            if defect is Defect.UNTRANSLATED:
+                continue
             by_defect[defect].append(testimony)
 
     findings: list[Finding] = []
@@ -321,13 +298,7 @@ def _analyse(
     # RELATIONAL is excluded on purpose: a sender/receiver pair is not a one-axis
     # derivation, so comparing it against the baseline would manufacture drift
     # findings out of two witnesses that were never supposed to match.
-    equivalence_variants = [
-        t for t in group
-        if t.context.varies not in (Axis.BASELINE, Axis.PRIVILEGE, Axis.RELATIONAL)
-    ]
-
     findings += _privilege_findings(surface, baseline, privilege_variants, all_testimonies)
-    findings += _equivalence_findings(surface, baseline, equivalence_variants)
 
     # A control absent from an otherwise reached page is not a dead route: it
     # may represent a hidden or unavailable affordance, a distinct claim that
@@ -349,7 +320,180 @@ def _analyse(
     return findings
 
 
-def compare(testimonies: Iterable[Testimony]) -> list[Finding]:
+def _semantic_equivalence_findings(
+    groups: Iterable[list[Testimony]], semantics: SemanticComparator
+) -> list[Finding]:
+    """Make one bounded semantic judgement batch for all equivalence candidates."""
+    findings: list[Finding] = []
+    candidates: list[_SemanticCandidate] = []
+    for group in sorted(groups, key=lambda item: item[0].surface.id):
+        baseline = next((item for item in group if item.context.varies is Axis.BASELINE), None)
+        if baseline is None:
+            continue
+        variants = [
+            item for item in group
+            if item.context.varies not in (Axis.BASELINE, Axis.PRIVILEGE, Axis.RELATIONAL)
+        ]
+        for variant in variants:
+            cause = _axis_cause(variant.context)
+            if baseline.reached != variant.reached:
+                gained, lost = (variant, baseline) if variant.reached else (baseline, variant)
+                findings.append(
+                    Finding(
+                        kind=FindingKind.CAPABILITY_DRIFT,
+                        severity=Severity.HIGH,
+                        surface=baseline.surface,
+                        axis=variant.context.varies,
+                        summary=(
+                            f"{baseline.surface.describe()} is reachable at {gained.context.name} "
+                            f"but not at {lost.context.name} — changing {cause} must not "
+                            f"change what a user can reach"
+                        ),
+                        testimonies=[baseline, variant],
+                    )
+                )
+                continue
+            if not (
+                baseline.reached
+                and variant.reached
+                and baseline.content_signature
+                and variant.content_signature
+                and baseline.content_signature != variant.content_signature
+            ):
+                continue
+            if variant.context.varies not in (Axis.LOCALE, Axis.THEME, Axis.VIEWPORT):
+                continue
+            region = _changed_region(baseline, variant)
+            if region is None:
+                findings.extend(_missing_region_fallback(baseline, variant, cause))
+                continue
+            baseline_text, variant_text = region
+            candidates.append(_SemanticCandidate(
+                SemanticPair(
+                    _semantic_key(baseline, variant),
+                    SemanticPairKind.LOCALE if variant.context.varies is Axis.LOCALE else SemanticPairKind.CONTENT,
+                    baseline_text,
+                    variant_text,
+                    baseline.context.locale.value,
+                    variant.context.locale.value,
+                ),
+                baseline,
+                variant,
+            ))
+
+    results = {result.key: result for result in semantics.evaluate([item.pair for item in candidates])}
+    for candidate in candidates:
+        result = results[candidate.pair.key]
+        findings.extend(_finding_from_semantics(candidate, result))
+    return findings
+
+
+def _changed_region(baseline: Testimony, variant: Testimony) -> tuple[str, str] | None:
+    """Return only changed landmark text, never the page's unbounded innerText."""
+    def landmarks(testimony: Testimony) -> dict[str, str]:
+        result: dict[str, str] = {}
+        for item in testimony.geometry:
+            selector, text = item.get("selector"), item.get("text")
+            if isinstance(selector, str) and isinstance(text, str) and text.strip():
+                result.setdefault(selector, text.strip())
+        return result
+
+    left, right = landmarks(baseline), landmarks(variant)
+    changed = [
+        selector for selector in sorted(left.keys() | right.keys())
+        if left.get(selector) != right.get(selector)
+    ]
+    if not changed:
+        return None
+    baseline_parts = [left[selector] for selector in changed if selector in left]
+    variant_parts = [right[selector] for selector in changed if selector in right]
+    baseline_text, variant_text = "\n".join(baseline_parts), "\n".join(variant_parts)
+    if not baseline_text or not variant_text:
+        return None
+    return baseline_text[:_MAX_REGION_CHARS], variant_text[:_MAX_REGION_CHARS]
+
+
+def _missing_region_fallback(baseline: Testimony, variant: Testimony, cause: str) -> list[Finding]:
+    evidence = "semantic comparison degraded: changed visible region was not captured"
+    if variant.context.varies in (Axis.THEME, Axis.VIEWPORT):
+        return [
+            Finding(
+                FindingKind.CONTENT_DIVERGENCE,
+                Severity.LOW,
+                baseline.surface,
+                variant.context.varies,
+                f"{baseline.surface.describe()} shows different content when {cause} — "
+                "content is not expected to depend on this axis",
+                [baseline, variant],
+                evidence=evidence + "; falling back to hash mismatch",
+            )
+        ]
+    if Defect.UNTRANSLATED in variant.defects:
+        return [_untranslated_finding(baseline, variant, evidence + "; deterministic raw-text fallback")]
+    return []
+
+
+def _finding_from_semantics(candidate: _SemanticCandidate, result: SemanticResult) -> list[Finding]:
+    baseline, variant = candidate.baseline, candidate.variant
+    cause = _axis_cause(variant.context)
+    if result.similarity is None:
+        detail = result.degraded_reason or "semantic comparison did not return a score"
+        if candidate.pair.kind is SemanticPairKind.CONTENT:
+            return [
+                Finding(
+                    FindingKind.CONTENT_DIVERGENCE,
+                    Severity.LOW,
+                    baseline.surface,
+                    variant.context.varies,
+                    f"{baseline.surface.describe()} shows different content when {cause} — "
+                    "content is not expected to depend on this axis",
+                    [baseline, variant],
+                    evidence=f"{detail}; falling back to hash mismatch",
+                )
+            ]
+        if Defect.UNTRANSLATED in variant.defects:
+            return [_untranslated_finding(baseline, variant, detail + "; deterministic raw-text fallback")]
+        return []
+    evidence = (
+        f"text-embedding-005 similarity={result.similarity:.3f}; "
+        f"equivalence threshold={SEMANTIC_EQUIVALENCE_THRESHOLD:.2f}"
+    )
+    if result.equivalent:
+        return []
+    if candidate.pair.kind is SemanticPairKind.LOCALE:
+        return [_untranslated_finding(baseline, variant, evidence)]
+    return [
+        Finding(
+            FindingKind.CONTENT_DIVERGENCE,
+            Severity.LOW,
+            baseline.surface,
+            variant.context.varies,
+            f"{baseline.surface.describe()} shows materially different content when {cause}",
+            [baseline, variant],
+            evidence=evidence,
+        )
+    ]
+
+
+def _untranslated_finding(baseline: Testimony, variant: Testimony, evidence: str) -> Finding:
+    return Finding(
+        FindingKind.RENDER_DEFECT,
+        _DEFECT_SEVERITY[Defect.UNTRANSLATED],
+        baseline.surface,
+        Axis.LOCALE,
+        f"{baseline.surface.describe()} is unrelated to the "
+        f"{variant.context.locale.value} translation of its baseline text",
+        [baseline, variant],
+        defect=Defect.UNTRANSLATED,
+        evidence=evidence,
+    )
+
+
+def _semantic_key(baseline: Testimony, variant: Testimony) -> str:
+    return f"{baseline.surface.id}:{variant.context.name}:{variant.context.varies.value}"
+
+
+def compare(testimonies: Iterable[Testimony], *, semantics: SemanticComparator | None = None) -> list[Finding]:
     """Compare all testimonies and return findings, most severe first."""
     findings: list[Finding] = []
     all_testimonies = list(testimonies)
@@ -361,5 +505,7 @@ def compare(testimonies: Iterable[Testimony]) -> list[Finding]:
     }
     for group in groups.values():
         findings.extend(_analyse(group[0].surface, group, reached_route_paths, all_testimonies))
+    comparator = semantics or _configured_semantics or SemanticComparator()
+    findings.extend(_semantic_equivalence_findings(groups.values(), comparator))
     findings.sort(key=lambda f: (_SEVERITY_ORDER[f.severity], f.surface.path, f.kind.value))
     return findings

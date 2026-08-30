@@ -19,6 +19,7 @@ from .contracts import FeedEvent, Frame, Moment, MosaicFrame, Specialist, findin
 from .differ import compare
 from .emitter import emit_all
 from .mirror import mirror_defects, mirror_report
+from .proposer import BaselineObservation, ObservedAffordance, ProposalRejection, ProposalReport, ScenarioProposer
 from .relational import Expectation, RelationalPair
 from .types import Axis, AxisApplicability, Context, DefectObservation, Finding, Outcome, Privilege, RelationalReplay, Surface, SurfaceKind, Testimony, derive_witnesses
 from .witness import StorageState, Witness
@@ -30,15 +31,41 @@ _DISCOVERY_SCRIPT = r"""/* PARALLAX_DISCOVERY */
     const style = getComputedStyle(element); const box = element.getBoundingClientRect();
     return style.visibility !== "hidden" && style.display !== "none" && box.width > 0 && box.height > 0;
   };
-  const selector = (element, index) => {
+  const selector = (element) => {
     if (element.id) return "#" + CSS.escape(element.id);
-    const tagged = "[data-parallax-surface]";
-    if (element.matches(tagged)) return tagged + `:nth-of-type(${index + 1})`;
-    return `${element.tagName.toLowerCase()}:nth-of-type(${index + 1})`;
+    const tag = element.tagName.toLowerCase();
+    const classes = [...element.classList].filter(Boolean).map((name) => "." + CSS.escape(name)).join("");
+    const named = element.getAttribute("name");
+    const value = element.getAttribute("value");
+    const candidates = [
+      classes && tag + classes,
+      named && `${tag}[name="${CSS.escape(named)}"]${value ? `[value="${CSS.escape(value)}"]` : ""}`,
+      element.matches("[data-parallax-surface]") && "[data-parallax-surface]",
+    ].filter(Boolean);
+    for (const candidate of candidates) if (document.querySelectorAll(candidate).length === 1) return candidate;
+    const parent = element.parentElement;
+    if (!parent) return tag;
+    const siblings = [...parent.children].filter((child) => child.tagName === element.tagName);
+    return `${selector(parent)} > ${tag}:nth-of-type(${siblings.indexOf(element) + 1})`;
   };
+  const label = (element) => (element.innerText || element.getAttribute("aria-label") || element.value || "").trim();
   const actions = [...document.querySelectorAll('button, a:not([href]), [role="button"]')]
-    .filter(visible).map((element, index) => ({ selector: selector(element, index), label: (element.innerText || element.getAttribute("aria-label") || "").trim() }));
-  return { links: [...document.querySelectorAll("a[href]")].filter(visible).map((anchor) => anchor.href), affordances: actions };
+    .filter(visible).map((element) => ({ selector: selector(element), label: label(element) }));
+  const forms = [...document.forms].filter(visible).map((form) => ({
+    selector: selector(form), label: label(form.querySelector('[type="submit"]') || form),
+  }));
+  const controls = [...document.querySelectorAll("input, select, textarea")].filter(visible)
+    .map((element) => ({ selector: selector(element), label: label(element) }));
+  const endpoints = [
+    ...performance.getEntriesByType("resource").filter((entry) => ["fetch", "xmlhttprequest"].includes(entry.initiatorType)).map((entry) => entry.name),
+    ...[...document.scripts].flatMap((script) => [...(script.textContent || "").matchAll(/fetch\(\s*["']([^"']+)/g)].map((match) => match[1])),
+  ].filter((value) => {
+    try { return new URL(value, location.href).origin === location.origin; } catch (_) { return false; }
+  });
+  return {
+    links: [...document.querySelectorAll("a[href]")].filter(visible).map((anchor) => anchor.href),
+    affordances: actions, forms, controls, endpoints: [...new Set(endpoints)], text: (document.body.innerText || "").trim().slice(0, 4000),
+  };
 }"""
 
 
@@ -50,6 +77,7 @@ class ConductSummary:
     spec_paths: list[Path]
     feed_path: Path
     axis_applicability: list[AxisApplicability]
+    proposal_report: ProposalReport
 
 
 @dataclass(frozen=True)
@@ -88,6 +116,8 @@ class Conductor:
         settle_ms: int = 500,
         poll_ms: int = 50,
         relational_scenarios: Sequence[RelationalScenario] | None = None,
+        scenario_proposer: ScenarioProposer | None = None,
+        proposal_validator: Callable[..., list[RelationalScenario]] | None = None,
     ) -> None:
         if max_surfaces < 1:
             raise ValueError("max_surfaces must be at least 1")
@@ -101,6 +131,12 @@ class Conductor:
         self.settle_ms = settle_ms
         self.poll_ms = max(1, poll_ms)
         self.relational_scenarios = list(relational_scenarios or [])
+        self.scenario_proposer = scenario_proposer
+        self.proposal_validator = proposal_validator
+        self._observed_routes: set[str] = set()
+        self._observed_affordances: set[ObservedAffordance] = set()
+        self._observed_endpoints: set[str] = set()
+        self._observed_text: list[str] = []
 
     async def conduct(self) -> ConductSummary:
         """Run the complete pipeline. A witness error remains testimony, never a crash."""
@@ -109,6 +145,8 @@ class Conductor:
         feed_path = self.out_dir / "feed.jsonl"
         feed_path.write_text("", encoding="utf-8")
         surfaces = await self._discover()
+        proposal_report, proposed_scenarios = self._proposed_scenarios()
+        relational_scenarios = [*self.relational_scenarios, *proposed_scenarios]
         compositor = Compositor(
             [context.name for context in self.contexts],
             settle_ms=self.settle_ms,
@@ -152,7 +190,7 @@ class Conductor:
         for finding in findings:
             self._write(feed_path, "finding", finding_payload(finding, mosaic=surface_mosaics.get(finding.surface.id)))
 
-        for scenario in self.relational_scenarios:
+        for scenario in relational_scenarios:
             self._write(feed_path, "status", {
                 "surface": scenario.surface.describe(), "surface_id": scenario.surface.id, "state": "started",
             })
@@ -179,7 +217,9 @@ class Conductor:
             # spec that cannot open its state and never reaches an assertion.
             {str(role): str(path) for role, path in (self.storage_states or {}).items()},
         )
-        return ConductSummary(surfaces, all_testimonies, all_findings, spec_paths, feed_path, axis_applicability)
+        return ConductSummary(
+            surfaces, all_testimonies, all_findings, spec_paths, feed_path, axis_applicability, proposal_report
+        )
 
     async def _discover(self) -> list[Surface]:
         """Use only the baseline context to make the replay set causal and comparable.
@@ -211,6 +251,7 @@ class Conductor:
                     if route in visited_routes:
                         continue
                     visited_routes.add(route)
+                    self._observed_routes.add(route)
                     surfaces.append(Surface(SurfaceKind.ROUTE, route))
                 elif pending_affordances:
                     surfaces.append(pending_affordances.pop(0))
@@ -224,6 +265,7 @@ class Conductor:
                     continue
                 if not isinstance(data, dict):
                     continue
+                self._record_baseline_observation(route, data)
                 for action in data.get("affordances", []):
                     if not isinstance(action, dict) or not isinstance(action.get("selector"), str):
                         continue
@@ -243,11 +285,87 @@ class Conductor:
                         and target not in visited_routes
                         and target not in queued_routes
                     ):
+                        self._observed_routes.add(target)
                         queued_routes.add(target)
                         pending_routes.append(target)
         finally:
             await witness.close()
         return surfaces
+
+    def _proposed_scenarios(self) -> tuple[ProposalReport, list[RelationalScenario]]:
+        """Pass model proposals through the declared-scenario validator one at a time."""
+        proposer = self.scenario_proposer
+        if proposer is None:
+            return ProposalReport.disabled(), []
+        try:
+            batch = proposer.propose(self._baseline_observation())
+        except Exception as error:
+            message = f"{type(error).__name__}: {str(error)[:200]}"
+            return ProposalReport(
+                True, 0, 0, calls_attempted=getattr(proposer, "calls_attempted", 0),
+                calls_succeeded=getattr(proposer, "calls_succeeded", 0), route=getattr(proposer, "route", "unknown"),
+                last_error=message, note="scenario proposer failed before it returned a proposal",
+            ), []
+
+        rejections = list(batch.rejections)
+        scenarios: list[RelationalScenario] = []
+        if self.proposal_validator is None:
+            rejections.extend(
+                ProposalRejection(candidate.index, "proposal validator was not configured")
+                for candidate in batch.candidates
+            )
+        else:
+            for candidate in batch.candidates:
+                try:
+                    scenarios.extend(self.proposal_validator([candidate.data], self.start_url, source=f"proposal {candidate.index}"))
+                except SystemExit as error:
+                    rejections.append(ProposalRejection(candidate.index, str(error)))
+        note = batch.note
+        if batch.proposed == 0 and note is None:
+            note = "Gemini proposed no scenarios"
+        return ProposalReport(
+            True, batch.proposed, len(scenarios), tuple(rejections),
+            getattr(proposer, "calls_attempted", 0), getattr(proposer, "calls_succeeded", 0),
+            getattr(proposer, "route", "unknown"), getattr(proposer, "last_error", None), note,
+        ), scenarios
+
+    def _baseline_observation(self) -> BaselineObservation:
+        """Keep the model's input to what this baseline actually encountered."""
+        roles = {context.privilege.value for context in self.contexts if context.privilege is Privilege.ANON}
+        for privilege in Privilege:
+            if self._storage_for(Context(privilege=privilege)) is not None:
+                roles.add(privilege.value)
+        return BaselineObservation(
+            self.start_url,
+            tuple(sorted(self._observed_routes)),
+            tuple(sorted(self._observed_affordances, key=lambda item: (item.route, item.kind, item.selector))),
+            tuple(sorted(self._observed_endpoints)),
+            tuple(sorted(roles)),
+            "\n".join(dict.fromkeys(self._observed_text))[:4_000],
+        )
+
+    def _record_baseline_observation(self, route: str, data: dict[str, Any]) -> None:
+        """Preserve baseline controls for proposal input without changing discovery order."""
+        for field, kind in (("affordances", "affordance"), ("forms", "form"), ("controls", "control")):
+            items = data.get(field, [])
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if not isinstance(item, dict) or not isinstance(selector := item.get("selector"), str) or not selector:
+                    continue
+                label = item.get("label")
+                self._observed_affordances.add(ObservedAffordance(route, selector, label if isinstance(label, str) else "", kind))
+        endpoints = data.get("endpoints", [])
+        if not isinstance(endpoints, list):
+            endpoints = []
+        for endpoint in endpoints:
+            if not isinstance(endpoint, str):
+                continue
+            target = _normal_url(urljoin(route, endpoint))
+            if _origin(target) == _origin(self.start_url) and _is_at_or_below_start_path(target, self.start_url):
+                self._observed_endpoints.add(target)
+        if isinstance(text := data.get("text"), str) and text.strip():
+            self._observed_text.append(text.strip())
 
     async def _run_surface(
         self, surface: Surface, compositor: Compositor, sequence: dict[str, int]

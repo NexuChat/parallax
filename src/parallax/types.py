@@ -353,6 +353,7 @@ class Finding:
     revocation: RevocationLag | None = None
     replay: RelationalReplay | None = None
     defect: Defect | None = None
+    evidence: str | None = None
 
     @property
     def id(self) -> str:
@@ -363,4 +364,6 @@ class Finding:
 
     def evidence_line(self) -> str:
         parts = [f"{t.context.name}={t.outcome.value}" for t in self.testimonies]
+        if self.evidence:
+            parts.append(self.evidence)
         return " · ".join(parts)

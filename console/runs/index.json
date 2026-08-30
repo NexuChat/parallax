@@ -23,20 +23,20 @@
   },
   "docs": {
     "feed": "runs/docs/feed.jsonl",
-    "mosaics": 10,
-    "findings": 3,
+    "mosaics": 9,
+    "findings": 5,
     "by_severity": {
-      "medium": 2,
+      "medium": 4,
       "low": 1
     },
     "by_kind": {
-      "render": 2,
+      "render": 4,
       "divergence": 1
     }
   },
   "shop": {
     "feed": "runs/shop/feed.jsonl",
-    "mosaics": 16,
+    "mosaics": 15,
     "findings": 4,
     "by_severity": {
       "high": 1,
@@ -49,7 +49,7 @@
   },
   "workspace": {
     "feed": "runs/workspace/feed.jsonl",
-    "mosaics": 11,
+    "mosaics": 9,
     "findings": 5,
     "by_severity": {
       "high": 3,

@@ -6,6 +6,7 @@ import asyncio
 import pytest
 
 from parallax import __main__ as cli
+from parallax.proposer import ProposalRejection, ProposalReport
 
 
 def test_sweep_without_relational_scenario_file_keeps_conductor_default(monkeypatch) -> None:
@@ -25,6 +26,49 @@ def test_sweep_without_relational_scenario_file_keeps_conductor_default(monkeypa
 
     assert args.relational_scenarios is None
     assert "relational_scenarios" not in received
+
+
+def test_scenario_proposal_is_opt_in_and_receives_the_existing_validator(monkeypatch) -> None:
+    args = cli._parse(["https://app.example.test", "--propose-scenarios"])
+    received: dict[str, object] = {}
+
+    class FakeProposer:
+        route = "injected"
+
+    class FakeConductor:
+        def __init__(self, _url, _out, **options):
+            received.update(options)
+
+        async def conduct(self):
+            return object()
+
+    proposer = FakeProposer()
+    monkeypatch.setattr(cli, "Conductor", FakeConductor)
+    monkeypatch.setattr(cli, "ScenarioProposer", lambda: proposer)
+    monkeypatch.setattr(cli, "_specialists", lambda _no_vision: [])
+    asyncio.run(cli._conduct(args, object(), None))
+
+    assert args.propose_scenarios
+    assert received["scenario_proposer"] is proposer
+    assert received["proposal_validator"] is cli.relational_scenarios_from_data
+
+
+def test_proposal_report_keeps_rejection_reasons_and_empty_proposals_visible() -> None:
+    report = ProposalReport(
+        True, 2, 1, (ProposalRejection(2, "action.form selector was not observed"),),
+        calls_attempted=1, calls_succeeded=1, route="vertex", note=None,
+    )
+
+    assert cli._proposal_report(report) == {
+        "enabled": True,
+        "proposed": 2,
+        "validated": 1,
+        "rejected": [{"index": 2, "reason": "action.form selector was not observed"}],
+        "calls_attempted": 1,
+        "calls_succeeded": 1,
+        "route": "vertex",
+    }
+    assert cli._proposal_report(ProposalReport(True, 0, 0, note="Gemini proposed no scenarios"))["note"] == "Gemini proposed no scenarios"
 
 
 def test_relational_scenario_file_builds_safe_conductor_scenarios(tmp_path, monkeypatch) -> None:
