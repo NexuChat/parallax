@@ -17,7 +17,7 @@ class LayoutI18nSpecialist:
 
     name = "layout_i18n"
 
-    model = "gemini-3.5-flash"
+    model = "gemini-3.6-flash"
 
     def __init__(
         self,

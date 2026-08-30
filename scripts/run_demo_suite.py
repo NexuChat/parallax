@@ -633,15 +633,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--only")
     parser.add_argument("--no-vision", action="store_true")
     parser.add_argument("--max-surfaces", type=int, default=64)
+    parser.add_argument(
+        "--no-publish",
+        action="store_true",
+        help="grade without writing web/graded-summary.json or console/runs/; "
+        "use this to reproduce the figures without replacing the published evidence",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     grades = asyncio.run(run(args))
-    write_summary(grades, args.host, ROOT / "web" / "graded-summary.json")
-    write_generated_example(ROOT / "web" / "generated-example.spec.ts")
-    publish_sweeps(ROOT / "runs", ROOT / "console" / "runs", grades)
+    if not args.no_publish:
+        write_summary(grades, args.host, ROOT / "web" / "graded-summary.json")
+        write_generated_example(ROOT / "web" / "generated-example.spec.ts")
+        publish_sweeps(ROOT / "runs", ROOT / "console" / "runs", grades)
     print_report(grades)
     return exit_code(grades)
 

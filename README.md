@@ -2,7 +2,7 @@
 
 Parallax is a relational browser regression system. It runs seven isolated contexts together, then turns witness disagreement into failing Playwright specs. The published demo target, `https://demo.mlki.app`, currently reports 15 of 15 planted defects found, 0 missed, and 0 false positives on five demo sites, while the clean control stays at zero.
 
-It also reports revocation lag in an open session: the owner revokes one member while the member’s other live session is still open, and the remaining authority window is measured at 2,572ms. In that measured run, decision, distribution, and enforcement pass; effects fails.
+It also reports revocation lag in an open session: the owner revokes one member while the member’s other live session is still open, and the remaining authority window is measured at 2,572ms. In that run the decision plane passes and the effects plane fails; distribution and enforcement are reported as unmeasured, because a browser witness sees what the member's session could still do, not what the server sent or refused. The finding says so in those words rather than counting an unobserved plane as a passing one.
 
 ![Parallax architecture](docs/architecture.png)
 
@@ -11,29 +11,55 @@ how Gemini is reached, where state lives, and what a run leaves behind. Its
 source is [`docs/architecture-diagram.html`](docs/architecture-diagram.html), and
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) is the prose version.
 
+## What is already solved, and what is not
+
+Visual regression is a settled field. Percy, Chromatic, Applitools, and
+BackstopJS all compare one run of a page against an earlier run of the same
+page, and they do it well; Playwright ships `toHaveScreenshot` for the same
+purpose. Their axis is time, and their oracle is a stored baseline, so they
+answer "did this page change since yesterday" and need a human to say whether
+the change was intended. Accessibility scanners such as axe-core and Lighthouse
+take the other approach — a fixed rule set applied to one rendering, with no
+baseline needed and no notion of a second observer.
+
+Parallax's axis is not time and its oracle is not a stored image. Seven
+contexts render the same commit of the same page concurrently, each differing
+from the baseline by exactly one property, and the finding is the disagreement
+between them. That needs no golden file, so it works on the first run against a
+site nobody has swept before, and it reports a class of defect a time-diff
+cannot express: a surface an anonymous witness reaches that it should not, a
+translation whose meaning drifted from the source, an owner action a member's
+live session never receives. The last of those needs two simultaneous
+authenticated sessions, which single-session snapshot tooling has no way to
+hold open.
+
 ## Quickstart
 
-Parallax requires Python 3.12+, Chromium for Playwright, and its runtime packages. From the repository root, install the runtime packages and the browser:
+Parallax requires Python 3.12+, Chromium for Playwright, and its runtime packages. From the repository root, install into a virtual environment:
 
 ```bash
-python -m pip install .
-python -m playwright install chromium
+python3 -m venv .venv
+.venv/bin/python -m pip install .
+.venv/bin/python -m playwright install chromium
 ```
 
-Installing the package brings in Playwright, Pillow, `google-genai`, and the
-direct `google-auth` dependency used by the Vertex route; the second
-command downloads the browser build Playwright drives.
+The virtual environment is not a style preference. Debian, Ubuntu, and Homebrew
+mark their system Python as externally managed under PEP 668, so a bare
+`pip install .` there fails with `externally-managed-environment` before it
+installs anything. Installing the package brings in Playwright, Pillow,
+`google-genai`, and the direct `google-auth` dependency used by the Vertex
+route; the last command downloads the browser build Playwright drives.
 
-Run a deterministic sweep. `PYTHONPATH=src` runs the package directly from this checkout; `--no-vision` makes the run independent of a Gemini API key.
+Run a deterministic sweep. `PYTHONPATH=src` runs the checkout's own code rather than the installed copy; `--no-vision` makes the run independent of a Gemini API key.
 
 ```bash
-PYTHONPATH=src python -m parallax https://app.example.com --out runs/first --no-vision
+PYTHONPATH=src .venv/bin/python -m parallax https://app.example.com --out runs/first --no-vision
 ```
 
 To include authenticated contexts, supply Playwright storage-state files for the roles your application uses:
 
 ```bash
-PYTHONPATH=src python -m parallax https://app.example.com --out runs/first --storage-state owner=.auth/owner.json --storage-state member=.auth/member.json --no-vision
+PYTHONPATH=src .venv/bin/python -m parallax https://app.example.com --out runs/first --storage-state owner=.auth/owner.json --storage-state member=.auth/member.json --no-vision
 ```
 
 To test a sender-to-receiver claim while both role sessions are open, add `--relational-scenarios` with a data-only JSON file. It supports a fixed form submission action and either a visible receiver selector or a JSON response membership check—no JavaScript from the file is evaluated. For example, save this complete file as `scenarios.json`:
@@ -64,11 +90,11 @@ To test a sender-to-receiver claim while both role sessions are open, add `--rel
 }
 ```
 
-Run it with the same role states: `PYTHONPATH=src python -m parallax https://app.example.com --storage-state owner=.auth/owner.json --storage-state member=.auth/member.json --relational-scenarios scenarios.json --no-vision`. Each scenario needs `surface`, `sender`, `receiver`, `action`, `effect`, and a positive `deadline_ms`; roles are `anon`, `member`, or `owner`. A `visible` effect is `{ "type": "visible", "selector": ".notification" }`. A revocation scenario also needs `"type": "revocation"` and a non-negative `max_lag_ms` below `deadline_ms`. The former is the authority-loss contract; the latter is only how long Parallax may observe before declaring that authority never ceased. The final JSON summary reports both `relational_scenarios.ran` and `relational_scenarios.findings`.
+Run it with the same role states: `PYTHONPATH=src .venv/bin/python -m parallax https://app.example.com --storage-state owner=.auth/owner.json --storage-state member=.auth/member.json --relational-scenarios scenarios.json --no-vision`. Each scenario needs `surface`, `sender`, `receiver`, `action`, `effect`, and a positive `deadline_ms`; roles are `anon`, `member`, or `owner`. A `visible` effect is `{ "type": "visible", "selector": ".notification" }`. A revocation scenario also needs `"type": "revocation"` and a non-negative `max_lag_ms` below `deadline_ms`. The former is the authority-loss contract; the latter is only how long Parallax may observe before declaring that authority never ceased. The final JSON summary reports both `relational_scenarios.ran` and `relational_scenarios.findings`.
 
 Demo sites can opt in without suite-specific code: declare a `relational_scenarios` list beside `accounts` and `planted`, with entries in this same format. Their `surface` may be the site-local path such as `/threads`; the suite mounts it below the site's name before passing it to the conductor.
 
-`--propose-scenarios` asks Gemini 3.5 Flash on Vertex AI for up to three relational scenarios after baseline discovery. It receives only routes, visible affordances and their labels and selectors, observed same-origin endpoints, visible text, and the roles supplied to the run. The flag is off by default, so an existing command never gains a model call or a scenario. Run it alongside the role states, for example: `PYTHONPATH=src python -m parallax https://app.example.com --storage-state owner=.auth/owner.json --storage-state member=.auth/member.json --propose-scenarios --no-vision`.
+`--propose-scenarios` asks Gemini 3.6 Flash on Vertex AI for up to three relational scenarios after baseline discovery. It receives only routes, visible affordances and their labels and selectors, observed same-origin endpoints, visible text, and the roles supplied to the run. The flag is off by default, so an existing command never gains a model call or a scenario. Run it alongside the role states, for example: `PYTHONPATH=src .venv/bin/python -m parallax https://app.example.com --storage-state owner=.auth/owner.json --storage-state member=.auth/member.json --propose-scenarios --no-vision`.
 
 A proposal is never an instruction. Before the existing data-only scenario validator can accept it, Parallax rejects any proposal that names an unobserved route, selector, endpoint, or role, or that falls outside the restricted relational grammar. Each survivor then passes through the same validator as a JSON declaration; no proposal can supply JavaScript or a new action type. The final `proposal` summary records how many scenarios Gemini proposed and validated, each rejection and its reason, route, call counts, and any error.
 
@@ -122,7 +148,7 @@ This path is bounded deliberately. Regions with matching content signatures are 
 
 ## Limits
 
-Parallax observes rendered surfaces and discovered controls; it does not prove application policy, API authorization, or behavior outside the exercised browser flow. It uses the role storage states you supply, so a missing or incorrect role state limits what its privilege witnesses can establish. Evidence is tiered on purpose. Anything a page can be measured for — overflow, contrast ratio, mirrored geometry, tap-target size — is decided by the in-page probe, because a measurement is repeatable and a model's opinion is not; that is what makes a live unedited run reproducible. Gemini 3.5 Flash is given the one question geometry cannot express: shown all seven witness tiles composed into a single frame, which tile disagrees with its peers. Its verdicts are accepted only when they name a real tile, and they are labelled with their source in the feed. Running with `--no-vision` therefore removes cross-tile visual comparison and leaves every measured check intact.
+Parallax observes rendered surfaces and discovered controls; it does not prove application policy, API authorization, or behavior outside the exercised browser flow. It uses the role storage states you supply, so a missing or incorrect role state limits what its privilege witnesses can establish. Evidence is tiered on purpose. Anything a page can be measured for — overflow, contrast ratio, mirrored geometry, tap-target size — is decided by the in-page probe, because a measurement is repeatable and a model's opinion is not; that is what makes a live unedited run reproducible. Gemini 3.6 Flash is given the one question geometry cannot express: shown all seven witness tiles composed into a single frame, which tile disagrees with its peers. Its verdicts are accepted only when they name a real tile, and they are labelled with their source in the feed. Running with `--no-vision` therefore removes cross-tile visual comparison and leaves every measured check intact.
 
 ## Revocation lag
 
@@ -139,16 +165,25 @@ reports how many milliseconds the open session kept working. This cannot be done
 sequentially: run the roles one after another and the already-open session — the
 entire subject of the test — is gone before the second role starts.
 
-The result names which of four planes failed, because they fail independently:
-the revoke was **recorded**, it **propagated** to the backend, a **new** request
-is refused — and the session already open kept reading anyway. That last plane is
-the one nobody measures, and the bundled workspace demo plants exactly that
-failure, a per-session membership cache re-read on a delay:
+The result names which of four planes it is talking about, because they fail
+independently: the revoke is **recorded** (decision), it **propagates** to the
+backend (distribution), a **new** request is refused (enforcement), and the
+session already open stops reading (effects). That last plane is the one nobody
+measures, and the bundled workspace demo plants exactly that failure, a
+per-session membership cache re-read on a delay:
 
 ```
 REVOCATION · HIGH
-Revocation authority ceased after 2,572ms (acceptable <= 100ms); failed plane: effects
+Revocation authority ceased after 2,572ms (acceptable <= 100ms); failed plane:
+effects; unmeasured plane: distribution, enforcement
 ```
+
+The second clause is as important as the first. A browser witness observes what
+the revoked session could still do; it does not see what the server recorded
+internally or what it would have said to a fresh request. Reporting distribution
+and enforcement as *unmeasured* rather than passing keeps the finding to what a
+browser can actually establish — and makes the failing plane the one the
+evidence supports.
 
 Authority is not what a rendered page still shows — markup survives revocation
 indefinitely — so the assertion has to be a live request from the open session.
@@ -186,19 +221,35 @@ Grouping them is a judgement about wording, not a measurement, which is the one
 place a small model earns its place here. Gemma 3 reads only the summaries the
 deterministic layers already produced and returns a partition of their ids:
 
+This is the grouping it produced on the third-party sweep below, taken from the
+`triage` event in [that published feed](console/runs/the-internet/feed.jsonl)
+rather than retyped here:
+
 ```
-findings grouped by cause by gemma3:4b
-  [finding ids]  Horizontal overflow
-  [finding ids]  Text contrast below WCAG AA
-  [finding ids]  Tap target too small
+19 findings grouped into 3 causes by gemma3:4b
+  14  Text contrast and tap target size issues
+   3  Horizontal overflow and tap target size issues
+   2  Viewport differences
 ```
 
 It cannot invent a finding, change a severity, or reach a page. An id it returns
 that was not in its input is discarded, and a finding is claimed by one group
-only. Point `PARALLAX_GEMMA_URL` at any Ollama-compatible endpoint to enable it;
-without one the run says the grouping was disabled rather than silently skipping
-it, and an unreachable grouper is reported as unreachable rather than as a run
-that found nothing to group.
+only — both checkable against that feed, since the event carries the finding ids
+and every id in it also appears as a `finding` event in the same file. Point
+`PARALLAX_GEMMA_URL` at any Ollama-compatible endpoint to enable it; without one
+the run says the grouping was disabled rather than silently skipping it, and an
+unreachable grouper is reported as unreachable rather than as a run that found
+nothing to group.
+
+Gemma is the one model here that does not run on Google Cloud, which is a choice
+rather than an omission. Vertex AI offers Gemma for self-deployment to a
+dedicated GPU endpoint, not as a serverless publisher model — this project's
+Vertex account answers `gemma-3-27b-it` with `NOT_FOUND`. Renting a GPU that
+bills by the hour to relabel text that the deterministic layers already wrote
+would be the most expensive component of the system serving its least critical
+job. Keeping it self-hosted also means the finding summaries, which describe
+defects in someone's application, never leave the machine that ran the sweep.
+The measurements go to Google Cloud; the opinion about wording stays home.
 
 ## Reproducing the published figures
 
@@ -210,19 +261,51 @@ declarations, so a false positive is measured rather than asserted.
 It needs the demo fleet already listening; it does not start one:
 
 ```bash
-python demo/serve.py &
-python scripts/run_demo_suite.py --no-vision --host http://127.0.0.1:8080
+PORT=8080 PYTHONPATH=src:demo:. .venv/bin/python demo/serve.py &
+PYTHONPATH=src:demo:. .venv/bin/python scripts/run_demo_suite.py \
+  --no-vision --host http://127.0.0.1:8080 --no-publish
 ```
 
-The run rewrites `web/graded-summary.json`, replaces the sweeps under `runs/`, and
-publishes a no-follow artifact manifest under `console/runs/`. It exits non-zero
-for any miss or false positive. The current reproducible result is **15 of 15
-planted defects found, 0 missed, and 0 false positives**; the clean control also
-stays at zero. Public specs contain no local storage path, role cookie, or skipped
-test.
+It exits non-zero for any miss or false positive. The current reproducible
+result is **15 of 15 planted defects found, 0 missed, and 0 false positives**;
+the clean control also stays at zero. `--no-publish` grades without touching the
+published evidence, which is what the CI gate in
+[`.github/workflows/verify.yml`](.github/workflows/verify.yml) runs on every
+push. Drop the flag to regenerate the artifacts instead: without it the run
+rewrites `web/graded-summary.json`, replaces the sweeps under `runs/`, and
+publishes a no-follow artifact manifest under `console/runs/`. Public specs
+contain no local storage path, role cookie, or skipped test.
 
 If the suite reports every surface dead and logins failing with HTTP 401, the
 demo fleet is not running on the host passed to `--host`.
+
+### A site nobody built for Parallax
+
+The graded figures use planted defects because grading needs a known answer. To
+show the detector is not fitted to its own fixtures, the console also publishes
+a sweep of [the-internet.herokuapp.com](https://the-internet.herokuapp.com), a
+public site built for browser-automation practice by someone unconnected to this
+project, with no plants, no declarations, and no storage states:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m parallax \
+  https://the-internet.herokuapp.com --out runs/the-internet --max-surfaces 12
+```
+
+That run reports 26 findings over 13 surfaces. Because no role states were
+supplied, the privilege axis is not applicable and the applicability gate
+records it as such rather than judging it; the findings come from the viewport,
+theme, and baseline axes. The highest-severity one is a witness disagreement
+that is checkable by hand in under a minute:
+
+> `/challenging_dom`: an actionable control sits outside the viewport; seen by
+> `owner-en-light-mobile`, not seen by `owner-en-light-desktop`,
+> `owner-en-light-tablet`
+
+Loading that page at 360 × 740 puts twenty `edit` and `delete` links of a wide
+table beyond the right edge of the viewport; at 768 × 1024 and 1440 × 900 the
+count is zero. No stored baseline was involved, and this was the first sweep of
+that host — which is the property a time-diff tool cannot offer.
 
 ## Tests
 

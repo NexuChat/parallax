@@ -198,7 +198,7 @@ Page.startScreencast(format=jpeg, quality=60)
          └─────────┘  └─────────┘  └──────────┘
 ```
 
-**التقنيات المبنية:** Gemini 3.5 Flash عبر Google GenAI SDK وVertex AI · Cloud Run ·
+**التقنيات المبنية:** Gemini 3.6 Flash عبر Google GenAI SDK وVertex AI · Cloud Run ·
 نظام ملفات محلي للأدلة · Playwright/CDP · Python 3.12 و`asyncio`.
 **الملاحة حتمية بـPlaywright، وGemini يحكم ولا يقود** — هذا ما يقلّل الهشاشة التي تُسقط العرض الحي.
 
@@ -265,7 +265,7 @@ Page.startScreencast(format=jpeg, quality=60)
 ## ١٣. البنية المنشورة
 
 Cloud Run · Cloud Build · Artifact Registry · Secret Manager · Vertex AI · Gemini
-3.5 Flash عبر `google-genai` · Playwright 1.62. الأدلة التشغيلية داخل `feed.jsonl`
+3.6 Flash عبر `google-genai` · Playwright 1.62. الأدلة التشغيلية داخل `feed.jsonl`
 والمواصفات والفسيفساء، ولا يعتمد النظام على Firestore أو Google ADK.
 
 ## ١٤. ملاحظة على القوانين

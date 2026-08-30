@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -101,23 +102,49 @@ class GoogleCloudTransport:
         return self._post(url, self._headers(), payload)
 
     def _headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self._token()}",
+            "Content-Type": "application/json; charset=utf-8",
+            "x-goog-user-project": self.project,
+        }
+
+    def _token(self) -> str:
+        """Prefer application-default credentials, then a gcloud user token.
+
+        Cloud Run supplies ADC from the metadata server, so the first branch is
+        the production path. A developer who has authenticated with `gcloud`
+        but never run `gcloud auth application-default login` has no ADC, which
+        used to disable the semantic lens with a credentials error while the
+        vision lens on the same machine worked; both now accept the same two
+        routes.
+        """
         credentials = self._credentials
         if credentials is None:
-            import google.auth
+            try:
+                import google.auth
 
-            credentials, _ = google.auth.default(
-                scopes=["https://www.googleapis.com/auth/cloud-platform"]
-            )
+                credentials, _ = google.auth.default(
+                    scopes=["https://www.googleapis.com/auth/cloud-platform"]
+                )
+            except Exception:
+                return self._gcloud_token()
             self._credentials = credentials
         if not credentials.valid or not credentials.token:
             from google.auth.transport.requests import Request as GoogleRequest
 
             credentials.refresh(GoogleRequest())
-        return {
-            "Authorization": f"Bearer {credentials.token}",
-            "Content-Type": "application/json; charset=utf-8",
-            "x-goog-user-project": self.project,
-        }
+        return str(credentials.token)
+
+    @staticmethod
+    def _gcloud_token() -> str:
+        completed = subprocess.run(
+            ["gcloud", "auth", "print-access-token"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
+        return completed.stdout.strip()
 
     @staticmethod
     def _urlopen_post(

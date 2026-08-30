@@ -38,7 +38,7 @@ The sessions do not know who is watching. Witnesses navigate and evaluate the de
 
 ## Relational scenario proposals
 
-Relational scenarios are normally caller-declared data. `--propose-scenarios` is an opt-in discovery aid that asks Gemini 3.5 Flash on Vertex AI for up to three propagation or revocation scenarios after the baseline crawl. Its input is restricted to what the baseline observed: routes, affordances with labels and selectors, same-origin endpoints, visible text, and the roles supplied to the run. Without the flag, no proposal client is created and existing sweeps keep their behavior.
+Relational scenarios are normally caller-declared data. `--propose-scenarios` is an opt-in discovery aid that asks Gemini 3.6 Flash on Vertex AI for up to three propagation or revocation scenarios after the baseline crawl. Its input is restricted to what the baseline observed: routes, affordances with labels and selectors, same-origin endpoints, visible text, and the roles supplied to the run. Without the flag, no proposal client is created and existing sweeps keep their behavior.
 
 The model does not control a browser. Before a proposal reaches the ordinary data-only scenario validator, the proposer rejects references to routes, selectors, endpoints, or roles the baseline did not observe, rejects a sender and receiver that are the same role, and rejects fields outside the relational grammar. Each remaining proposal is then validated exactly as a file supplied to `--relational-scenarios` would be. The run summary preserves proposed and validated counts, every rejection and reason, model route, attempted and successful calls, and any error. That makes a rejected or unavailable proposal distinguishable from no useful proposal.
 

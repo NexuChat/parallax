@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from parallax.triage import GemmaTriage
 from parallax.types import Axis, Finding, FindingKind, Severity, Surface, SurfaceKind
 
@@ -92,3 +94,32 @@ def test_unparseable_output_yields_no_groups_rather_than_a_guess() -> None:
     triage = GemmaTriage(endpoint="http://gemma.invalid", transport=lambda _prompt: "I think they are all overflow.")
 
     assert triage.group([finding("overflow")]).groups == ()
+
+
+def test_grouping_is_appended_to_the_feed_the_console_reads(tmp_path) -> None:
+    """A grouping that only reaches stdout cannot be checked against evidence later."""
+    from parallax.__main__ import _append_triage
+
+    feed = tmp_path / "feed.jsonl"
+    feed.write_text('{"kind":"status","at":"now","payload":{}}\n', encoding="utf-8")
+    grouped = finding("overflow on the cart grid")
+    report = GemmaTriage(
+        endpoint="http://gemma.invalid",
+        transport=lambda _prompt: '{"groups":[{"label":"Overflow","ids":[1]}]}',
+    ).group([grouped])
+
+    _append_triage(feed, report)
+
+    events = [json.loads(line) for line in feed.read_text(encoding="utf-8").splitlines()]
+    assert [event["kind"] for event in events] == ["status", "triage"]
+    payload = events[-1]["payload"]
+    assert payload["model"] == report.model
+    assert payload["attempted"] is True
+    assert payload["groups"] == [{"label": "Overflow", "finding_ids": [grouped.id]}]
+
+
+def test_a_missing_feed_is_not_an_error(tmp_path) -> None:
+    """The sweep already failed if there is no feed; do not mask it with a write error."""
+    from parallax.__main__ import _append_triage
+
+    _append_triage(tmp_path / "absent.jsonl", GemmaTriage(endpoint="").group([]))

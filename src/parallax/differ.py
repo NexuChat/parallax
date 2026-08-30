@@ -19,6 +19,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from .semantics import (
+    EMBEDDING_MODEL,
     SEMANTIC_EQUIVALENCE_THRESHOLD,
     SemanticComparator,
     SemanticPair,
@@ -455,7 +456,7 @@ def _finding_from_semantics(candidate: _SemanticCandidate, result: SemanticResul
             return [_untranslated_finding(baseline, variant, detail + "; deterministic raw-text fallback")]
         return []
     evidence = (
-        f"text-embedding-005 similarity={result.similarity:.3f}; "
+        f"{EMBEDDING_MODEL} similarity={result.similarity:.3f}; "
         f"equivalence threshold={SEMANTIC_EQUIVALENCE_THRESHOLD:.2f}"
     )
     if result.equivalent:

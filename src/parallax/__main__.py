@@ -17,11 +17,12 @@ from typing import Any
 from urllib.parse import urljoin
 
 from .conductor import Conductor, RelationalScenario
+from .contracts import FeedEvent
 from .differ import configure_semantics
 from .proposer import ProposalReport, ScenarioProposer
 from .semantics import SemanticComparator
 from .specialists import LayoutI18nSpecialist, RealtimeSpecialist
-from .triage import GemmaTriage
+from .triage import GemmaTriage, TriageReport
 from .types import EffectExpectation, FormAction, Context, Privilege, RelationalReplay, Severity, Surface, SurfaceKind
 
 
@@ -103,6 +104,27 @@ def _model_report(specialists: list[object]) -> dict[str, object]:
             report["last_error"] = lens.last_error
         return report
     return {"route": "disabled", "calls_attempted": 0, "calls_succeeded": 0}
+
+
+def _append_triage(feed_path: Path, triage: TriageReport) -> None:
+    """Record the grouping pass in the feed the console actually reads."""
+    if not feed_path.exists():
+        return
+    event = FeedEvent(
+        "triage",
+        {
+            "model": triage.model,
+            "attempted": triage.attempted,
+            "summary": triage.summary,
+            "error": triage.error,
+            "groups": [
+                {"label": group.label, "finding_ids": list(group.finding_ids)}
+                for group in triage.groups
+            ],
+        },
+    )
+    with feed_path.open("a", encoding="utf-8") as feed:
+        feed.write(json.dumps(event.to_json(), separators=(",", ":")) + "\n")
 
 
 def _scenario_proposer(enabled: bool) -> ScenarioProposer | None:
@@ -300,6 +322,12 @@ async def _run(args: argparse.Namespace) -> int:
     for finding in summary.findings:
         counts[finding.severity.value] = counts.get(finding.severity.value, 0) + 1
     triage = GemmaTriage().group(summary.findings)
+    # The console reads the feed, not this process's stdout. A grouping that
+    # exists only in the terminal cannot be checked against the published
+    # evidence later, so it is appended to the feed as its own event — carrying
+    # the finding ids, so a reader can confirm the model only ever partitioned
+    # findings the deterministic layers had already produced.
+    _append_triage(summary.feed_path, triage)
     exercised = [decision for decision in summary.axis_applicability if decision.applicable]
     not_applicable = [decision for decision in summary.axis_applicability if not decision.applicable]
     print(json.dumps({
