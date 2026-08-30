@@ -1,6 +1,6 @@
 /*
  * Parallax generated regression spec
- * Finding: render-theme-d589ab02752cc79a-low_contrast
+ * Finding: render-theme-7960fd401b12503d-low_contrast
  * Axis: theme
  * Evidence: owner-en-dark-desktop=partial
  * In playwright.config.ts: use: { baseURL: "https://your-app.example" }
@@ -14,7 +14,7 @@ test.use({
   colorScheme: "dark",
 });
 
-test("Parallax: render-theme-d589ab02752cc79a-low_contrast", async ({ page }) => {
+test("Parallax: render-theme-7960fd401b12503d-low_contrast", async ({ page }) => {
   const response = await page.goto("/docs");
   const isLoginPage = /\/(?:login|sign-in|auth)(?:[/?#]|$)/i.test(new URL(page.url()).pathname);
   const contrastRatio = await page.locator("html > body > main.shell > p.help-text:nth-of-type(3)").evaluate((element) => {

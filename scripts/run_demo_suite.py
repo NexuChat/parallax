@@ -488,6 +488,14 @@ class _NoRedirect(HTTPRedirectHandler):
     http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302
 
 
+# Matches the Chromium the sweep drives, so the login helper and the witnesses
+# present the same client to the application under test.
+_LOGIN_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/141.0.0.0 Safari/537.36"
+)
+
+
 def build_storage_states(site: Site, host: str, run_dir: Path) -> dict[str, Path]:
     """Log in every declared role, requiring distinct usable authenticated states."""
     states: dict[str, Path] = {}
@@ -504,7 +512,16 @@ def build_storage_states(site: Site, host: str, run_dir: Path) -> dict[str, Path
             request = Request(
                 f"{origin}/{site.name}/login",
                 data=urlencode({"email": account.email, "username": account.email, "password": account.password}).encode(),
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    # A default urllib agent is refused with 403 by the bot
+                    # protection in front of the public demo fleet, which made
+                    # every role login fail against a real host while working
+                    # against localhost. The sweep itself drives a real browser;
+                    # only this login helper spoke as a script.
+                    "User-Agent": _LOGIN_USER_AGENT,
+                    "Accept": "text/html,application/xhtml+xml",
+                },
                 method="POST",
             )
             response: object | None = None

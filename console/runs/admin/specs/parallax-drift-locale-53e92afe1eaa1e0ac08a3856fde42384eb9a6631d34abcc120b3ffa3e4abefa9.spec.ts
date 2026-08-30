@@ -1,6 +1,6 @@
 /*
  * Parallax generated regression spec
- * Finding: drift-locale-23deb0a9846fbc34
+ * Finding: drift-locale-621fc0833ae16713
  * Axis: locale
  * Evidence: owner-en-light-desktop=reached · owner-ar-light-desktop=blocked
  * In playwright.config.ts: use: { baseURL: "https://your-app.example" }
@@ -15,10 +15,10 @@ test.use({
   storageState: process.env.PARALLAX_OWNER_STORAGE_STATE,
 });
 
-test("Parallax: drift-locale-23deb0a9846fbc34", async ({ page }) => {
+test("Parallax: drift-locale-621fc0833ae16713", async ({ page }) => {
   if (!process.env.PARALLAX_OWNER_STORAGE_STATE) throw new Error("Parallax generated spec requires PARALLAX_OWNER_STORAGE_STATE");
   const response = await page.goto("/admin/exports?lang=ar&theme=light");
   const isLoginPage = /\/(?:login|sign-in|auth)(?:[/?#]|$)/i.test(new URL(page.url()).pathname);
-  const reached = !isLoginPage && (response?.status() ?? 500) < 400;
+  const reached = !isLoginPage && await page.locator("button:nth-of-type(1)").isVisible();
   expect(reached).toBeTruthy();
 });

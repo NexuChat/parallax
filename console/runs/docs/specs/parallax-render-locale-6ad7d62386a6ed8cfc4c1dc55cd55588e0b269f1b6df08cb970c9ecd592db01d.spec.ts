@@ -1,6 +1,6 @@
 /*
  * Parallax generated regression spec
- * Finding: render-locale-182064f9b62a0265-untranslated
+ * Finding: render-locale-899fcaa62a0a9a05-untranslated
  * Axis: locale
  * Evidence: owner-ar-light-desktop=partial
  * In playwright.config.ts: use: { baseURL: "https://your-app.example" }
@@ -14,7 +14,7 @@ test.use({
   colorScheme: "light",
 });
 
-test("Parallax: render-locale-182064f9b62a0265-untranslated", async ({ page }) => {
+test("Parallax: render-locale-899fcaa62a0a9a05-untranslated", async ({ page }) => {
   const response = await page.goto("/docs/guide");
   const isLoginPage = /\/(?:login|sign-in|auth)(?:[/?#]|$)/i.test(new URL(page.url()).pathname);
   const rawI18nKey = await page.locator("#limits").evaluate((element) => {

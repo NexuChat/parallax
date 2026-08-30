@@ -1,7 +1,7 @@
 {
   "admin": {
     "feed": "runs/admin/feed.jsonl",
-    "mosaics": 11,
+    "mosaics": 13,
     "findings": 4,
     "by_severity": {
       "high": 2,
@@ -23,7 +23,7 @@
   },
   "docs": {
     "feed": "runs/docs/feed.jsonl",
-    "mosaics": 9,
+    "mosaics": 10,
     "findings": 3,
     "by_severity": {
       "medium": 2,
@@ -36,7 +36,7 @@
   },
   "shop": {
     "feed": "runs/shop/feed.jsonl",
-    "mosaics": 14,
+    "mosaics": 16,
     "findings": 4,
     "by_severity": {
       "high": 1,
@@ -49,7 +49,7 @@
   },
   "workspace": {
     "feed": "runs/workspace/feed.jsonl",
-    "mosaics": 10,
+    "mosaics": 11,
     "findings": 5,
     "by_severity": {
       "high": 3,

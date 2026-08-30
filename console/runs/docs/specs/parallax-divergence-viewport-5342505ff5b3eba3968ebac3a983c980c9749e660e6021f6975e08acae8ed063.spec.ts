@@ -1,6 +1,6 @@
 /*
  * Parallax generated regression spec
- * Finding: divergence-viewport-21361665f0815ebd
+ * Finding: divergence-viewport-616926b3599fd328
  * Axis: viewport
  * Evidence: owner-en-light-desktop=reached · owner-en-light-mobile=reached
  * In playwright.config.ts: use: { baseURL: "https://your-app.example" }
@@ -14,7 +14,7 @@ test.use({
   colorScheme: "light",
 });
 
-test("Parallax: divergence-viewport-21361665f0815ebd", async ({ page }) => {
+test("Parallax: divergence-viewport-616926b3599fd328", async ({ page }) => {
   const response = await page.goto("/docs/faq");
   const isLoginPage = /\/(?:login|sign-in|auth)(?:[/?#]|$)/i.test(new URL(page.url()).pathname);
   const contentSignature = await page.evaluate(() => {

@@ -1,6 +1,6 @@
 /*
  * Parallax generated regression spec
- * Finding: render-viewport-cc55acbaa19b6ad4-clipped
+ * Finding: render-viewport-34289e7d0e7be24a-clipped
  * Axis: viewport
  * Evidence: owner-en-light-mobile=partial
  * In playwright.config.ts: use: { baseURL: "https://your-app.example" }
@@ -14,7 +14,7 @@ test.use({
   colorScheme: "light",
 });
 
-test("Parallax: render-viewport-cc55acbaa19b6ad4-clipped", async ({ page }) => {
+test("Parallax: render-viewport-34289e7d0e7be24a-clipped", async ({ page }) => {
   const response = await page.goto("/shop/product/organizer");
   const isLoginPage = /\/(?:login|sign-in|auth)(?:[/?#]|$)/i.test(new URL(page.url()).pathname);
   expect(await page.locator("body > main.shell > section.product-layout:nth-of-type(1) > div:nth-of-type(2) > div.product-title-box.intentional-clip:nth-of-type(1)").evaluate((element) => element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight)).toBeTruthy();

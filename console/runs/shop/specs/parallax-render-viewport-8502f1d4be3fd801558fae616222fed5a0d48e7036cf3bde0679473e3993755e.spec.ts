@@ -1,6 +1,6 @@
 /*
  * Parallax generated regression spec
- * Finding: render-viewport-8765b90cb353ea1f-horizontal_overflow
+ * Finding: render-viewport-9625c0adf4035aaf-horizontal_overflow
  * Axis: viewport
  * Evidence: owner-en-light-mobile=partial
  * In playwright.config.ts: use: { baseURL: "https://your-app.example" }
@@ -14,7 +14,7 @@ test.use({
   colorScheme: "light",
 });
 
-test("Parallax: render-viewport-8765b90cb353ea1f-horizontal_overflow", async ({ page }) => {
+test("Parallax: render-viewport-9625c0adf4035aaf-horizontal_overflow", async ({ page }) => {
   const response = await page.goto("/shop/cart");
   const isLoginPage = /\/(?:login|sign-in|auth)(?:[/?#]|$)/i.test(new URL(page.url()).pathname);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBeTruthy();
