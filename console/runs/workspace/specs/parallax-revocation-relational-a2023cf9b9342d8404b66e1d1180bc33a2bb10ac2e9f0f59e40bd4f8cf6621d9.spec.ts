@@ -1,13 +1,13 @@
 /*
  * Parallax generated relational regression spec
- * Finding: revocation-relational-ff441172c7f067c5
+ * Finding: revocation-relational-5b2aed0f3041b28a
  * Axis: relational
  * Evidence: owner-en-light-desktop=reached · member-en-light-desktop=reached
  * In playwright.config.ts: use: { baseURL: "https://your-app.example" }
  */
 import { test, expect } from "@playwright/test";
 
-test("Parallax: revocation-relational-ff441172c7f067c5", async ({ browser }) => {
+test("Parallax: revocation-relational-5b2aed0f3041b28a", async ({ browser }) => {
   const baseURL = test.info().project.use.baseURL;
   if (typeof baseURL !== "string") throw new Error("Parallax relational specs require use.baseURL in playwright.config.ts");
   const senderContext = await browser.newContext({

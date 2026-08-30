@@ -36,11 +36,23 @@ The sessions run concurrently because simultaneity is part of the evidence. A se
 
 The sessions do not know who is watching. Witnesses navigate and evaluate the deterministic probe; the compositor receives JPEG frames through CDP and specialists only consume recorded moments and testimonies. No specialist controls a page or talks to another specialist. That separation prevents a reviewing lens from changing the behavior it is meant to judge.
 
+## Relational scenario proposals
+
+Relational scenarios are normally caller-declared data. `--propose-scenarios` is an opt-in discovery aid that asks Gemini 3.5 Flash on Vertex AI for up to three propagation or revocation scenarios after the baseline crawl. Its input is restricted to what the baseline observed: routes, affordances with labels and selectors, same-origin endpoints, visible text, and the roles supplied to the run. Without the flag, no proposal client is created and existing sweeps keep their behavior.
+
+The model does not control a browser. Before a proposal reaches the ordinary data-only scenario validator, the proposer rejects references to routes, selectors, endpoints, or roles the baseline did not observe, rejects a sender and receiver that are the same role, and rejects fields outside the relational grammar. Each remaining proposal is then validated exactly as a file supplied to `--relational-scenarios` would be. The run summary preserves proposed and validated counts, every rejection and reason, model route, attempted and successful calls, and any error. That makes a rejected or unavailable proposal distinguishable from no useful proposal.
+
 ## Three capture layers
 
 The first layer is the deterministic in-page probe. It measures horizontal overflow, offscreen controls, mobile tap targets, clipped text or controls, WCAG AA contrast, and untranslated strings. It also emits per-element geometry plus separate content and layout signatures. These checks are cheap, repeatable, and can produce a direct finding without image interpretation.
 
 The second layer is cross-context comparison. The mirror test reflects Arabic geometry using `x' = W - x - w`, allowing translated text to change size while positions must mirror. For theme, geometry and the layout signature must remain unchanged. The differ then compares outcomes and signatures according to the varied axis.
+
+Content signatures are a cheap screen, not the final content judgement. The FNV-1a signature identifies a changed region, while a matching signature never reaches a semantic model. For a changed landmark region, `text-embedding-005` on Vertex AI supplies embeddings whose cosine similarity is compared with the named `0.82` equivalence threshold; the resulting score travels with the finding as evidence. Theme and viewport use this comparison to distinguish ordinary copy variation from material content divergence.
+
+Locale takes a second path. Cloud Translation v2 translates the baseline region into the variant locale before the same embedding comparison, because a faithful translation need not share its source words. This finds a meaning-changing Arabic string that raw i18n-key and Latin-text checks cannot see. The raw-text detector remains the deterministic fallback for obvious untranslated locale content.
+
+The semantic path is globally bounded: it considers no more than twelve changed regions in a sweep and batches them into at most one Translation request and one Vertex embedding request. It therefore makes at most two paid semantic-model calls regardless of the number of surfaces. Its run report independently records attempted and successful calls, routes, and errors for each service. On an embedding failure, theme and viewport retain the content-signature finding with degraded evidence. A failed locale semantic comparison is likewise visible in the report; it only becomes a locale finding through the raw-text fallback when that detector has independent evidence.
 
 The final layer is visual review. The layout and i18n specialist sends selected settled mosaics to Gemini, with a bounded number of moments, and accepts only structured reports tied to actual mosaic tiles. Vision comes last because it is more expensive and less repeatable than page geometry, and because the deterministic layers already answer measurable questions. The realtime specialist is deterministic and evaluates only explicitly relational testimony and moments.
 

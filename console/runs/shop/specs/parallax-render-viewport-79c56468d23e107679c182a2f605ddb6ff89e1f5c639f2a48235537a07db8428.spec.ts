@@ -1,6 +1,6 @@
 /*
  * Parallax generated regression spec
- * Finding: render-viewport-940dedb4b68ccd5c-offscreen_control
+ * Finding: render-viewport-058dec79dad5067a-offscreen_control
  * Axis: viewport
  * Evidence: owner-en-light-mobile=partial
  * In playwright.config.ts: use: { baseURL: "https://your-app.example" }
@@ -14,7 +14,7 @@ test.use({
   colorScheme: "light",
 });
 
-test("Parallax: render-viewport-940dedb4b68ccd5c-offscreen_control", async ({ page }) => {
+test("Parallax: render-viewport-058dec79dad5067a-offscreen_control", async ({ page }) => {
   const response = await page.goto("/shop/checkout");
   const isLoginPage = /\/(?:login|sign-in|auth)(?:[/?#]|$)/i.test(new URL(page.url()).pathname);
   const withinViewport = await page.locator("section.checkout-layout > form.checkout-form > div.checkout-action-clip:nth-of-type(2) > div.checkout-action-row > button.button").evaluate((element) => {

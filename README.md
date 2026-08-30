@@ -2,7 +2,7 @@
 
 Parallax is a relational browser regression system. It runs seven isolated contexts together, then turns witness disagreement into failing Playwright specs. The published demo target, `https://demo.mlki.app`, currently reports 15 of 15 planted defects found, 0 missed, and 0 false positives on five demo sites, while the clean control stays at zero.
 
-It also reports revocation lag in an open session: the owner revokes one member while the member’s other live session is still open, and the remaining authority window is measured at 2,499ms. In that measured run, decision, distribution, and enforcement pass; effects fails.
+It also reports revocation lag in an open session: the owner revokes one member while the member’s other live session is still open, and the remaining authority window is measured at 2,572ms. In that measured run, decision, distribution, and enforcement pass; effects fails.
 
 ![Parallax architecture](docs/architecture.png)
 
@@ -68,6 +68,10 @@ Run it with the same role states: `PYTHONPATH=src python -m parallax https://app
 
 Demo sites can opt in without suite-specific code: declare a `relational_scenarios` list beside `accounts` and `planted`, with entries in this same format. Their `surface` may be the site-local path such as `/threads`; the suite mounts it below the site's name before passing it to the conductor.
 
+`--propose-scenarios` asks Gemini 3.5 Flash on Vertex AI for up to three relational scenarios after baseline discovery. It receives only routes, visible affordances and their labels and selectors, observed same-origin endpoints, visible text, and the roles supplied to the run. The flag is off by default, so an existing command never gains a model call or a scenario. Run it alongside the role states, for example: `PYTHONPATH=src python -m parallax https://app.example.com --storage-state owner=.auth/owner.json --storage-state member=.auth/member.json --propose-scenarios --no-vision`.
+
+A proposal is never an instruction. Before the existing data-only scenario validator can accept it, Parallax rejects any proposal that names an unobserved route, selector, endpoint, or role, or that falls outside the restricted relational grammar. Each survivor then passes through the same validator as a JSON declaration; no proposal can supply JavaScript or a new action type. The final `proposal` summary records how many scenarios Gemini proposed and validated, each rejection and its reason, route, call counts, and any error.
+
 Open `console/index.html?feed=../runs/first/feed.jsonl` in the repository's console, or use the [live console](https://perallax.mlki.app). The local console reads the newline-delimited feed and its referenced mosaics; serving the repository with a static web server avoids browser `file:` restrictions.
 
 The command also accepts `--max-surfaces`, `--settle-ms`, and `--headed`. Omit `--no-vision` to enable the Gemini layout and i18n lens. It chooses the first available route: a configured Vertex AI project (`GOOGLE_CLOUD_PROJECT`, with optional `GOOGLE_CLOUD_LOCATION`, defaulting to `global`) using application-default credentials or a fresh `gcloud auth print-access-token` bearer token; then `GEMINI_API_KEY` for AI Studio. The CLI prints the selected route, or explains why the lens is disabled, before the sweep starts.
@@ -108,6 +112,14 @@ Parallax starts with `owner-en-light-desktop` and changes exactly one axis at a 
 
 There are two expectations. Privilege is the exception: access should narrow as privilege falls, so an anonymous or member witness reaching a surface that the owner also reaches is reported as an escalation. Locale, theme, and viewport are equivalence axes: changing one must not change what the user can reach; theme and viewport are also checked for unexpected content changes. The locale comparison additionally checks that geometry is mirrored for right-to-left rendering, while the theme comparison requires unchanged layout geometry.
 
+## Semantic content and translation checks
+
+A content-signature mismatch is a reason to inspect a changed region, not by itself proof of a defect. The FNV-1a signature still identifies changed content, but it no longer decides ordinary content divergence alone. For theme and viewport comparisons, Parallax sends only the changed visible landmark text to Vertex AI's `text-embedding-005` model and compares the vectors by cosine similarity. A score of at least `0.82` is equivalent; a lower score becomes a content-divergence finding. The finding keeps the model name, score, and threshold as evidence, so a reviewer can see why a hash mismatch was or was not treated as material.
+
+For locale, Parallax first translates the baseline region to the variant locale with Cloud Translation v2, then applies the same embedding comparison. Correct translations are rarely byte-identical, so this catches a string whose script is Arabic but whose meaning is unrelated to the baseline. The deterministic raw-text check still catches obvious untranslated material.
+
+This path is bounded deliberately. Regions with matching content signatures are never sent; each sweep compares at most twelve changed regions, batched into at most one translation request and one embedding request. That is at most two paid semantic-model calls regardless of the number of visited surfaces. The JSON `semantics` report records attempted and successful calls and errors for both services. If embeddings fail, theme and viewport findings fall back to the content-signature mismatch and say that the comparison degraded. A locale comparison that cannot be translated or embedded is also reported as degraded; it produces a locale finding only if the deterministic untranslated check has evidence.
+
 ## Limits
 
 Parallax observes rendered surfaces and discovered controls; it does not prove application policy, API authorization, or behavior outside the exercised browser flow. It uses the role storage states you supply, so a missing or incorrect role state limits what its privilege witnesses can establish. Evidence is tiered on purpose. Anything a page can be measured for — overflow, contrast ratio, mirrored geometry, tap-target size — is decided by the in-page probe, because a measurement is repeatable and a model's opinion is not; that is what makes a live unedited run reproducible. Gemini 3.5 Flash is given the one question geometry cannot express: shown all seven witness tiles composed into a single frame, which tile disagrees with its peers. Its verdicts are accepted only when they name a real tile, and they are labelled with their source in the feed. Running with `--no-vision` therefore removes cross-tile visual comparison and leaves every measured check intact.
@@ -135,7 +147,7 @@ failure, a per-session membership cache re-read on a delay:
 
 ```
 REVOCATION · HIGH
-Revocation authority ceased after 2,499ms (acceptable <= 100ms); failed plane: effects
+Revocation authority ceased after 2,572ms (acceptable <= 100ms); failed plane: effects
 ```
 
 Authority is not what a rendered page still shows — markup survives revocation
@@ -161,23 +173,24 @@ tool inventing its own evidence. Every run prints what it did not test:
 
 ## Grouping the noise
 
-An early sweep of the demo fleet produced 94 false positives. Because every demo
-site declares its intentional defects, that was measurable rather than subjective:
-it exposed page-wide measurements repeated on controls, unstable query variants,
-and fixture accessibility defects. The calibrated sweep now reports **zero false
-positives**, including on the clean control. Real applications can still produce
-many legitimate findings, so grouping remains useful after detection rather than
-as a way to hide detector noise.
+An early pre-calibration sweep of the demo fleet produced 94 false positives.
+Because every demo site declares its intentional defects, that was measurable
+rather than subjective: it exposed page-wide measurements repeated on controls,
+unstable query variants, and fixture accessibility defects. The current graded
+gate reports **15 of 15 planted defects found, 0 missed, and 0 false positives**,
+including on the clean control. Real applications can still produce many
+legitimate findings, so grouping remains useful after detection rather than as a
+way to hide detector noise.
 
 Grouping them is a judgement about wording, not a measurement, which is the one
 place a small model earns its place here. Gemma 3 reads only the summaries the
 deterministic layers already produced and returns a partition of their ids:
 
 ```
-31 findings grouped into 3 causes by gemma3:4b
-  [19]  Horizontal overflow
-  [ 7]  Text contrast below WCAG AA
-  [ 4]  Tap target too small
+findings grouped by cause by gemma3:4b
+  [finding ids]  Horizontal overflow
+  [finding ids]  Text contrast below WCAG AA
+  [finding ids]  Tap target too small
 ```
 
 It cannot invent a finding, change a severity, or reach a page. An id it returns
@@ -222,7 +235,9 @@ python -m pytest -q
 
 `pyproject.toml` supplies the import paths, so no `PYTHONPATH` is needed. The unit
 and integration suite runs without a browser by injecting witnesses, the
-compositor and the Gemini client as fakes; `pytest` prints the current total.
+compositor and the Gemini client as fakes. At this revision it collects 316
+tests; the test report distinguishes passing tests from intentionally skipped
+ones.
 Generated Playwright artifacts are also executed against the demo fleet during
 release verification so a syntactically valid but false-green spec cannot pass as
 proof. Install the pinned Node harness and verify discovery with:

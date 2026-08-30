@@ -1,6 +1,6 @@
 /*
  * Parallax generated regression spec
- * Finding: render-locale-7062cfac381a97af-untranslated
+ * Finding: render-locale-4806993bf66131d4-untranslated
  * Axis: locale
  * Evidence: owner-en-light-desktop=reached · owner-ar-light-desktop=partial · translation degraded: DefaultCredentialsError: Your default credentials were not found. To set up Application Default Credentials, see https://cloud.google.com/docs/authentication/external/set-up-adc for more information.; deterministic raw-text fallback
  * In playwright.config.ts: use: { baseURL: "https://your-app.example" }
@@ -14,7 +14,7 @@ test.use({
   colorScheme: "light",
 });
 
-test("Parallax: render-locale-7062cfac381a97af-untranslated", async ({ page }) => {
+test("Parallax: render-locale-4806993bf66131d4-untranslated", async ({ page }) => {
   const response = await page.goto("/docs/guide");
   const isLoginPage = /\/(?:login|sign-in|auth)(?:[/?#]|$)/i.test(new URL(page.url()).pathname);
   const rawI18nKey = await page.locator("#limits").evaluate((element) => {

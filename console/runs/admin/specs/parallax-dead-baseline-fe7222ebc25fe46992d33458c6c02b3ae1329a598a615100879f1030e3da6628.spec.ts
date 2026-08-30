@@ -1,6 +1,6 @@
 /*
  * Parallax generated regression spec
- * Finding: dead-baseline-5865f0200aab8f5a
+ * Finding: dead-baseline-79df97fd95911c5f
  * Axis: baseline
  * Evidence: owner-en-light-desktop=blocked · member-en-light-desktop=blocked · anon-en-light-desktop=blocked · owner-ar-light-desktop=blocked · owner-en-dark-desktop=blocked · owner-en-light-mobile=blocked · owner-en-light-tablet=blocked
  * In playwright.config.ts: use: { baseURL: "https://your-app.example" }
@@ -14,7 +14,7 @@ test.use({
   colorScheme: "light",
 });
 
-test("Parallax: dead-baseline-5865f0200aab8f5a", async ({ page }) => {
+test("Parallax: dead-baseline-79df97fd95911c5f", async ({ page }) => {
   const response = await page.goto("/admin/legacy?lang=en&theme=light");
   const isLoginPage = /\/(?:login|sign-in|auth)(?:[/?#]|$)/i.test(new URL(page.url()).pathname);
   const reached = !isLoginPage && (response?.status() ?? 500) < 400;

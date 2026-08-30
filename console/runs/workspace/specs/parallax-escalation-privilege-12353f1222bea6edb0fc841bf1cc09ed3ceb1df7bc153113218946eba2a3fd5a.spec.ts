@@ -1,6 +1,6 @@
 /*
  * Parallax generated regression spec
- * Finding: escalation-privilege-6aaa19607c54a596
+ * Finding: escalation-privilege-4674ffde453e7122
  * Axis: privilege
  * Evidence: owner-en-light-desktop=reached · anon-en-light-desktop=reached · anon-en-light-desktop=reached
  * In playwright.config.ts: use: { baseURL: "https://your-app.example" }
@@ -14,7 +14,7 @@ test.use({
   colorScheme: "light",
 });
 
-test("Parallax: escalation-privilege-6aaa19607c54a596", async ({ page }) => {
+test("Parallax: escalation-privilege-4674ffde453e7122", async ({ page }) => {
   const response = await page.goto("/workspace/audit");
   const isLoginPage = /\/(?:login|sign-in|auth)(?:[/?#]|$)/i.test(new URL(page.url()).pathname);
   const blocked = isLoginPage || response?.status() === 403 || false;

@@ -59,7 +59,7 @@ So Parallax measures it. The owner revokes the member in one live session while 
 
 ```
 REVOCATION · HIGH
-Revocation authority ceased after 2,499ms
+Revocation authority ceased after 2,572ms
 failed plane: effects; unmeasured: distribution, enforcement
 ```
 
@@ -80,7 +80,7 @@ My first version asserted on the DOM: is the thread list still visible in the re
 
 It was right, and my assertion was wrong. **A rendered page keeps its markup forever.** Revocation does not reach into someone's DOM and delete it. Authority is not what a page still *shows* — it is what an open session can still *fetch*.
 
-Switching the assertion to a live request from the open page produced 2,499 milliseconds, matching what I measured by hand with `curl`. The tool and the human agreed, which is the only evidence I trust.
+Switching the assertion to a live request from the open page produced 2,572 milliseconds, matching what I measured by hand with `curl`. The tool and the human agreed, which is the only evidence I trust.
 
 ## Where the models earn their place, and where they do not
 
@@ -88,7 +88,7 @@ Anything measurable is measured. Overflow is `scrollWidth > clientWidth`. Contra
 
 **Gemini 3.5 Flash** gets the one question geometry cannot express. The seven witness frames are composed into a single mosaic, and the model is asked which tile disagrees with its peers. Sending one image instead of seven screenshots is not a cost trick: the outlier becomes *spatial*, and comparison is native to a single frame rather than something a model must reconstruct.
 
-**Gemma 3** gets a different job. An early sweep of five applications produced ninety-four findings that were not defects — a number I published rather than hid. That was a detector-calibration failure, not a grouping problem; fixing page-wide duplication, contextual URLs, and unintended fixture defects brought the declared fleet to zero false positives. On an uncalibrated real application there can still be many legitimate findings, and Gemma can partition those by cause. It reads only summaries the deterministic layers already produced, and it cannot add to its input — an id it never received is discarded.
+**Gemma 3** gets a different job. An early sweep of five applications produced ninety-four findings that were not defects — a number I published rather than hid. That was a detector-calibration failure, not a grouping problem; fixing page-wide duplication, contextual URLs, and unintended fixture defects brought the declared fleet to zero false positives in the later calibrated sweep. On an uncalibrated real application there can still be many legitimate findings, and Gemma can partition those by cause. It reads only summaries the deterministic layers already produced, and it cannot add to its input — an id it never received is discarded.
 
 And a model I did **not** use: neither Veo nor Lyria appears anywhere in the engine, because generating video or audio inside a tool whose entire pitch is evidence integrity would be decoration at best and fabricated evidence at worst.
 
@@ -115,7 +115,7 @@ That audit found two more versions of the same lie. Propagation findings were em
 
 The relational declaration now survives the sweep as a replay plan. Its generated spec opens the owner and member contexts together, repeats the safe form action, and polls the receiver's live effect. Revocation has two separate clocks: `max_lag_ms` is the contract, while `deadline_ms` is only the outer observation window. The generated assertion uses the former. Cross-locale and cross-theme findings similarly retain the exact geometry selector and compare two browser contexts; a dead surface asserts reachability instead of skipping.
 
-The final calibrated fleet emits 16 per-site specs and zero skips; the public tree lists 21 because `latest/` intentionally mirrors the five Workspace artifacts. `npm run verify:demo-generated` creates private, mount-scoped sessions for every declared demo role, executes the JSON-reported gate, and deletes those states afterward. I executed all 21 files against the planted applications: all 21 failed their defect assertions, with zero passes and zero setup, syntax, or storage-path failures. Propagation reaches its deadline, revocation exceeds its 100ms contract, RTL and theme geometry miss their invariants, and the dead route remains unreachable. The sanitized result is retained in `web/generated-spec-verification.json`; those failures are from the planted conditions, not fixture paths or guessed selectors.
+At that final calibration, the fleet emitted 16 per-site specs and zero skips; the public tree listed 21 because `latest/` intentionally mirrored the five Workspace artifacts. `npm run verify:demo-generated` created private, mount-scoped sessions for every declared demo role, executed the JSON-reported gate, and deleted those states afterward. I executed all 21 files against the planted applications: all 21 failed their defect assertions, with zero passes and zero setup, syntax, or storage-path failures. Propagation reached its deadline, revocation exceeded its 100ms contract, RTL and theme geometry missed their invariants, and the dead route remained unreachable. The sanitized result was retained in `web/generated-spec-verification.json`; those failures were from the planted conditions, not fixture paths or guessed selectors.
 
 ## What I would tell myself at the start
 

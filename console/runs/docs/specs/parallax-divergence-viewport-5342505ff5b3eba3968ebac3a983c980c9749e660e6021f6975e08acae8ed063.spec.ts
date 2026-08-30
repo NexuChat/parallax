@@ -1,6 +1,6 @@
 /*
  * Parallax generated regression spec
- * Finding: divergence-viewport-68979d1ef223fa83
+ * Finding: divergence-viewport-616926b3599fd328
  * Axis: viewport
  * Evidence: owner-en-light-desktop=reached · owner-en-light-mobile=reached · semantic comparison degraded: changed visible region was not captured; falling back to hash mismatch
  * In playwright.config.ts: use: { baseURL: "https://your-app.example" }
@@ -14,7 +14,7 @@ test.use({
   colorScheme: "light",
 });
 
-test("Parallax: divergence-viewport-68979d1ef223fa83", async ({ page }) => {
+test("Parallax: divergence-viewport-616926b3599fd328", async ({ page }) => {
   const response = await page.goto("/docs/faq");
   const isLoginPage = /\/(?:login|sign-in|auth)(?:[/?#]|$)/i.test(new URL(page.url()).pathname);
   const contentSignature = await page.evaluate(() => {
