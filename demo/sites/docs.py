@@ -88,7 +88,7 @@ class DocsSite:
         explicit_theme = request.query.get("theme") or request.cookies.get("theme")
         theme = explicit_theme if explicit_theme in ("light", "dark") else "system"
         markup = self._page(_T[request.lang], request.lang, theme, path, request.mount)
-        overrides = ".topbar{flex-wrap:wrap;gap:12px 24px}.toc a,.related-questions a{display:inline-flex;align-items:center;min-block-size:44px}.code-head,.code-head button{min-block-size:44px}"
+        overrides = ".topbar{flex-wrap:wrap;gap:12px 24px}nav a{min-inline-size:44px}.toc a,.related-questions a{display:inline-flex;align-items:center;min-block-size:44px}.code-head,.code-head button{min-block-size:44px}.code-head button{min-inline-size:44px}"
         return Response.html(markup.replace("</style>", f"{overrides}</style>", 1))
 
     def _page(self, t: dict[str, str], lang: str, theme: str, path: str, mount: str) -> str:

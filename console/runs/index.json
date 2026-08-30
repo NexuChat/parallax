@@ -1,75 +1,65 @@
 {
- "admin": {
-  "feed": "runs/admin/feed.jsonl",
-  "mosaics": 12,
-  "findings": 31,
-  "by_severity": {
-   "high": 1,
-   "medium": 19,
-   "low": 10,
-   "info": 1
+  "admin": {
+    "feed": "runs/admin/feed.jsonl",
+    "mosaics": 11,
+    "findings": 4,
+    "by_severity": {
+      "high": 2,
+      "medium": 1,
+      "info": 1
+    },
+    "by_kind": {
+      "drift": 2,
+      "inversion": 1,
+      "dead": 1
+    }
   },
-  "by_kind": {
-   "escalation": 6,
-   "render": 13,
-   "inversion": 1,
-   "divergence": 10,
-   "dead": 1
-  }
- },
- "control": {
-  "feed": "runs/control/feed.jsonl",
-  "mosaics": 3,
-  "findings": 2,
-  "by_severity": {
-   "medium": 2
+  "control": {
+    "feed": "runs/control/feed.jsonl",
+    "mosaics": 4,
+    "findings": 0,
+    "by_severity": {},
+    "by_kind": {}
   },
-  "by_kind": {
-   "render": 1,
-   "escalation": 1
-  }
- },
- "docs": {
-  "feed": "runs/docs/feed.jsonl",
-  "mosaics": 9,
-  "findings": 13,
-  "by_severity": {
-   "medium": 12,
-   "low": 1
+  "docs": {
+    "feed": "runs/docs/feed.jsonl",
+    "mosaics": 9,
+    "findings": 3,
+    "by_severity": {
+      "medium": 2,
+      "low": 1
+    },
+    "by_kind": {
+      "render": 2,
+      "divergence": 1
+    }
   },
-  "by_kind": {
-   "render": 12,
-   "divergence": 1
-  }
- },
- "shop": {
-  "feed": "runs/shop/feed.jsonl",
-  "mosaics": 16,
-  "findings": 31,
-  "by_severity": {
-   "medium": 20,
-   "low": 11
+  "shop": {
+    "feed": "runs/shop/feed.jsonl",
+    "mosaics": 14,
+    "findings": 4,
+    "by_severity": {
+      "high": 1,
+      "medium": 2,
+      "low": 1
+    },
+    "by_kind": {
+      "render": 4
+    }
   },
-  "by_kind": {
-   "render": 20,
-   "divergence": 11
+  "workspace": {
+    "feed": "runs/workspace/feed.jsonl",
+    "mosaics": 10,
+    "findings": 5,
+    "by_severity": {
+      "high": 3,
+      "medium": 2
+    },
+    "by_kind": {
+      "escalation": 1,
+      "render": 2,
+      "propagation": 1,
+      "revocation": 1
+    }
   }
- },
- "workspace": {
-  "feed": "runs/workspace/feed.jsonl",
-  "mosaics": 14,
-  "findings": 26,
-  "by_severity": {
-   "high": 8,
-   "medium": 8,
-   "low": 10
-  },
-  "by_kind": {
-   "render": 16,
-   "escalation": 5,
-   "divergence": 3,
-   "propagation": 1,
-   "revocation": 1
-  }
- }
 }

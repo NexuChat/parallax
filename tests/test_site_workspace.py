@@ -22,6 +22,16 @@ def test_declared_accounts_authenticate_against_workspace_login() -> None:
         assert response.status == 302 and "Set-Cookie" in response.headers
 
 
+def test_workspace_declares_exactly_the_five_deliberate_plants() -> None:
+    assert [(item.defect, item.axis, item.route) for item in WorkspaceSite.planted] == [
+        ("escalation", "privilege", "/audit"),
+        ("rtl_not_mirrored", "locale", "/threads"),
+        ("theme_layout_shift", "theme", "/threads"),
+        ("propagation", "relational", "/threads"),
+        ("revocation", "relational", "/threads"),
+    ]
+
+
 def test_anonymous_user_is_redirected_from_owner_routes() -> None:
     site = WorkspaceSite()
     for path in ("/settings", "/billing"):
@@ -72,6 +82,42 @@ def test_anonymous_user_wrongly_receives_audit_content_as_planted() -> None:
     assert response.status == 200 and b"Audit log" in response.body
 
 
+def test_only_owner_is_offered_the_public_audit_route() -> None:
+    site = WorkspaceSite()
+    anonymous = site.handle(Request(path="/")).body.decode()
+    member = site.handle(Request(path="/threads", cookies=_login(site, "member@demo"))).body.decode()
+    owner = site.handle(Request(path="/threads", cookies=_login(site, "owner@demo"))).body.decode()
+    assert 'href="/audit"' not in anonymous
+    assert 'href="/audit"' not in member
+    assert 'href="/audit"' in owner
+
+
+def test_nonfunctional_thread_toolbar_items_are_not_exposed_as_controls() -> None:
+    site = WorkspaceSite()
+    markup = site.handle(Request(path="/threads", cookies=_login(site, "owner@demo"))).body.decode()
+    assert '<button class="more"' not in markup
+    assert markup.count('class="composer-icon"') == 3
+    assert markup.count('role="presentation" class="composer-icon"') == 3
+    assert 'class="composer-tools"><button' not in markup
+
+
+def test_workspace_css_contains_incidental_mobile_overflow_and_tap_targets() -> None:
+    css = WorkspaceSite._css("light")
+    assert ".brand,.button,td a{align-items:center!important;display:inline-flex!important}" in css
+    assert ".composer-tools{max-inline-size:calc(100% - 1.5rem)!important;overflow-x:auto!important}" in css
+    assert ".thread-item small{overflow:visible!important;overflow-wrap:anywhere!important;text-overflow:clip!important;white-space:normal!important}" in css
+    assert ".sr-only{clip-path:inset(50%)!important;font-size:0!important;overflow:visible!important}" in css
+    assert "left:.75rem" in css
+    assert ".member-card{display:none}" not in css
+
+
+def test_billing_accessible_header_does_not_create_clipped_hidden_content() -> None:
+    site = WorkspaceSite()
+    markup = site.handle(Request(path="/billing", cookies=_login(site, "owner@demo"))).body.decode()
+    assert '<th aria-label="Download PDF"></th>' in markup
+    assert '<th><span class="sr-only">Download PDF</span></th>' not in markup
+
+
 def test_arabic_query_renders_rtl_and_translated_copy() -> None:
     response = WorkspaceSite().handle(Request(path="/", query={"lang": "ar"}))
     assert b'<html lang="ar" dir="rtl" data-theme="system">' in response.body
@@ -83,11 +129,14 @@ def test_dark_stylesheet_has_header_border_that_light_stylesheet_lacks() -> None
     cookies = _login(site, "owner@demo")
     light = site.handle(Request(path="/threads", query={"theme": "light"}, cookies=cookies)).body.decode()
     dark = site.handle(Request(path="/threads", query={"theme": "dark"}, cookies=cookies)).body.decode()
+    landing = site.handle(Request(path="/", query={"theme": "dark"})).body.decode()
+    assert 'class="site-header threads-header"' in dark
+    assert 'class="site-header threads-header"' not in landing
     assert 'html[data-theme="light"] .site-header{border-block-end:1px solid' in light
     assert 'html[data-theme="dark"]{--canvas:#111b22' in dark
     assert "@media (prefers-color-scheme: dark)" in dark
-    assert 'html[data-theme="dark"] .site-header{border-block-end:3px solid var(--accent)}' in dark
-    assert 'html[data-theme="system"] .site-header{border-block-end:3px solid var(--accent)}' in dark
+    assert 'html[data-theme="dark"] .threads-header{border-block-end:6px solid var(--accent)}' in dark
+    assert 'html[data-theme="system"] .threads-header{border-block-end:6px solid var(--accent)}' in dark
 
 
 def test_message_posted_in_one_session_is_visible_to_another_session_poll() -> None:

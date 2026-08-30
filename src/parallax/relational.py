@@ -160,6 +160,7 @@ class RelationalPair:
         expectation: Expectation,
         deadline_ms: int,
         *,
+        max_lag_ms: int = 0,
         surface: Surface | None = None,
         distribution: Expectation | None = None,
         enforcement: Expectation | None = None,
@@ -250,7 +251,7 @@ class RelationalPair:
                                         planes.decision,
                                         planes.distribution,
                                         planes.enforcement,
-                                        not probes,
+                                        lag_ms <= max_lag_ms,
                                     )
                                     break
                                 probes.append("effects")
@@ -278,6 +279,7 @@ class RelationalPair:
         revocation = RevocationLag(
             lag_ms=lag_ms,
             deadline_ms=deadline_ms,
+            max_lag_ms=max_lag_ms,
             probes=tuple(probes),
             planes=planes,
             effect_selector=expectation if isinstance(expectation, str) else None,
@@ -293,7 +295,7 @@ class RelationalPair:
         elif lag_ms is None:
             summary = f"Revocation authority did not cease within {deadline_ms}ms (lag >= {deadline_ms}ms)"
         else:
-            summary = f"Revocation authority ceased after {lag_ms}ms"
+            summary = f"Revocation authority ceased after {lag_ms}ms (acceptable <= {max_lag_ms}ms)"
         failed = ", ".join(plane.value for plane in planes.failed)
         if failed:
             summary = f"{summary}; failed plane: {failed}"

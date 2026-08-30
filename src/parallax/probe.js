@@ -107,12 +107,23 @@
   const actionable = [...document.querySelectorAll(
     'button, a[href], input, select, textarea, [role="button"], [onclick]'
   )].filter(visible);
+  const scrollableAncestor = (el) => {
+    let ancestor = el.parentElement;
+    while (ancestor && ancestor !== document.body && ancestor !== document.documentElement) {
+      const style = getComputedStyle(ancestor);
+      if (/^(auto|scroll)$/.test(style.overflowX)
+          && ancestor.scrollWidth > ancestor.clientWidth + 1) return ancestor;
+      ancestor = ancestor.parentElement;
+    }
+    return null;
+  };
 
   for (const el of actionable) {
     const r = el.getBoundingClientRect();
-    const absLeft = r.left + window.scrollX;
-    if (absLeft + r.width < 0 || absLeft > document.documentElement.scrollWidth + 1) {
-      add('offscreen_control', { left: Math.round(absLeft), width: Math.round(r.width) }, pathTo(el));
+    if ((r.left < -1 || r.right > view.width + 1) && !scrollableAncestor(el)) {
+      add('offscreen_control',
+          { left: Math.round(r.left), right: Math.round(r.right), viewport: view.width },
+          pathTo(el));
     }
     // Tap targets only matter where fingers are used.
     if (view.width <= 480 && (r.width < MIN_TAP_TARGET || r.height < MIN_TAP_TARGET)) {
@@ -126,9 +137,15 @@
   for (const el of document.body.querySelectorAll('*')) {
     if (!visible(el)) continue;
     const s = getComputedStyle(el);
-    if (s.overflow === 'visible') continue;
-    if (el.scrollWidth > el.clientWidth + 2 && el.clientWidth > 0 && el.children.length === 0) {
-      add('clipped', { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }, pathTo(el));
+    const clippedX = /^(hidden|clip)$/.test(s.overflowX)
+      && el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 2;
+    const clippedY = /^(hidden|clip)$/.test(s.overflowY)
+      && el.clientHeight > 0 && el.scrollHeight > el.clientHeight + 2;
+    if (clippedX || clippedY) {
+      add('clipped', {
+        scrollWidth: el.scrollWidth, clientWidth: el.clientWidth,
+        scrollHeight: el.scrollHeight, clientHeight: el.clientHeight,
+      }, pathTo(el));
     }
   }
 
@@ -241,7 +258,7 @@
     defects,
     geometry,
     support,
-    contentSignature: hash(document.body.innerText.replace(/\s+/g, ' ').trim()),
+    contentSignature: hash((document.querySelector('main') || document.body).innerText.replace(/\s+/g, ' ').trim()),
     layoutSignature: hash(geometry.map((g) => `${g.tag}:${g.x},${g.y},${g.w},${g.h}`).join('|')),
     consoleErrorCount: window.__parallaxConsoleErrors || 0,
   };

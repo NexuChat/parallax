@@ -12,7 +12,7 @@ from PIL import Image
 
 from parallax.conductor import Conductor, RelationalScenario, assess_axis_applicability
 from parallax.contracts import finding_payload
-from parallax.types import Axis, Context, Defect, Finding, FindingKind, Locale, Outcome, Privilege, Severity, Surface, SurfaceKind, Testimony
+from parallax.types import Axis, Context, Defect, Finding, FindingKind, Locale, Outcome, Privilege, Severity, Surface, SurfaceKind, Testimony as WitnessTestimony
 
 
 SITE = "https://app.example.test"
@@ -138,10 +138,10 @@ class Specialist:
 
 def test_axis_applicability_requires_page_claims_and_distinct_role_states() -> None:
     surface = Surface(SurfaceKind.ROUTE, f"{SITE}/")
-    baseline = Testimony(surface, Context(), Outcome.REACHED, document_lang="en", support={
+    baseline = WitnessTestimony(surface, Context(), Outcome.REACHED, document_lang="en", support={
         "localeAlternate": True, "themeMedia": True, "viewportMeta": True,
     })
-    arabic = Testimony(surface, Context(locale=Locale.AR, varies=Axis.LOCALE), Outcome.REACHED, document_lang="ar")
+    arabic = WitnessTestimony(surface, Context(locale=Locale.AR, varies=Axis.LOCALE), Outcome.REACHED, document_lang="ar")
     decisions = assess_axis_applicability(
         [baseline, arabic], {"owner": {"cookies": ["owner"]}, "member": {"cookies": ["member"]}},
     )
@@ -149,9 +149,24 @@ def test_axis_applicability_requires_page_claims_and_distinct_role_states() -> N
     assert all(decision.applicable for decision in decisions)
 
 
+def test_privilege_axis_rejects_different_paths_with_identical_state_content(tmp_path: Path) -> None:
+    surface = Surface(SurfaceKind.ROUTE, f"{SITE}/")
+    testimony = WitnessTestimony(surface, Context(), Outcome.REACHED)
+    owner = tmp_path / "owner.json"
+    member = tmp_path / "member.json"
+    owner.write_text('{"cookies":[{"name":"session","value":"same"}],"origins":[]}', encoding="utf-8")
+    member.write_bytes(owner.read_bytes())
+
+    privilege = next(decision for decision in assess_axis_applicability(
+        [testimony], {"owner": owner, "member": member},
+    ) if decision.axis is Axis.PRIVILEGE)
+
+    assert not privilege.applicable
+
+
 def test_axis_applicability_reports_every_missing_claim() -> None:
     surface = Surface(SurfaceKind.ROUTE, f"{SITE}/")
-    decisions = assess_axis_applicability([Testimony(surface, Context(), Outcome.REACHED)], None)
+    decisions = assess_axis_applicability([WitnessTestimony(surface, Context(), Outcome.REACHED)], None)
 
     assert {decision.axis for decision in decisions} == {Axis.PRIVILEGE, Axis.LOCALE, Axis.THEME, Axis.VIEWPORT}
     assert all(not decision.applicable for decision in decisions)
@@ -178,7 +193,7 @@ def test_conductor_publishes_not_applicable_axes_without_their_findings(tmp_path
 
 def test_finding_payload_carries_its_mosaic_reference() -> None:
     from parallax.contracts import MosaicFrame, Tile
-    from parallax.types import BASELINE, Outcome, Surface, SurfaceKind, Testimony
+    from parallax.types import BASELINE, Outcome, Surface, SurfaceKind
 
     surface = Surface(SurfaceKind.ROUTE, f"{SITE}/shop?category=paper")
     finding = Finding(
@@ -187,13 +202,54 @@ def test_finding_payload_carries_its_mosaic_reference() -> None:
         surface,
         Axis.BASELINE,
         "paper listing clips its heading",
-        [Testimony(surface, BASELINE, Outcome.PARTIAL)],
+        [WitnessTestimony(surface, BASELINE, Outcome.PARTIAL)],
     )
     mosaic = MosaicFrame(jpeg((12, 34, 56)), (Tile(BASELINE.name, 0, 0, 12, 8),), seq=17)
 
     payload = finding_payload(finding, mosaic=mosaic)
 
     assert payload["mosaic"] == {"surface_id": surface.id, "seq": 17}
+
+
+def test_render_findings_with_distinct_defects_survive_identity_deduplication() -> None:
+    from parallax.conductor import _unpublished_findings
+
+    surface = Surface(SurfaceKind.ROUTE, f"{SITE}/shop")
+    testimony = WitnessTestimony(
+        surface,
+        Context(),
+        Outcome.PARTIAL,
+        defects=[Defect.HORIZONTAL_OVERFLOW, Defect.SMALL_TAP_TARGET],
+    )
+    findings = [
+        Finding(
+            FindingKind.RENDER_DEFECT,
+            Severity.MEDIUM,
+            surface,
+            Axis.VIEWPORT,
+            "wide content",
+            [testimony],
+            defect=Defect.HORIZONTAL_OVERFLOW,
+        ),
+        Finding(
+            FindingKind.RENDER_DEFECT,
+            Severity.LOW,
+            surface,
+            Axis.VIEWPORT,
+            "small control",
+            [testimony],
+            defect=Defect.SMALL_TAP_TARGET,
+        ),
+    ]
+
+    unpublished = _unpublished_findings(findings, set())
+
+    assert unpublished == findings
+    base_identity = f"render-viewport-{surface.id}"
+    assert [finding.id for finding in unpublished] == [
+        f"{base_identity}-horizontal_overflow",
+        f"{base_identity}-small_tap_target",
+    ]
 
 
 def test_conductor_finding_reference_uses_its_surface_mosaic(tmp_path: Path) -> None:
@@ -521,10 +577,39 @@ def test_mirror_observations_reach_the_differ_without_mutating_witness_evidence(
         assert seen
         locale = next(testimony for testimony in seen[0] if testimony.context.varies is Axis.LOCALE)
         assert Defect.RTL_NOT_MIRRORED in locale.defects
+        assert locale.observations[0].defect is Defect.RTL_NOT_MIRRORED
+        assert locale.observations[0].selector == "#nav"
         recorded_locale = next(testimony for testimony in result.testimonies if testimony.context.varies is Axis.LOCALE)
         assert Defect.RTL_NOT_MIRRORED not in recorded_locale.defects
 
     asyncio.run(check())
+
+
+def test_mirror_observations_use_each_surface_own_baseline() -> None:
+    from parallax.conductor import _with_mirror_observations
+
+    first_surface = Surface(SurfaceKind.ROUTE, f"{SITE}/first")
+    second_surface = Surface(SurfaceKind.ROUTE, f"{SITE}/second")
+    arabic = Context(locale=Locale.AR, varies=Axis.LOCALE)
+
+    def testimony(surface: Surface, context: Context, x: int) -> WitnessTestimony:
+        return WitnessTestimony(
+            surface,
+            context,
+            Outcome.REACHED,
+            geometry=[{"selector": "#nav", "tag": "nav", "x": x, "y": 10, "w": 200, "h": 40, "text": ""}],
+        )
+
+    observed = _with_mirror_observations([
+        testimony(first_surface, Context(), 20),
+        testimony(first_surface, arabic, 1220),
+        testimony(second_surface, Context(), 40),
+        testimony(second_surface, arabic, 40),
+    ])
+
+    first_locale, second_locale = observed[1], observed[3]
+    assert Defect.RTL_NOT_MIRRORED not in first_locale.defects
+    assert Defect.RTL_NOT_MIRRORED in second_locale.defects
 
 
 def test_specialists_are_isolated_deduplicated_and_failures_are_reported(tmp_path: Path) -> None:
@@ -598,6 +683,29 @@ def test_sweep_without_relational_scenarios_preserves_ordinary_findings(tmp_path
             (finding.kind, finding.axis, finding.summary, finding.evidence_line()) for finding in second.findings
         ]
         assert len(first.testimonies) == len(second.testimonies) == 7
+
+    asyncio.run(check())
+
+
+def test_conduct_removes_only_stale_managed_mosaics(tmp_path: Path) -> None:
+    async def check() -> None:
+        mosaics = tmp_path / "mosaics"
+        mosaics.mkdir()
+        stale = mosaics / "0123456789abcdef-999.jpg"
+        manual = mosaics / "handwritten.jpg"
+        stale.write_bytes(b"stale")
+        manual.write_bytes(b"manual")
+        discovery = {f"{SITE}/": {"links": [], "affordances": []}}
+
+        await Conductor(
+            f"{SITE}/",
+            tmp_path,
+            browser=FakeBrowser([{"discovery": discovery}] + [{} for _ in range(7)]),
+            settle_ms=0,
+        ).conduct()
+
+        assert not stale.exists()
+        assert manual.read_bytes() == b"manual"
 
     asyncio.run(check())
 

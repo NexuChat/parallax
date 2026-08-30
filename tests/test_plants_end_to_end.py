@@ -10,6 +10,7 @@ import threading
 import time
 from collections.abc import Generator
 from http.server import ThreadingHTTPServer
+from pathlib import Path
 
 import pytest
 
@@ -86,6 +87,71 @@ async def rect(page, selector: str) -> dict[str, float]:
     value = await page.locator(selector).evaluate("element => element.getBoundingClientRect().toJSON()")
     assert value is not None
     return value
+
+
+async def probe(page) -> dict:
+    source = (Path(__file__).parents[1] / "src/parallax/probe.js").read_text(encoding="utf-8")
+    snapshot = await page.evaluate(source)
+    assert isinstance(snapshot, dict)
+    return snapshot
+
+
+def test_probe_content_signature_ignores_chrome_outside_main() -> None:
+    async def check() -> None:
+        resources = await browser_page()
+        try:
+            page = resources[3]
+            await page.set_content('<header><span id="badge">2</span></header><main id="content">Stable content</main>')
+            initial = (await probe(page))["contentSignature"]
+            await page.locator("#badge").evaluate("element => { element.textContent = '3'; }")
+            assert (await probe(page))["contentSignature"] == initial
+            await page.locator("#content").evaluate("element => { element.textContent = 'Changed content'; }")
+            assert (await probe(page))["contentSignature"] != initial
+        finally:
+            await close_browser(resources)
+    asyncio.run(check())
+
+
+def test_probe_content_signature_falls_back_to_body_without_main() -> None:
+    async def check() -> None:
+        resources = await browser_page()
+        try:
+            page = resources[3]
+            await page.set_content('<article id="content">Initial content</article>')
+            initial = (await probe(page))["contentSignature"]
+            await page.locator("#content").evaluate("element => { element.textContent = 'Changed content'; }")
+            assert (await probe(page))["contentSignature"] != initial
+        finally:
+            await close_browser(resources)
+    asyncio.run(check())
+
+
+def test_shop_viewports_share_a_main_content_signature(demo_url: str) -> None:
+    async def check() -> None:
+        resources = await browser_page(viewport={"width": 1280, "height": 800})
+        try:
+            page = resources[3]
+            await page.goto(f"{demo_url}/shop/")
+            desktop = (await probe(page))["contentSignature"]
+            await page.set_viewport_size({"width": 360, "height": 740})
+            assert (await probe(page))["contentSignature"] == desktop
+        finally:
+            await close_browser(resources)
+    asyncio.run(check())
+
+
+def test_docs_faq_viewport_plant_changes_the_main_content_signature(demo_url: str) -> None:
+    async def check() -> None:
+        resources = await browser_page(viewport={"width": 1280, "height": 800})
+        try:
+            page = resources[3]
+            await page.goto(f"{demo_url}/docs/faq")
+            desktop = (await probe(page))["contentSignature"]
+            await page.set_viewport_size({"width": 767, "height": 800})
+            assert (await probe(page))["contentSignature"] != desktop
+        finally:
+            await close_browser(resources)
+    asyncio.run(check())
 
 
 def test_deliberate_workspace_public_audit_and_private_owner_routes(demo_url: str) -> None:
@@ -184,6 +250,29 @@ def test_deliberate_shop_checkout_primary_button_is_offscreen_at_360px(demo_url:
             await page.goto(f"{demo_url}/shop/checkout")
             button = await rect(page, ".checkout-action-row .button")
             assert button["right"] > await page.evaluate("innerWidth")
+            snapshot = await probe(page)
+            observations = [item for item in snapshot["defects"] if item["type"] == "offscreen_control"]
+            assert any(item["selector"].endswith("div.checkout-action-row > button.button") for item in observations)
+        finally:
+            await close_browser(resources)
+    asyncio.run(check())
+
+
+def test_probe_does_not_report_controls_reachable_in_a_scrollable_ancestor() -> None:
+    async def check() -> None:
+        resources = await browser_page(viewport={"width": 360, "height": 740})
+        try:
+            page = resources[3]
+            await page.set_content("""
+                <main id="rail" style="width: 240px; overflow-x: auto">
+                  <div style="width: 720px; padding-left: 600px">
+                    <button id="reachable">Reach me</button>
+                  </div>
+                </main>
+            """)
+            snapshot = await probe(page)
+            observations = [item for item in snapshot["defects"] if item["type"] == "offscreen_control"]
+            assert all(item["selector"] != "#reachable" for item in observations)
         finally:
             await close_browser(resources)
     asyncio.run(check())
@@ -217,12 +306,22 @@ def test_deliberate_shop_quantity_stepper_is_smaller_than_44px(demo_url: str) ->
 
 def test_deliberate_shop_product_title_is_clipped_by_its_container(demo_url: str) -> None:
     async def check() -> None:
-        resources = await browser_page()
+        resources = await browser_page(viewport={"width": 360, "height": 740})
         try:
             page = resources[3]
             await page.goto(f"{demo_url}/shop/product/organizer")
             clipped = await page.locator(".product-title-box").evaluate("box => box.scrollHeight > box.clientHeight")
             assert clipped
+            snapshot = await probe(page)
+            observations = [item for item in snapshot["defects"] if item["type"] == "clipped"]
+            assert any(".product-title-box" in item["selector"] for item in observations)
+
+            await page.set_viewport_size({"width": 1280, "height": 800})
+            await page.reload()
+            desktop_clipped = await page.locator(".product-title-box").evaluate(
+                "box => box.scrollHeight > box.clientHeight"
+            )
+            assert not desktop_clipped
         finally:
             await close_browser(resources)
     asyncio.run(check())
@@ -247,6 +346,15 @@ def test_deliberate_docs_dark_help_text_fails_wcag_aa_contrast(demo_url: str) ->
         try:
             page = resources[3]
             await page.goto(f"{demo_url}/docs/?theme=dark")
+            element_background, backdrop_background = await page.locator(".help-text").evaluate("""element => {
+                let background = element;
+                while (background && getComputedStyle(background).backgroundColor === 'rgba(0, 0, 0, 0)') {
+                    background = background.parentElement;
+                }
+                return [getComputedStyle(element).backgroundColor, getComputedStyle(background).backgroundColor];
+            }""")
+            assert element_background == "rgba(0, 0, 0, 0)"
+            assert backdrop_background != element_background
             ratio = await page.locator(".help-text").evaluate("""element => {
                 const rgb = value => value.match(/\\d+/g).slice(0, 3).map(Number);
                 const luminance = color => {

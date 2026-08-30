@@ -1,0 +1,17 @@
+{
+  "name": "parallax-playwright-harness",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test:generated": "playwright test",
+    "test:generated:list": "playwright test --list",
+    "verify:generated": "node scripts/verify-generated-specs.mjs --expected 21",
+    "verify:demo-generated": "python scripts/verify_demo_generated.py"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,12 +1,12 @@
 {
-  "host": "http://127.0.0.1:8321",
-  "generated_at": "2026-08-30T00:43:17.772724+00:00",
+  "host": "http://127.0.0.1:18103",
+  "generated_at": "2026-08-30T08:51:25.626188+00:00",
   "sites": {
     "admin": {
       "planted": 3,
-      "found": 2,
-      "missed": 1,
-      "false_positives": 29,
+      "found": 3,
+      "missed": 0,
+      "false_positives": 0,
       "plants": [
         {
           "name": "Owners are redirected while members may read reports.",
@@ -16,18 +16,18 @@
           "verdict": "found"
         },
         {
+          "name": "The English-only export route disappears in Arabic.",
+          "defect": "drift",
+          "axis": "locale",
+          "route": "/exports",
+          "verdict": "found"
+        },
+        {
           "name": "A navigation link points to a route which never resolves.",
           "defect": "dead",
           "axis": "baseline",
           "route": "/legacy",
           "verdict": "found"
-        },
-        {
-          "name": "The English-only export route disappears in Arabic.",
-          "defect": "drift",
-          "axis": "locale",
-          "route": "/exports",
-          "verdict": "missed"
         }
       ]
     },
@@ -35,14 +35,14 @@
       "planted": 0,
       "found": 0,
       "missed": 0,
-      "false_positives": 2,
+      "false_positives": 0,
       "plants": []
     },
     "docs": {
       "planted": 3,
       "found": 3,
       "missed": 0,
-      "false_positives": 10,
+      "false_positives": 0,
       "plants": [
         {
           "name": "Arabic renders one guide heading as its translation key.",
@@ -69,10 +69,17 @@
     },
     "shop": {
       "planted": 4,
-      "found": 2,
-      "missed": 2,
-      "false_positives": 29,
+      "found": 4,
+      "missed": 0,
+      "false_positives": 0,
       "plants": [
+        {
+          "name": "The fixed 720px action row puts Place order beyond 360px.",
+          "defect": "offscreen_control",
+          "axis": "viewport",
+          "route": "/checkout",
+          "verdict": "found"
+        },
         {
           "name": "The cart table has a fixed minimum width.",
           "defect": "horizontal_overflow",
@@ -88,27 +95,41 @@
           "verdict": "found"
         },
         {
-          "name": "The fixed 720px action row puts Place order beyond 360px.",
-          "defect": "offscreen_control",
-          "axis": "viewport",
-          "route": "/checkout",
-          "verdict": "missed"
-        },
-        {
           "name": "Long product names are clipped by a fixed-height title box.",
           "defect": "clipped",
           "axis": "viewport",
           "route": "/product/<id>",
-          "verdict": "missed"
+          "verdict": "found"
         }
       ]
     },
     "workspace": {
       "planted": 5,
-      "found": 2,
-      "missed": 3,
-      "false_positives": 24,
+      "found": 5,
+      "missed": 0,
+      "false_positives": 0,
       "plants": [
+        {
+          "name": "The audit template is accidentally public.",
+          "defect": "escalation",
+          "axis": "privilege",
+          "route": "/audit",
+          "verdict": "found"
+        },
+        {
+          "name": "Composer controls use physical left spacing.",
+          "defect": "rtl_not_mirrored",
+          "axis": "locale",
+          "route": "/threads",
+          "verdict": "found"
+        },
+        {
+          "name": "Dark mode adds a header border.",
+          "defect": "theme_layout_shift",
+          "axis": "theme",
+          "route": "/threads",
+          "verdict": "found"
+        },
         {
           "name": "Quiet-thread messages do not reach polling clients.",
           "defect": "propagation",
@@ -122,35 +143,14 @@
           "axis": "relational",
           "route": "/threads",
           "verdict": "found"
-        },
-        {
-          "name": "The audit template is accidentally public.",
-          "defect": "escalation",
-          "axis": "privilege",
-          "route": "/audit",
-          "verdict": "missed"
-        },
-        {
-          "name": "Composer controls use physical left spacing.",
-          "defect": "rtl_not_mirrored",
-          "axis": "locale",
-          "route": "/threads",
-          "verdict": "missed"
-        },
-        {
-          "name": "Dark mode adds a header border.",
-          "defect": "theme_layout_shift",
-          "axis": "theme",
-          "route": "/threads",
-          "verdict": "missed"
         }
       ]
     }
   },
   "totals": {
     "planted": 15,
-    "found": 9,
-    "missed": 6,
-    "false_positives": 94
+    "found": 15,
+    "missed": 0,
+    "false_positives": 0
   }
 }

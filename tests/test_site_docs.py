@@ -50,6 +50,13 @@ def test_docs_routes_have_the_requested_product_reference_furniture():
     assert faq.count("<details>") == 4 and 'class="related-questions"' in faq
 
 
+def test_docs_mobile_controls_have_44px_minimum_inline_and_block_sizes():
+    markup = body("/api")
+    assert "nav a{min-inline-size:44px}" in markup
+    assert ".code-head button{min-inline-size:44px}" in markup
+    assert ".code-head,.code-head button{min-block-size:44px}" in markup
+
+
 def test_docs_arabic_is_rtl_and_unknown_paths_are_404():
     assert '<html lang="ar" dir="rtl"' in body("/api", query={"lang": "ar"})
     assert DocsSite().handle(Request(path="/nope")).status == 404

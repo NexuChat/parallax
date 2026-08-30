@@ -18,7 +18,8 @@ python -m pip install .
 python -m playwright install chromium
 ```
 
-Installing the package brings in Playwright, Pillow and `google-genai`; the second
+Installing the package brings in Playwright, Pillow, `google-genai`, and the
+direct `google-auth` dependency used by the Vertex route; the second
 command downloads the browser build Playwright drives.
 
 Run a deterministic sweep. `PYTHONPATH=src` runs the package directly from this checkout; `--no-vision` makes the run independent of a Gemini API key.
@@ -61,7 +62,7 @@ To test a sender-to-receiver claim while both role sessions are open, add `--rel
 }
 ```
 
-Run it with the same role states: `PYTHONPATH=src python -m parallax https://app.example.com --storage-state owner=.auth/owner.json --storage-state member=.auth/member.json --relational-scenarios scenarios.json --no-vision`. Each scenario needs `surface`, `sender`, `receiver`, `action`, `effect`, and a positive `deadline_ms`; roles are `anon`, `member`, or `owner`. A `visible` effect is `{ "type": "visible", "selector": ".notification" }`. The final JSON summary reports both `relational_scenarios.ran` and `relational_scenarios.findings`.
+Run it with the same role states: `PYTHONPATH=src python -m parallax https://app.example.com --storage-state owner=.auth/owner.json --storage-state member=.auth/member.json --relational-scenarios scenarios.json --no-vision`. Each scenario needs `surface`, `sender`, `receiver`, `action`, `effect`, and a positive `deadline_ms`; roles are `anon`, `member`, or `owner`. A `visible` effect is `{ "type": "visible", "selector": ".notification" }`. A revocation scenario also needs `"type": "revocation"` and a non-negative `max_lag_ms` below `deadline_ms`. The former is the authority-loss contract; the latter is only how long Parallax may observe before declaring that authority never ceased. The final JSON summary reports both `relational_scenarios.ran` and `relational_scenarios.findings`.
 
 Demo sites can opt in without suite-specific code: declare a `relational_scenarios` list beside `accounts` and `planted`, with entries in this same format. Their `surface` may be the site-local path such as `/threads`; the suite mounts it below the site's name before passing it to the conductor.
 
@@ -77,6 +78,13 @@ Everything for one run is written below `--out`:
 - `mosaics/` contains JPEG walls for settled visual moments.
 - `specs/` contains one generated failing Playwright `.spec.ts` per finding.
 - The command prints totals for discovered surfaces, testimonies, findings, severity counts, feed path, and generated specs.
+
+Authenticated specs never embed the storage-state path used by the sweep. Set
+`PARALLAX_OWNER_STORAGE_STATE` or `PARALLAX_MEMBER_STORAGE_STATE` to a
+CI-provisioned state file for that role; a spec that needs one fails with a clear
+message when the variable is absent. The bundled demo grader creates its role
+states in a private `0600` temporary directory and removes them in `finally`, so
+cookies never enter `runs/` or the public console artifacts.
 
 ## Reading a finding
 
@@ -125,7 +133,7 @@ failure, a per-session membership cache re-read on a delay:
 
 ```
 REVOCATION · HIGH
-Revocation authority ceased after 2,499ms; failed plane: effects
+Revocation authority ceased after 2,499ms (acceptable <= 100ms); failed plane: effects
 ```
 
 Authority is not what a rendered page still shows — markup survives revocation
@@ -151,10 +159,13 @@ tool inventing its own evidence. Every run prints what it did not test:
 
 ## Grouping the noise
 
-A sweep of the five demo applications publishes ninety-four findings that are not
-defects. That number is measured against declared plants and printed on the front
-page rather than hidden — but ninety-four lines is not a report anyone reads, and
-most of them repeat: the same overflow, seen from six witnesses across four routes.
+An early sweep of the demo fleet produced 94 false positives. Because every demo
+site declares its intentional defects, that was measurable rather than subjective:
+it exposed page-wide measurements repeated on controls, unstable query variants,
+and fixture accessibility defects. The calibrated sweep now reports **zero false
+positives**, including on the clean control. Real applications can still produce
+many legitimate findings, so grouping remains useful after detection rather than
+as a way to hide detector noise.
 
 Grouping them is a judgement about wording, not a measurement, which is the one
 place a small model earns its place here. Gemma 3 reads only the summaries the
@@ -177,8 +188,8 @@ that found nothing to group.
 ## Reproducing the published figures
 
 The figures on the front page come from a graded sweep of five bundled demo
-applications that declare their own deliberate defects in code, plus a clean
-control with nothing planted. The suite grades Parallax against those
+applications that declare their own deliberate defects in code, including a
+clean control with nothing planted. The suite grades Parallax against those
 declarations, so a false positive is measured rather than asserted.
 
 It needs the demo fleet already listening; it does not start one:
@@ -188,13 +199,12 @@ python demo/serve.py &
 python scripts/run_demo_suite.py --no-vision --host http://127.0.0.1:8080
 ```
 
-The run rewrites `web/graded-summary.json` and the sweeps under `runs/`, prints a
-per-application table, and exits non-zero whenever any application has a missed
-defect or a false positive — which it currently does. At the commit this README
-describes, the totals are **7 defects found, 7 missed, and 99 false positives**
-across the five applications, with 2 of those false positives on the clean
-control. That ratio is the honest state of the tool: the deterministic probe is
-noisy, and the front page leads with the number rather than hiding it.
+The run rewrites `web/graded-summary.json`, replaces the sweeps under `runs/`, and
+publishes a no-follow artifact manifest under `console/runs/`. It exits non-zero
+for any miss or false positive. The current reproducible result is **15 of 15
+planted defects found, 0 missed, and 0 false positives**; the clean control also
+stays at zero. Public specs contain no local storage path, role cookie, or skipped
+test.
 
 If the suite reports every surface dead and logins failing with HTTP 401, the
 demo fleet is not running on the host passed to `--host`.
@@ -208,6 +218,31 @@ python -m pip install pytest
 python -m pytest -q
 ```
 
-`pyproject.toml` supplies the import paths, so no `PYTHONPATH` is needed. The suite
-runs 206 tests without a browser: witnesses, compositor and Gemini client are all
-injected as fakes.
+`pyproject.toml` supplies the import paths, so no `PYTHONPATH` is needed. The unit
+and integration suite runs without a browser by injecting witnesses, the
+compositor and the Gemini client as fakes; `pytest` prints the current total.
+Generated Playwright artifacts are also executed against the demo fleet during
+release verification so a syntactically valid but false-green spec cannot pass as
+proof. Install the pinned Node harness and verify discovery with:
+
+```bash
+npm ci --ignore-scripts
+npm run test:generated:list
+```
+
+With the demo fleet running, one command builds temporary mount-scoped owner and
+member sessions, executes every published spec, writes a sanitized JSON summary,
+and removes the private states:
+
+```bash
+npm run verify:demo-generated -- \
+  --base-url http://127.0.0.1:8080 \
+  --report web/generated-spec-verification.json
+```
+
+For another application, `npm run verify:generated` accepts explicit
+`--owner-state` and `--member-state` files. Against the deliberately broken demo
+fleet every emitted regression must fail its assertion; the checked release gate
+currently executes 21 public spec files with **21 expected defect failures, 0
+passes, 0 skips, and 0 setup failures**. Its current machine-readable result is
+[`web/generated-spec-verification.json`](web/generated-spec-verification.json).

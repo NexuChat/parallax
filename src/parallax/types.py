@@ -188,6 +188,15 @@ class Defect(str, Enum):
     SMALL_TAP_TARGET = "small_tap_target"         # below the 44px WCAG 2.2 minimum
 
 
+@dataclass(frozen=True)
+class DefectObservation:
+    """One probe measurement tied to the element it observed."""
+
+    defect: Defect
+    selector: str | None = None
+    detail: str = ""
+
+
 @dataclass
 class Testimony:
     """One witness's account of one surface. Evidence, immutable once written."""
@@ -203,6 +212,7 @@ class Testimony:
     document_lang: str | None = None
     support: dict[str, bool] = field(default_factory=dict)
     defects: list[Defect] = field(default_factory=list)
+    observations: list[DefectObservation] = field(default_factory=list)
     note: str = ""
     screenshot: str | None = None      # object path, never bytes
     observed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -239,6 +249,39 @@ class Severity(str, Enum):
     MEDIUM = "medium"
     LOW = "low"
     INFO = "info"
+
+
+@dataclass(frozen=True)
+class FormAction:
+    """The replayable subset of a relational sender action."""
+
+    form: str
+    checks: tuple[str, ...] = ()
+    fills: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class EffectExpectation:
+    """A replayable receiver predicate from the safe scenario vocabulary."""
+
+    kind: str
+    selector: str | None = None
+    url: str | None = None
+    items: str | None = None
+    field: str | None = None
+    equals: str | None = None
+
+
+@dataclass(frozen=True)
+class RelationalReplay:
+    """Enough normalized data to turn a measured relation into a CI test."""
+
+    sender: Privilege
+    receiver: Privilege
+    action: FormAction
+    effect: EffectExpectation
+    deadline_ms: int
+    max_lag_ms: int | None = None
 
 
 class RevocationPlane(str, Enum):
@@ -285,6 +328,7 @@ class RevocationLag:
 
     lag_ms: int | None
     deadline_ms: int
+    max_lag_ms: int
     probes: tuple[str, ...]
     planes: RevocationPlanes
     effect_selector: str | None = None
@@ -307,10 +351,15 @@ class Finding:
     summary: str
     testimonies: list[Testimony]   # the exact evidence this rests on
     revocation: RevocationLag | None = None
+    replay: RelationalReplay | None = None
+    defect: Defect | None = None
 
     @property
     def id(self) -> str:
-        return f"{self.kind.value}-{self.axis.value}-{self.surface.id}"
+        identity = f"{self.kind.value}-{self.axis.value}-{self.surface.id}"
+        if self.kind is FindingKind.RENDER_DEFECT and self.defect is not None:
+            return f"{identity}-{self.defect.value}"
+        return identity
 
     def evidence_line(self) -> str:
         parts = [f"{t.context.name}={t.outcome.value}" for t in self.testimonies]

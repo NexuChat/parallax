@@ -69,6 +69,12 @@ def test_relational_scenario_file_builds_safe_conductor_scenarios(tmp_path, monk
     assert scenario.sender.privilege.value == "owner"
     assert scenario.receiver.privilege.value == "member"
     assert scenario.deadline_ms == 3000
+    assert scenario.replay is not None
+    assert scenario.replay.action.form == "form.composer"
+    assert scenario.replay.action.checks == ("input[value='quiet']",)
+    assert scenario.replay.action.fills == (("#message", "Ship it"),)
+    assert scenario.replay.effect.kind == "json_contains"
+    assert scenario.replay.effect.url == "api/messages?since=0"
     assert received["relational_scenarios"] == scenarios
 
 
@@ -81,13 +87,51 @@ def test_revocation_scenario_uses_the_same_safe_action_and_effect_vocabulary(tmp
         "receiver": "member",
         "action": {"type": "submit_form", "form": "form.disable"},
         "effect": {"type": "visible", "selector": "#workspace"},
+        "max_lag_ms": 50,
         "deadline_ms": 200,
     }]}), encoding="utf-8")
 
     scenario = cli._relational_scenarios(path, "https://app.example.test")[0]
 
     assert scenario.kind == "revocation"
+    assert scenario.max_lag_ms == 50
     assert scenario.deadline_ms == 200
+    assert scenario.replay is not None
+    assert scenario.replay.max_lag_ms == 50
+    assert scenario.replay.effect.selector == "#workspace"
+
+
+def test_revocation_scenario_requires_an_explicit_acceptable_lag(tmp_path) -> None:
+    path = tmp_path / "revocation.json"
+    path.write_text(json.dumps({"scenarios": [{
+        "type": "revocation",
+        "surface": "/workspace",
+        "sender": "owner",
+        "receiver": "member",
+        "action": {"type": "submit_form", "form": "form.disable"},
+        "effect": {"type": "visible", "selector": "#workspace"},
+        "deadline_ms": 200,
+    }]}), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="scenario 1.max_lag_ms must be a non-negative integer"):
+        cli._relational_scenarios(path, "https://app.example.test")
+
+
+def test_revocation_observation_window_must_exceed_acceptable_lag(tmp_path) -> None:
+    path = tmp_path / "revocation.json"
+    path.write_text(json.dumps({"scenarios": [{
+        "type": "revocation",
+        "surface": "/workspace",
+        "sender": "owner",
+        "receiver": "member",
+        "action": {"type": "submit_form", "form": "form.disable"},
+        "effect": {"type": "visible", "selector": "#workspace"},
+        "max_lag_ms": 200,
+        "deadline_ms": 200,
+    }]}), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="scenario 1.max_lag_ms must be below deadline_ms"):
+        cli._relational_scenarios(path, "https://app.example.test")
 
 
 def test_relational_scenario_rejects_unknown_scenario_types(tmp_path) -> None:

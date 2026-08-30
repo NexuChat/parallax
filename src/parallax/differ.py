@@ -112,6 +112,14 @@ def _privilege_findings(
     findings: list[Finding] = []
     blocked_variants = [t for t in variants if t.outcome is Outcome.BLOCKED]
     for t in variants:
+        policy_witness = next(
+            (
+                candidate
+                for candidate in blocked_variants
+                if candidate.context.privilege.rank > t.context.privilege.rank
+            ),
+            None,
+        )
         owner_offer = next(
             (
                 candidate
@@ -157,8 +165,7 @@ def _privilege_findings(
                     testimonies=evidence,
                 )
             )
-        elif baseline.reached and t.reached and blocked_variants:
-            policy_witness = blocked_variants[0]
+        elif baseline.reached and t.reached and policy_witness is not None:
             findings.append(
                 Finding(
                     kind=FindingKind.ESCALATION,
@@ -243,6 +250,9 @@ def _equivalence_findings(
 
 def _render_findings(surface: Surface, group: list[Testimony]) -> list[Finding]:
     """Compare each render defect across all witnesses with evidence."""
+    if surface.kind is SurfaceKind.AFFORDANCE:
+        return []
+
     by_defect: dict[Defect, list[Testimony]] = defaultdict(list)
     for testimony in group:
         for defect in dict.fromkeys(testimony.defects):
@@ -253,6 +263,11 @@ def _render_findings(surface: Surface, group: list[Testimony]) -> list[Finding]:
         affected_ids = {id(testimony) for testimony in affected}
         unaffected = [testimony for testimony in group if id(testimony) not in affected_ids]
         phrasing = _DEFECT_PHRASING.get(defect, defect.value)
+        evidence = affected
+        if defect in (Defect.RTL_NOT_MIRRORED, Defect.THEME_LAYOUT_SHIFT):
+            baseline = next((item for item in group if item.context.varies is Axis.BASELINE), None)
+            if baseline is not None and baseline not in affected:
+                evidence = [baseline, *affected]
 
         if not unaffected:
             findings.append(
@@ -262,7 +277,8 @@ def _render_findings(surface: Surface, group: list[Testimony]) -> list[Finding]:
                     surface=surface,
                     axis=Axis.BASELINE,
                     summary=f"{surface.describe()}: {phrasing}",
-                    testimonies=affected,
+                    testimonies=evidence,
+                    defect=defect,
                 )
             )
             continue
@@ -283,7 +299,8 @@ def _render_findings(surface: Surface, group: list[Testimony]) -> list[Finding]:
                     f"{surface.describe()}: {phrasing}; seen by {seen_by}, "
                     f"not seen by {not_seen_by}"
                 ),
-                testimonies=affected,
+                testimonies=evidence,
+                defect=defect,
             )
         )
     return findings

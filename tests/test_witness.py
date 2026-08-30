@@ -6,7 +6,19 @@ from dataclasses import dataclass
 from typing import Any
 
 from parallax.differ import compare
-from parallax.types import Axis, Context, Defect, FindingKind, Locale, Outcome, Privilege, Surface, SurfaceKind, Theme
+from parallax.types import (
+    Axis,
+    Context,
+    Defect,
+    DefectObservation,
+    FindingKind,
+    Locale,
+    Outcome,
+    Privilege,
+    Surface,
+    SurfaceKind,
+    Theme,
+)
 from parallax.witness import Witness, run_witnesses
 
 
@@ -49,8 +61,10 @@ class FakePage:
         self.behavior = behavior
         self.url = SITE + behavior.get("final_path", "/admin")
         self.evaluated: list[str] = []
+        self.goto_targets: list[str] = []
 
-    async def goto(self, _url: str, **_kwargs: Any) -> FakeResponse:
+    async def goto(self, url: str, **_kwargs: Any) -> FakeResponse:
+        self.goto_targets.append(url)
         error = self.behavior.get("navigation_error")
         if error:
             raise error
@@ -144,6 +158,53 @@ def test_all_derived_contexts_share_one_browser_and_evaluate_probe_from_disk() -
     asyncio.run(check())
 
 
+def test_visit_contextualizes_existing_query_parameters_only_for_the_varied_axis() -> None:
+    async def target_for(context: Context, path: str) -> str:
+        browser = FakeBrowser()
+        await Witness(context, browser).visit(Surface(SurfaceKind.ROUTE, path))
+        return browser.contexts[0].page.goto_targets[0]
+
+    async def check() -> None:
+        path = f"{SITE}/admin?lang=en&theme=light&return=%2Fadmin#panel"
+
+        assert await target_for(
+            Context(locale=Locale.AR, varies=Axis.LOCALE), path
+        ) == f"{SITE}/admin?lang=ar&theme=light&return=%2Fadmin#panel"
+        assert await target_for(
+            Context(theme=Theme.DARK, varies=Axis.THEME), path
+        ) == f"{SITE}/admin?lang=en&theme=dark&return=%2Fadmin#panel"
+        assert await target_for(
+            Context(varies=Axis.VIEWPORT), path
+        ) == path
+
+    asyncio.run(check())
+
+
+def test_visit_contextualizes_locale_and_color_scheme_aliases_without_adding_queries() -> None:
+    async def target_for(context: Context, path: str) -> str:
+        browser = FakeBrowser()
+        await Witness(context, browser).visit(Surface(SurfaceKind.ROUTE, path))
+        return browser.contexts[0].page.goto_targets[0]
+
+    async def check() -> None:
+        aliases = f"{SITE}/admin?locale=en&color-scheme=light"
+
+        assert await target_for(
+            Context(locale=Locale.AR, varies=Axis.LOCALE), aliases
+        ) == f"{SITE}/admin?locale=ar&color-scheme=light"
+        assert await target_for(
+            Context(theme=Theme.DARK, varies=Axis.THEME), aliases
+        ) == f"{SITE}/admin?locale=en&color-scheme=dark"
+        assert await target_for(
+            Context(locale=Locale.AR, varies=Axis.LOCALE), f"{SITE}/admin?theme=light"
+        ) == f"{SITE}/admin?theme=light"
+        assert await target_for(
+            Context(theme=Theme.DARK, varies=Axis.THEME), f"{SITE}/admin?lang=en"
+        ) == f"{SITE}/admin?lang=en"
+
+    asyncio.run(check())
+
+
 def test_http_statuses_distinguish_denial_absence_and_server_degradation() -> None:
     async def check() -> None:
         redirect = FakeBrowser([{"final_path": "/login"}])
@@ -195,12 +256,24 @@ def test_affordance_lookup_failure_is_witness_error_not_a_policy_denial() -> Non
 def test_probe_defects_map_to_domain_defects() -> None:
     async def check() -> None:
         browser = FakeBrowser(
-            [{"probe": {"defects": [{"type": "horizontal_overflow"}, {"type": "unknown"}]}}]
+            [{"probe": {"defects": [
+                {
+                    "type": "horizontal_overflow",
+                    "selector": "main > a:nth-of-type(1)",
+                    "detail": "40px wider than its container",
+                },
+                {"type": "unknown", "selector": "body"},
+            ]}}]
         )
         testimony = await Witness(Context(), browser).visit(SURFACE)
 
         assert testimony.outcome is Outcome.PARTIAL
         assert testimony.defects == [Defect.HORIZONTAL_OVERFLOW]
+        assert testimony.observations == [DefectObservation(
+            Defect.HORIZONTAL_OVERFLOW,
+            "main > a:nth-of-type(1)",
+            "40px wider than its container",
+        )]
 
     asyncio.run(check())
 

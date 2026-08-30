@@ -2,7 +2,7 @@
   'use strict';
 
   const sites = [
-    ['workspace', 4], ['shop', 4], ['docs', 3], ['admin', 3], ['control', 0],
+    ['workspace', 5], ['shop', 4], ['docs', 3], ['admin', 3], ['control', 0],
   ];
   const summaryUrl = '/graded-summary.json';
   const sweepIndexUrl = '/console/runs/index.json';

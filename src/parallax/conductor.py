@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
+import hashlib
 import json
+import re
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -16,9 +18,9 @@ from .compositor import Compositor
 from .contracts import FeedEvent, Frame, Moment, MosaicFrame, Specialist, finding_payload, mosaic_payload
 from .differ import compare
 from .emitter import emit_all
-from .mirror import mirror_defects
+from .mirror import mirror_defects, mirror_report
 from .relational import Expectation, RelationalPair
-from .types import Axis, AxisApplicability, Context, Finding, Outcome, Privilege, Surface, SurfaceKind, Testimony, derive_witnesses
+from .types import Axis, AxisApplicability, Context, DefectObservation, Finding, Outcome, Privilege, RelationalReplay, Surface, SurfaceKind, Testimony, derive_witnesses
 from .witness import StorageState, Witness
 
 
@@ -66,6 +68,8 @@ class RelationalScenario:
     kind: str = "propagation"
     distribution: Expectation | None = None
     enforcement: Expectation | None = None
+    replay: RelationalReplay | None = None
+    max_lag_ms: int | None = None
 
 
 class Conductor:
@@ -101,6 +105,7 @@ class Conductor:
     async def conduct(self) -> ConductSummary:
         """Run the complete pipeline. A witness error remains testimony, never a crash."""
         self.out_dir.mkdir(parents=True, exist_ok=True)
+        _clean_managed_mosaics(self.out_dir)
         feed_path = self.out_dir / "feed.jsonl"
         feed_path.write_text("", encoding="utf-8")
         surfaces = await self._discover()
@@ -357,6 +362,7 @@ class Conductor:
                 if scenario.kind == "revocation":
                     observed = await pair.measure_revocation_lag(
                         scenario.action, scenario.effect, scenario.deadline_ms,
+                        max_lag_ms=scenario.max_lag_ms or 0,
                         surface=scenario.surface,
                         distribution=scenario.distribution,
                         enforcement=scenario.enforcement,
@@ -383,6 +389,7 @@ class Conductor:
         if final is not None:
             moments.append(replace(final, surface=scenario.surface))
         if isinstance(observed, Finding):
+            observed.replay = scenario.replay
             return observed.testimonies, moments, observed
         return observed, moments, None
 
@@ -540,15 +547,19 @@ def _privilege_reason(storage_states: Mapping[Privilege | str, StorageState] | N
         state for privilege in Privilege
         if (state := storage_states.get(privilege, storage_states.get(privilege.value))) is not None
     ]
-    distinct = {_storage_state_key(state) for state in supplied}
+    distinct = {key for state in supplied if (key := _storage_state_key(state)) is not None}
     return "distinct role storage states were supplied" if len(distinct) >= 2 else None
 
 
-def _storage_state_key(state: StorageState) -> str:
-    if isinstance(state, Path):
-        return f"path:{state}"
-    if isinstance(state, str):
-        return f"path:{state}"
+def _storage_state_key(state: StorageState) -> str | None:
+    if isinstance(state, (Path, str)):
+        path = Path(state)
+        try:
+            if path.is_symlink() or not path.is_file():
+                return None
+            return f"content:{hashlib.sha256(path.read_bytes()).hexdigest()}"
+        except OSError:
+            return None
     try:
         return json.dumps(state, sort_keys=True, separators=(",", ":"))
     except TypeError:
@@ -560,6 +571,21 @@ def _applicable_testimonies(testimonies: Sequence[Testimony], exercised: set[Axi
         testimony for testimony in testimonies
         if testimony.context.varies in exercised | {Axis.BASELINE, Axis.RELATIONAL}
     ]
+
+
+_MANAGED_MOSAIC = re.compile(r"[0-9a-f]{16}-\d+\.jpg")
+
+
+def _clean_managed_mosaics(out_dir: Path) -> None:
+    """Remove only mosaics named by Parallax so reruns cannot publish stale frames."""
+    mosaic_dir = out_dir / "mosaics"
+    if not mosaic_dir.exists():
+        return
+    if mosaic_dir.is_symlink():
+        raise RuntimeError(f"refusing symlinked mosaic directory: {mosaic_dir}")
+    for candidate in mosaic_dir.iterdir():
+        if _MANAGED_MOSAIC.fullmatch(candidate.name) and (candidate.is_file() or candidate.is_symlink()):
+            candidate.unlink()
 
 
 def _applicable_findings(findings: Sequence[Finding], exercised: set[Axis]) -> list[Finding]:
@@ -619,19 +645,41 @@ def _with_mirror_observations(testimonies: Sequence[Testimony]) -> list[Testimon
     """Give the differ derived mirror observations without rewriting evidence."""
     observations = []
     for testimony in testimonies:
-        observation = replace(testimony, defects=list(testimony.defects))
+        observation = replace(
+            testimony,
+            defects=list(testimony.defects),
+            observations=list(testimony.observations),
+        )
         # Offers are run-local evidence attached by _record_visible_offers.
         # ``replace`` copies declared dataclass fields only, so preserve them
         # explicitly before the differ consumes this derived observation.
         observation.offered_surfaces = set(getattr(testimony, "offered_surfaces", set()))  # type: ignore[attr-defined]
         observations.append(observation)
-    baseline = next((item for item in testimonies if item.context.varies is Axis.BASELINE), None)
-    if baseline is None:
-        return observations
+    baselines = {
+        item.surface.id: item
+        for item in testimonies
+        if item.context.varies is Axis.BASELINE
+    }
     for index, variant in enumerate(testimonies):
+        baseline = baselines.get(variant.surface.id)
+        if baseline is None:
+            continue
         for defect in mirror_defects(baseline, variant):
             if defect not in observations[index].defects:
                 observations[index].defects.append(defect)
+            for offender in mirror_report(baseline, variant):
+                selector = offender.selector
+                if selector.startswith("<") or "[text=" in selector:
+                    continue
+                observations[index].observations.append(DefectObservation(
+                    defect=defect,
+                    selector=selector,
+                    detail=json.dumps({
+                        "expected": offender.expected,
+                        "actual": offender.actual,
+                        "tolerance": 3,
+                    }, separators=(",", ":")),
+                ))
     return observations
 
 

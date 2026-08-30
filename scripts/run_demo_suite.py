@@ -4,15 +4,22 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from collections import Counter
+from collections.abc import Iterable
+import ctypes
+import errno
 from http.cookies import SimpleCookie
 import json
 import os
 import re
+import shutil
+import stat
 import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
@@ -65,8 +72,11 @@ def _path(value: str) -> str:
 
 def _finding_defects(finding: Finding) -> set[str]:
     defects = {_value(finding.kind)}
-    for testimony in finding.testimonies:
-        defects.update(_value(defect) for defect in getattr(testimony, "defects", []))
+    if finding.defect is not None:
+        defects.add(_value(finding.defect))
+    else:
+        for testimony in finding.testimonies:
+            defects.update(_value(defect) for defect in getattr(testimony, "defects", []))
     return defects
 
 
@@ -83,12 +93,13 @@ def grade_findings(findings: list[Finding], planted: list[Planted], site_name: s
     found: list[Planted] = []
     missed: list[Planted] = []
     for plant in planted:
-        match = next((item for item in unmatched if _matches(plant, item, site_name)), None)
-        if match is None:
+        matches = [item for item in unmatched if _matches(plant, item, site_name)]
+        if not matches:
             missed.append(plant)
         else:
             found.append(plant)
-            unmatched.remove(match)
+            matched_ids = {id(item) for item in matches}
+            unmatched = [item for item in unmatched if id(item) not in matched_ids]
     return Grade(found, missed, unmatched)
 
 
@@ -113,12 +124,14 @@ def summary_payload(grades: dict[str, Grade], host: str, generated_at: str | Non
         sites[name] = site
         for key in totals:
             totals[key] += int(site[key])
-    return {
+    payload = {
         "host": host.rstrip("/"),
         "generated_at": generated_at or datetime.now(timezone.utc).isoformat(),
         "sites": sites,
         "totals": totals,
     }
+    _assert_public_value(payload)
+    return payload
 
 
 def write_summary(grades: dict[str, Grade], host: str, path: Path, *, generated_at: str | None = None) -> None:
@@ -139,7 +152,264 @@ def generated_example_spec() -> str:
 
 
 def write_generated_example(path: Path) -> None:
-    path.write_text(generated_example_spec(), encoding="utf-8")
+    generated = generated_example_spec()
+    _assert_public_spec(generated)
+    path.write_text(generated, encoding="utf-8")
+
+
+_RUN_MANIFEST = {"feed.jsonl", "mosaics", "specs"}
+_ARTIFACT_SUFFIXES = {"mosaics": (".jpg", ".jpeg", ".png", ".webp"), "specs": (".spec.ts",)}
+_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+_AT_FDCWD = -100
+_RENAME_EXCHANGE = 0x2
+_SENSITIVE_FIELDS = frozenset({
+    "access_token", "apikey", "api_key", "authorization", "client_secret", "cookie",
+    "password", "refresh_token", "secret", "session", "token",
+})
+_SENSITIVE_ASSIGNMENT = re.compile(
+    r"(?i)\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|authorization|cookie|session|token)"
+    r"\s*[:=]\s*(?!process\.env\b|undefined\b|null\b|false\b)[\"']?[A-Za-z0-9_./+=-]{6,}",
+)
+_PRIVATE_SPEC_PATH = re.compile(r"(?i)(?:^|[\"'\s])(?:\.auth/|runs/[^\"'\s]+/storage-|/tmp/[^\"'\s]*storage-)")
+
+
+def _assert_public_url(value: str) -> None:
+    parsed = urlsplit(value)
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("sensitive credentials are not allowed in public URLs")
+    for key, _ in parse_qsl(parsed.query, keep_blank_values=True):
+        if key.lower().replace("-", "_") in _SENSITIVE_FIELDS:
+            raise ValueError("sensitive credentials are not allowed in public URLs")
+
+
+def _assert_public_value(value: object) -> None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            normalized = str(key).lower().replace("-", "_")
+            if normalized in _SENSITIVE_FIELDS:
+                raise ValueError(f"sensitive field is not allowed in public artifact: {key}")
+            _assert_public_value(child)
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            _assert_public_value(child)
+    elif isinstance(value, str):
+        if "://" in value:
+            _assert_public_url(value)
+        if _SENSITIVE_ASSIGNMENT.search(value) or re.search(r"(?i)\bbearer\s+[A-Za-z0-9._~+/-]{6,}", value):
+            raise ValueError("sensitive value is not allowed in public artifact")
+
+
+def _assert_public_feed(text: str) -> None:
+    for number, line in enumerate(text.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise ValueError(f"public feed line {number} is not valid JSON") from error
+        _assert_public_value(event)
+
+
+def _assert_public_spec(text: str) -> None:
+    if _PRIVATE_SPEC_PATH.search(text):
+        raise ValueError("private storage path is not allowed in public spec")
+    _assert_public_value(text)
+
+
+def _rename_exchange(left: Path, right: Path) -> None:
+    """Atomically exchange two sibling directories without an ENOENT interval."""
+    try:
+        renameat2 = ctypes.CDLL(None, use_errno=True).renameat2
+    except AttributeError as error:
+        raise OSError(errno.ENOSYS, "renameat2 is unavailable") from error
+    renameat2.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    renameat2.restype = ctypes.c_int
+    if renameat2(_AT_FDCWD, os.fsencode(left), _AT_FDCWD, os.fsencode(right), _RENAME_EXCHANGE) != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), str(left), str(right))
+
+
+def _replace_directory_atomically(stage: Path, target: Path) -> None:
+    """Commit a fully staged directory, never deleting an existing generation first."""
+    try:
+        target_mode = target.lstat().st_mode
+    except FileNotFoundError:
+        stage.replace(target)
+        return
+    if not stat.S_ISDIR(target_mode):
+        raise ValueError(f"publish target must be a real directory: {target}")
+    try:
+        _rename_exchange(stage, target)
+    except OSError as error:
+        raise RuntimeError("atomic exchange is unavailable; previous public generation was retained") from error
+    # `stage` now names the old, no-longer-public generation. Cleanup failure must
+    # not invalidate the successfully committed replacement.
+    shutil.rmtree(stage, ignore_errors=True)
+
+
+def _open_directory(path: Path) -> int:
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | _NOFOLLOW)
+    except OSError as error:
+        raise ValueError(f"artifact path must be a real directory: {path}") from error
+    if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
+        os.close(descriptor)
+        raise ValueError(f"artifact path must be a real directory: {path}")
+    return descriptor
+
+
+def _copy_regular_file(source_dir: int, name: str, target: Path) -> None:
+    try:
+        source = os.open(name, os.O_RDONLY | _NOFOLLOW, dir_fd=source_dir)
+    except OSError as error:
+        raise ValueError(f"artifact must be a regular file: {name}") from error
+    try:
+        if not stat.S_ISREG(os.fstat(source).st_mode):
+            raise ValueError(f"artifact must be a regular file: {name}")
+        target_descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | _NOFOLLOW, 0o644)
+        with os.fdopen(source, "rb") as source_file, os.fdopen(target_descriptor, "wb") as target_file:
+            source = -1
+            shutil.copyfileobj(source_file, target_file)
+    finally:
+        if source >= 0:
+            os.close(source)
+
+
+def _read_regular_text(path: Path) -> str:
+    directory = _open_directory(path.parent)
+    try:
+        try:
+            source = os.open(path.name, os.O_RDONLY | _NOFOLLOW, dir_fd=directory)
+        except OSError as error:
+            raise ValueError(f"artifact must be a regular file: {path.name}") from error
+        try:
+            if not stat.S_ISREG(os.fstat(source).st_mode):
+                raise ValueError(f"artifact must be a regular file: {path.name}")
+            with os.fdopen(source, "r", encoding="utf-8") as input_file:
+                source = -1
+                return input_file.read()
+        finally:
+            if source >= 0:
+                os.close(source)
+    finally:
+        os.close(directory)
+
+
+def _copy_artifact_directory(source_root: int, name: str, target: Path) -> None:
+    try:
+        source = os.open(name, os.O_RDONLY | os.O_DIRECTORY | _NOFOLLOW, dir_fd=source_root)
+    except OSError as error:
+        raise ValueError(f"artifact path must be a real directory: {name}") from error
+    try:
+        entries = sorted(os.listdir(source))
+        unexpected = [entry for entry in entries if not entry.endswith(_ARTIFACT_SUFFIXES[name])]
+        if unexpected:
+            raise ValueError(f"unexpected artifact in {name}: {unexpected[0]}")
+        target.mkdir(mode=0o755)
+        for entry in entries:
+            _copy_regular_file(source, entry, target / entry)
+            if name == "specs":
+                _assert_public_spec((target / entry).read_text(encoding="utf-8"))
+    finally:
+        os.close(source)
+
+
+def _publish_run(source: Path, target: Path) -> None:
+    """Atomically replace one public run from a strict, no-follow manifest."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not stat.S_ISDIR(target.parent.lstat().st_mode):
+        raise ValueError(f"publish root must be a real directory: {target.parent}")
+    stage = Path(tempfile.mkdtemp(prefix=f".{target.name}-", dir=target.parent))
+    source_root = -1
+    try:
+        source_root = _open_directory(source)
+        entries = set(os.listdir(source_root))
+        unexpected = sorted(entries - _RUN_MANIFEST)
+        if unexpected:
+            raise ValueError(f"unexpected artifact in run {source.name}: {unexpected[0]}")
+        if "feed.jsonl" not in entries:
+            raise ValueError(f"run {source.name} is missing feed.jsonl")
+        _copy_regular_file(source_root, "feed.jsonl", stage / "feed.jsonl")
+        _assert_public_feed((stage / "feed.jsonl").read_text(encoding="utf-8"))
+        for name in ("specs", "mosaics"):
+            if name in entries:
+                _copy_artifact_directory(source_root, name, stage / name)
+        _replace_directory_atomically(stage, target)
+        stage = None
+    except Exception:
+        if stage is not None:
+            shutil.rmtree(stage, ignore_errors=True)
+        raise
+    finally:
+        if source_root >= 0:
+            os.close(source_root)
+
+
+def _public_run_entry(directory: Path) -> dict[str, object]:
+    findings: set[str] = set()
+    severities: Counter[str] = Counter()
+    kinds: Counter[str] = Counter()
+    mosaics: set[tuple[object, object]] = set()
+    for line in _read_regular_text(directory / "feed.jsonl").splitlines():
+        if not line.strip():
+            continue
+        event = json.loads(line)
+        payload = event["payload"]
+        if event["kind"] == "mosaic":
+            mosaics.add((payload.get("surface_id"), payload.get("seq")))
+        elif event["kind"] == "finding" and payload.get("id") not in findings:
+            findings.add(payload["id"])
+            if isinstance(payload.get("severity"), str):
+                severities[payload["severity"]] += 1
+            if isinstance(payload.get("kind"), str):
+                kinds[payload["kind"]] += 1
+    return {
+        "feed": f"runs/{directory.name}/feed.jsonl",
+        "mosaics": len(mosaics),
+        "findings": len(findings),
+        "by_severity": dict(severities),
+        "by_kind": dict(kinds),
+    }
+
+
+def publish_sweeps(
+    runs_root: Path,
+    public_root: Path,
+    site_names: Iterable[str],
+    *,
+    latest_site: str = "workspace",
+) -> dict[str, dict[str, object]]:
+    """Publish complete demo evidence while excluding role storage states."""
+    names = tuple(str(name) for name in site_names)
+    for name in names:
+        if not name or name in {".", ".."} or Path(name).name != name:
+            raise ValueError(f"invalid demo site name: {name!r}")
+    public_root.parent.mkdir(parents=True, exist_ok=True)
+    if not stat.S_ISDIR(public_root.parent.lstat().st_mode):
+        raise ValueError(f"publish root must be a real directory: {public_root.parent}")
+    stage = Path(tempfile.mkdtemp(prefix=f".{public_root.name}-", dir=public_root.parent))
+    descriptor = -1
+    try:
+        for name in names:
+            _publish_run(runs_root / name, stage / name)
+        if latest_site in names:
+            _publish_run(stage / latest_site, stage / "latest")
+        index = {name: _public_run_entry(stage / name) for name in sorted(names)}
+        descriptor, staged_name = tempfile.mkstemp(prefix=".index-", suffix=".json.tmp", dir=stage)
+        staged_index = Path(staged_name)
+        os.fchmod(descriptor, 0o644)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            descriptor = -1
+            output.write(json.dumps(index, indent=2) + "\n")
+        staged_index.replace(stage / "index.json")
+        _replace_directory_atomically(stage, public_root)
+        stage = None
+        return index
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if stage is not None:
+            shutil.rmtree(stage, ignore_errors=True)
 
 
 def _specialists(no_vision: bool) -> list[object]:
@@ -195,6 +465,19 @@ def storage_state_from_login_response(response: object, origin: str) -> dict[str
     return {"cookies": cookies, "origins": []}
 
 
+def _storage_state_identity(state: dict[str, object]) -> str:
+    """Canonical identity for rejecting roles that received the same session."""
+    cookies = state.get("cookies", [])
+    origins = state.get("origins", [])
+    if not isinstance(cookies, list) or not isinstance(origins, list):
+        raise ValueError("login response produced an invalid storage state")
+    canonical = {
+        "cookies": sorted(cookies, key=lambda cookie: json.dumps(cookie, sort_keys=True, separators=(",", ":"))),
+        "origins": sorted(origins, key=lambda origin: json.dumps(origin, sort_keys=True, separators=(",", ":"))),
+    }
+    return json.dumps(canonical, sort_keys=True, separators=(",", ":"))
+
+
 class _NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, request: Request, fp: object, code: int, msg: str, headers: object, newurl: str) -> None:
         return None
@@ -206,33 +489,88 @@ class _NoRedirect(HTTPRedirectHandler):
 
 
 def build_storage_states(site: Site, host: str, run_dir: Path) -> dict[str, Path]:
-    """Log in each account declared by a site and persist its cookie state."""
+    """Log in every declared role, requiring distinct usable authenticated states."""
     states: dict[str, Path] = {}
-    run_dir.mkdir(parents=True, exist_ok=True)
+    identities: dict[str, str] = {}
+    run_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    directory = _open_directory(run_dir)
     origin = host.rstrip("/")
-    for account in site.accounts:
-        request = Request(
-            f"{origin}/{site.name}/login",
-            data=urlencode({"email": account.email, "username": account.email, "password": account.password}).encode(),
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            method="POST",
-        )
-        response: object | None = None
-        try:
-            with build_opener(_NoRedirect()).open(request) as response:
-                state = storage_state_from_login_response(response, origin)
-        except Exception as error:
-            status = getattr(response, "status", getattr(error, "code", "unknown"))
-            print(
-                f"login failed for site {site.name}, role {account.role}, "
-                f"server returned HTTP {status}: {error}",
-                file=sys.stderr,
+    try:
+        for account in site.accounts:
+            if not account.role or Path(account.role).name != account.role:
+                raise ValueError(f"invalid account role: {account.role!r}")
+            if account.role in states:
+                raise ValueError(f"duplicate declared account role: {account.role}")
+            request = Request(
+                f"{origin}/{site.name}/login",
+                data=urlencode({"email": account.email, "username": account.email, "password": account.password}).encode(),
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                method="POST",
             )
-            continue
-        path = run_dir / f"storage-{account.role}.json"
-        path.write_text(json.dumps(state), encoding="utf-8")
-        states[account.role] = path
+            response: object | None = None
+            try:
+                with build_opener(_NoRedirect()).open(request) as response:
+                    state = storage_state_from_login_response(response, origin)
+            except Exception as error:
+                status = getattr(response, "status", getattr(error, "code", "unknown"))
+                print(
+                    f"login failed for site {site.name}, role {account.role}, "
+                    f"server returned HTTP {status}: {error}",
+                    file=sys.stderr,
+                )
+                raise RuntimeError(f"required role login failed for {site.name}/{account.role}") from error
+            identity = _storage_state_identity(state)
+            duplicate = next((role for role, value in identities.items() if value == identity), None)
+            if duplicate is not None:
+                raise ValueError(
+                    f"duplicate authenticated identity for site {site.name}: {account.role} matches {duplicate}"
+                )
+            filename = f"storage-{account.role}.json"
+            payload = json.dumps(state).encode("utf-8")
+            descriptor = os.open(
+                filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL | _NOFOLLOW, 0o600, dir_fd=directory,
+            )
+            try:
+                os.fchmod(descriptor, 0o600)
+                with os.fdopen(descriptor, "wb") as output:
+                    descriptor = -1
+                    output.write(payload)
+            finally:
+                if descriptor >= 0:
+                    os.close(descriptor)
+            states[account.role] = run_dir / filename
+            identities[account.role] = identity
+    except Exception:
+        for path in states.values():
+            path.unlink(missing_ok=True)
+        raise
+    finally:
+        os.close(directory)
     return states
+
+
+async def _conduct_site(
+    site: Site,
+    host: str,
+    run_dir: Path,
+    browser: object,
+    *,
+    no_vision: bool,
+    max_surfaces: int,
+) -> object:
+    storage_root = Path(tempfile.mkdtemp(prefix=f"parallax-{site.name}-storage-"))
+    try:
+        artifact_roots = (run_dir.parent, ROOT / "console", ROOT / "web")
+        if any(storage_root.resolve().is_relative_to(root.resolve()) for root in artifact_roots):
+            raise RuntimeError("private storage-state directory resolved inside a public artifact tree")
+        return await Conductor(
+            f"{host}/{site.name}/", run_dir, browser=browser,
+            specialists=_specialists(no_vision), max_surfaces=max_surfaces,
+            storage_states=build_storage_states(site, host, storage_root),
+            relational_scenarios=_relational_scenarios(site, host),
+        ).conduct()
+    finally:
+        shutil.rmtree(storage_root)
 
 
 async def run(args: argparse.Namespace) -> dict[str, Grade]:
@@ -248,12 +586,9 @@ async def run(args: argparse.Namespace) -> dict[str, Grade]:
         try:
             for site in sites:
                 run_dir = ROOT / "runs" / site.name
-                summary = await Conductor(
-                    f"{host}/{site.name}/", run_dir, browser=browser,
-                    specialists=_specialists(args.no_vision), max_surfaces=args.max_surfaces,
-                    storage_states=build_storage_states(site, host, run_dir),
-                    relational_scenarios=_relational_scenarios(site, host),
-                ).conduct()
+                summary = await _conduct_site(
+                    site, host, run_dir, browser, no_vision=args.no_vision, max_surfaces=args.max_surfaces,
+                )
                 grades[site.name] = grade_findings(summary.findings, site.planted, site.name)
         finally:
             await browser.close()
@@ -289,6 +624,7 @@ def main(argv: list[str] | None = None) -> int:
     grades = asyncio.run(run(args))
     write_summary(grades, args.host, ROOT / "web" / "graded-summary.json")
     write_generated_example(ROOT / "web" / "generated-example.spec.ts")
+    publish_sweeps(ROOT / "runs", ROOT / "console" / "runs", grades)
     print_report(grades)
     return exit_code(grades)
 

@@ -19,7 +19,7 @@ from urllib.parse import urljoin
 from .conductor import Conductor, RelationalScenario
 from .specialists import LayoutI18nSpecialist, RealtimeSpecialist
 from .triage import GemmaTriage
-from .types import Context, Privilege, Severity, Surface, SurfaceKind
+from .types import EffectExpectation, FormAction, Context, Privilege, RelationalReplay, Severity, Surface, SurfaceKind
 
 
 def _parse(argv: list[str] | None = None) -> argparse.Namespace:
@@ -107,7 +107,7 @@ def _string(value: Any, name: str, source: str) -> str:
     return value
 
 
-def _action(spec: Any, name: str, source: str) -> object:
+def _action(spec: Any, name: str, source: str) -> tuple[object, FormAction]:
     if not isinstance(spec, dict):
         raise _scenario_error(source, f"{name}.action must be an object")
     if spec.get("type") != "submit_form":
@@ -135,10 +135,10 @@ def _action(spec: Any, name: str, source: str) -> object:
             await page.locator(selector).fill(value)
         await page.locator(form).evaluate("form => form.requestSubmit()")
 
-    return submit_form
+    return submit_form, FormAction(form, tuple(checks), tuple(fields))
 
 
-def _effect(spec: Any, name: str, source: str) -> object:
+def _effect(spec: Any, name: str, source: str) -> tuple[object, EffectExpectation]:
     if not isinstance(spec, dict):
         raise _scenario_error(source, f"{name}.effect must be an object")
     effect_type = spec.get("type")
@@ -148,7 +148,7 @@ def _effect(spec: Any, name: str, source: str) -> object:
         async def visible(page: object) -> bool:
             return bool(await page.locator(selector).is_visible())
 
-        return visible
+        return visible, EffectExpectation("visible", selector=selector)
     if effect_type == "json_contains":
         request = {
             "url": _string(spec.get("url"), f"{name}.effect.url", source),
@@ -166,7 +166,7 @@ def _effect(spec: Any, name: str, source: str) -> object:
                 .some((item) => item && item[expectation.field] === expectation.equals);
             }""", request))
 
-        return json_contains
+        return json_contains, EffectExpectation("json_contains", **request)
     raise _scenario_error(source, f"{name}.effect.type must be 'visible' or 'json_contains'")
 
 
@@ -197,14 +197,32 @@ def relational_scenarios_from_data(data: Any, start_url: str, *, source: str = "
         deadline_ms = spec.get("deadline_ms")
         if not isinstance(deadline_ms, int) or isinstance(deadline_ms, bool) or deadline_ms < 1:
             raise _scenario_error(source, f"{name}.deadline_ms must be a positive integer")
+        max_lag_ms = spec.get("max_lag_ms") if scenario_type == "revocation" else None
+        if scenario_type == "revocation" and (
+            not isinstance(max_lag_ms, int) or isinstance(max_lag_ms, bool) or max_lag_ms < 0
+        ):
+            raise _scenario_error(source, f"{name}.max_lag_ms must be a non-negative integer")
+        if scenario_type == "revocation" and max_lag_ms >= deadline_ms:
+            raise _scenario_error(source, f"{name}.max_lag_ms must be below deadline_ms")
         distribution = spec.get("distribution")
         enforcement = spec.get("enforcement")
+        action, replay_action = _action(spec.get("action"), name, source)
+        effect, replay_effect = _effect(spec.get("effect"), name, source)
         scenario = RelationalScenario(
             Surface(SurfaceKind.ROUTE, urljoin(start_url, surface)), sender=sender, receiver=receiver,
-            action=_action(spec.get("action"), name, source), effect=_effect(spec.get("effect"), name, source),
+            action=action, effect=effect,
             deadline_ms=deadline_ms, kind=scenario_type,
-            distribution=_effect(distribution, f"{name}.distribution", source) if distribution else None,
-            enforcement=_effect(enforcement, f"{name}.enforcement", source) if enforcement else None,
+            max_lag_ms=max_lag_ms,
+            distribution=_effect(distribution, f"{name}.distribution", source)[0] if distribution else None,
+            enforcement=_effect(enforcement, f"{name}.enforcement", source)[0] if enforcement else None,
+            replay=RelationalReplay(
+                sender=sender.privilege,
+                receiver=receiver.privilege,
+                action=replay_action,
+                effect=replay_effect,
+                deadline_ms=deadline_ms,
+                max_lag_ms=max_lag_ms,
+            ),
         )
         result.append(scenario)
     return result

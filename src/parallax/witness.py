@@ -5,17 +5,51 @@ from __future__ import annotations
 import asyncio
 import base64
 import inspect
+import json
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from .types import Context, Defect, Outcome, Privilege, Surface, SurfaceKind, Testimony, derive_witnesses
+from .types import (
+    Axis,
+    Context,
+    Defect,
+    DefectObservation,
+    Outcome,
+    Privilege,
+    Surface,
+    SurfaceKind,
+    Testimony,
+    derive_witnesses,
+)
 
 
 FrameConsumer = Callable[[bytes, dict[str, Any]], Awaitable[None] | None]
 BrowserFactory = Callable[[], Awaitable[Any] | Any]
 StorageState = dict[str, Any] | str | Path | None
+
+
+def contextual_url(url: str, context: Context) -> str:
+    """Replay the URL exactly as the varied locale or theme witness saw it."""
+    if context.varies is Axis.LOCALE:
+        keys = {"lang", "locale"}
+        value = context.locale.value
+    elif context.varies is Axis.THEME:
+        keys = {"theme", "color-scheme"}
+        value = context.theme.value
+    else:
+        return url
+
+    parts = urlsplit(url)
+    query = parse_qsl(parts.query, keep_blank_values=True)
+    if not any(key in keys for key, _ in query):
+        return url
+    contextual_query = [
+        (key, value if key in keys else current)
+        for key, current in query
+    ]
+    return urlunsplit(parts._replace(query=urlencode(contextual_query)))
 
 
 class Witness:
@@ -69,7 +103,8 @@ class Witness:
         try:
             await self.open()
             assert self.page is not None
-            response = await self.page.goto(surface.path, wait_until="domcontentloaded", timeout=5_000)
+            target = contextual_url(surface.path, self.context)
+            response = await self.page.goto(target, wait_until="domcontentloaded", timeout=5_000)
             await self._wait_for_load()
         except Exception as error:
             return self._error_testimony(surface, "navigation", error)
@@ -82,7 +117,8 @@ class Witness:
         self.last_probe = probe if isinstance(probe, dict) else {}
         status = getattr(response, "status", None) if response is not None else None
         final_path = self._path_of(str(getattr(self.page, "url", surface.path)))
-        defects = self._map_defects(self.last_probe.get("defects"))
+        observations = self._map_defects(self.last_probe.get("defects"))
+        defects = list(dict.fromkeys(observation.defect for observation in observations))
         blocked = self._is_denied(status, surface.path, final_path)
         if not blocked and surface.kind is SurfaceKind.AFFORDANCE and surface.selector:
             try:
@@ -109,6 +145,7 @@ class Witness:
             document_lang=self._document_lang(self.last_probe),
             support=self._support(self.last_probe),
             defects=defects,
+            observations=observations,
             note=note,
         )
 
@@ -210,18 +247,23 @@ class Witness:
         )
 
     @staticmethod
-    def _map_defects(raw_defects: object) -> list[Defect]:
+    def _map_defects(raw_defects: object) -> list[DefectObservation]:
         if not isinstance(raw_defects, list):
             return []
-        defects: list[Defect] = []
+        observations: list[DefectObservation] = []
         for raw in raw_defects:
             try:
                 defect = Defect(raw["type"]) if isinstance(raw, dict) else Defect(raw)
             except (KeyError, TypeError, ValueError):
                 continue
-            if defect not in defects:
-                defects.append(defect)
-        return defects
+            selector = raw.get("selector") if isinstance(raw, dict) else None
+            detail = raw.get("detail", "") if isinstance(raw, dict) else ""
+            observations.append(DefectObservation(
+                defect,
+                selector if isinstance(selector, str) else None,
+                detail if isinstance(detail, str) else json.dumps(detail, sort_keys=True, separators=(",", ":")),
+            ))
+        return observations
 
     @staticmethod
     def _document_lang(probe: dict[str, Any]) -> str | None:
@@ -254,6 +296,9 @@ class Witness:
     @staticmethod
     def _path_of(url: str) -> str:
         return urlsplit(url).path or "/"
+
+    def _contextual_url(self, url: str) -> str:
+        return contextual_url(url, self.context)
 
     @staticmethod
     def _note_for(outcome: Outcome, status: int | None, final_path: str, defects: list[Defect]) -> str:

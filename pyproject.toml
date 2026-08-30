@@ -9,6 +9,7 @@ dependencies = [
     "playwright==1.62.0",
     "Pillow>=10",
     "google-genai>=1.0",
+    "google-auth[requests]>=2.56.0,<3.0.0",
 ]
 
 [build-system]

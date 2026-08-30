@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from parallax.relational import RelationalPair
-from parallax.types import Axis, Context, Finding, FindingKind, Outcome, Privilege, RevocationPlane
+from parallax.types import Axis, Context, Finding, FindingKind, Outcome, Privilege, RevocationPlane, Severity
 from test_witness import FakeBrowser
 
 
@@ -141,6 +141,7 @@ def test_revocation_lag_measures_the_open_session_after_the_revoke_completes() -
             lambda _sender: None,
             lambda _receiver: clock() < 0.02,
             deadline_ms=30,
+            max_lag_ms=10,
             distribution=lambda _receiver: False,
             enforcement=lambda _receiver: False,
         )
@@ -156,6 +157,28 @@ def test_revocation_lag_measures_the_open_session_after_the_revoke_completes() -
         )
         assert result.revocation.planes.failed == (RevocationPlane.EFFECTS,)
         assert clock.sleeps == pytest.approx([0.01, 0.01])
+
+    asyncio.run(check())
+
+
+def test_revocation_within_the_acceptable_lag_passes_the_effects_plane() -> None:
+    async def check() -> None:
+        browser = FakeBrowser()
+        clock = Clock()
+        relational = pair(browser, clock)
+
+        result = await relational.measure_revocation_lag(
+            lambda _sender: None,
+            lambda _receiver: clock() < 0.02,
+            deadline_ms=30,
+            max_lag_ms=25,
+        )
+
+        assert result.revocation is not None
+        assert result.revocation.lag_ms == 20
+        assert result.revocation.max_lag_ms == 25
+        assert result.revocation.planes.effects is True
+        assert result.severity is Severity.INFO
 
     asyncio.run(check())
 

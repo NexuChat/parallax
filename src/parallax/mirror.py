@@ -87,13 +87,26 @@ def _box_mismatches(
             offenders.append(MirrorOffender(name, expected or {}, None))
             continue
 
-        actual = _box(remaining.pop(target_index))
+        target = remaining.pop(target_index)
+        if mirrored and _text_changed(source, target):
+            continue
+        actual = _box(target)
         expected = _expected_box(source, baseline.context, mirrored=mirrored, actual=actual)
         if expected is None:
             continue
         if actual is None or not _within_tolerance(expected, actual, compared):
             offenders.append(MirrorOffender(name, expected, actual))
     return offenders
+
+
+def _text_changed(source: dict[str, Any], target: dict[str, Any]) -> bool:
+    baseline_text = source.get("text")
+    variant_text = target.get("text")
+    return (
+        isinstance(baseline_text, str)
+        and isinstance(variant_text, str)
+        and baseline_text != variant_text
+    )
 
 
 def _matching_index(source: dict[str, Any], candidates: list[dict[str, Any]]) -> int | None:

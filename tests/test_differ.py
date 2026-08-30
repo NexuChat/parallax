@@ -10,6 +10,7 @@ from parallax.types import (
     Axis,
     Context,
     Defect,
+    DefectObservation,
     FindingKind,
     Locale,
     Outcome,
@@ -17,7 +18,7 @@ from parallax.types import (
     Severity,
     Surface,
     SurfaceKind,
-    Testimony,
+    Testimony as WitnessTestimony,
     Theme,
     Viewport,
     derive_witnesses,
@@ -30,11 +31,11 @@ def witness(privilege=Privilege.MEMBER, **kw) -> Context:
     return Context(privilege=privilege, varies=Axis.PRIVILEGE, **kw)
 
 
-def say(context: Context, outcome: Outcome, *, surface: Surface = ADMIN, **kw) -> Testimony:
-    return Testimony(surface=surface, context=context, outcome=outcome, **kw)
+def say(context: Context, outcome: Outcome, *, surface: Surface = ADMIN, **kw) -> WitnessTestimony:
+    return WitnessTestimony(surface=surface, context=context, outcome=outcome, **kw)
 
 
-def offered(testimony: Testimony, *surfaces: Surface) -> Testimony:
+def offered(testimony: WitnessTestimony, *surfaces: Surface) -> WitnessTestimony:
     """Attach the visible per-witness offer captured by the conductor."""
     testimony.offered_surfaces = set(surfaces)  # type: ignore[attr-defined]
     return testimony
@@ -128,7 +129,7 @@ def test_public_surface_reached_by_all_privileges_is_not_an_escalation() -> None
     assert findings == []
 
 
-def test_anonymous_escalation_outranks_member_escalation() -> None:
+def test_anonymous_reach_while_member_is_blocked_is_high_severity_escalation() -> None:
     findings = compare(
         [
             say(BASELINE, Outcome.REACHED),
@@ -136,19 +137,20 @@ def test_anonymous_escalation_outranks_member_escalation() -> None:
             say(witness(Privilege.MEMBER), Outcome.BLOCKED),
         ]
     )
+    assert [finding.kind for finding in findings] == [FindingKind.ESCALATION]
     assert findings[0].severity is Severity.HIGH, "an open-internet reach is the worst case"
 
 
-def test_blocked_anon_and_reached_member_produce_one_escalation_with_both_witnesses() -> None:
-    anonymous = say(witness(Privilege.ANON), Outcome.BLOCKED)
-    member = say(witness(Privilege.MEMBER), Outcome.REACHED)
-    findings = compare([say(BASELINE, Outcome.REACHED), anonymous, member])
+def test_owner_and_member_reach_while_anon_is_blocked_is_legitimate_rbac() -> None:
+    findings = compare(
+        [
+            say(BASELINE, Outcome.REACHED),
+            say(witness(Privilege.MEMBER), Outcome.REACHED),
+            say(witness(Privilege.ANON), Outcome.BLOCKED),
+        ]
+    )
 
-    assert len(findings) == 1
-    escalation = findings[0]
-    assert escalation.kind is FindingKind.ESCALATION
-    assert escalation.testimonies == [anonymous, member]
-    assert escalation.evidence_line() == "anon-en-light-desktop=blocked · member-en-light-desktop=reached"
+    assert findings == []
 
 
 def test_properly_denied_surface_yields_no_finding() -> None:
@@ -351,6 +353,64 @@ def test_same_render_defect_on_different_surfaces_stays_separate_findings() -> N
     assert {finding.surface for finding in findings} == {ADMIN, other}
 
 
+def test_page_render_defect_is_not_repeated_for_each_affordance() -> None:
+    route = Surface(kind=SurfaceKind.ROUTE, path="/cart")
+    controls = [
+        Surface(kind=SurfaceKind.AFFORDANCE, path="/cart", selector=selector, label=label)
+        for selector, label in (("#decrement", "-"), ("#increment", "+"), ("#apply", "Apply"))
+    ]
+    observation = DefectObservation(Defect.CLIPPED, selector=".quantity", detail="measured")
+    testimonies = [
+        say(
+            BASELINE,
+            Outcome.REACHED,
+            surface=surface,
+            defects=[Defect.CLIPPED],
+            observations=[observation],
+        )
+        for surface in (route, *controls)
+    ]
+
+    render_findings = [
+        finding for finding in compare(testimonies)
+        if finding.kind is FindingKind.RENDER_DEFECT
+    ]
+
+    assert len(render_findings) == 1
+    assert render_findings[0].surface == route
+    assert render_findings[0].testimonies == [testimonies[0]]
+    assert render_findings[0].testimonies[0].observations == [observation]
+
+
+def test_affordance_render_defect_is_suppressed_but_privilege_finding_is_kept() -> None:
+    control = Surface(
+        kind=SurfaceKind.AFFORDANCE,
+        path="/admin/payouts",
+        selector="#approve",
+        label="Approve",
+    )
+    findings = compare(
+        [
+            say(BASELINE, Outcome.REACHED, surface=control, defects=[Defect.CLIPPED]),
+            say(
+                witness(Privilege.MEMBER),
+                Outcome.BLOCKED,
+                surface=control,
+                defects=[Defect.CLIPPED],
+            ),
+            say(
+                witness(Privilege.ANON),
+                Outcome.REACHED,
+                surface=control,
+                defects=[Defect.CLIPPED],
+            ),
+        ]
+    )
+
+    assert [finding.kind for finding in findings] == [FindingKind.ESCALATION]
+    assert findings[0].surface == control
+
+
 # --------------------------------------------------------------------------
 # Evidence discipline
 # --------------------------------------------------------------------------
@@ -381,8 +441,8 @@ def test_every_finding_carries_the_testimony_it_rests_on() -> None:
     findings = compare(
         [
             say(BASELINE, Outcome.REACHED),
-            say(witness(Privilege.ANON), Outcome.BLOCKED),
-            say(witness(Privilege.MEMBER), Outcome.REACHED),
+            say(witness(Privilege.ANON), Outcome.REACHED),
+            say(witness(Privilege.MEMBER), Outcome.BLOCKED),
         ]
     )
     assert findings

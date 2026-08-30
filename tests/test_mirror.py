@@ -10,7 +10,7 @@ from parallax.types import (
     Outcome,
     Surface,
     SurfaceKind,
-    Testimony,
+    Testimony as WitnessTestimony,
     Theme,
 )
 
@@ -24,8 +24,8 @@ def box(selector: str, x: float, y: float, w: float, h: float, *, text: str = ""
             "w": w, "h": h, "text": text}
 
 
-def say(context: Context, geometry: list[dict[str, object]], **kwargs: object) -> Testimony:
-    return Testimony(surface=SURFACE, context=context, outcome=Outcome.REACHED, geometry=geometry, **kwargs)
+def say(context: Context, geometry: list[dict[str, object]], **kwargs: object) -> WitnessTestimony:
+    return WitnessTestimony(surface=SURFACE, context=context, outcome=Outcome.REACHED, geometry=geometry, **kwargs)
 
 
 def test_correctly_mirrored_rtl_layout_has_no_defect() -> None:
@@ -83,6 +83,30 @@ def test_translated_text_may_change_width_without_being_a_mirroring_failure() ->
 
     assert mirror_report(baseline, arabic) == []
     assert mirror_defects(baseline, arabic) == []
+
+
+def test_translated_nav_labels_may_move_without_being_a_mirroring_failure() -> None:
+    baseline = say(BASELINE, [box("#nav-products", 20, 10, 120, 40, text="Products")])
+    arabic = say(
+        Context(locale=Locale.AR, varies=Axis.LOCALE),
+        [box("#nav-products", 40, 10, 150, 40, text="المنتجات")],
+    )
+
+    assert mirror_report(baseline, arabic) == []
+    assert mirror_defects(baseline, arabic) == []
+
+
+def test_same_text_composer_control_must_still_mirror() -> None:
+    baseline = say(BASELINE, [box("#composer-bold", 20, 10, 28, 28, text="B")])
+    arabic = say(
+        Context(locale=Locale.AR, varies=Axis.LOCALE),
+        [box("#composer-bold", 20, 10, 28, 28, text="B")],
+    )
+
+    report = mirror_report(baseline, arabic)
+
+    assert mirror_defects(baseline, arabic) == [Defect.RTL_NOT_MIRRORED]
+    assert [offender.selector for offender in report] == ["#composer-bold"]
 
 
 def test_one_pixel_rounding_difference_is_within_tolerance() -> None:

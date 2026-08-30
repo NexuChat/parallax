@@ -16,7 +16,7 @@ from parallax.types import (
     Severity,
     Surface,
     SurfaceKind,
-    Testimony,
+    Testimony as WitnessTestimony,
 )
 
 
@@ -32,8 +32,8 @@ def context(*, name: str, axis: Axis = Axis.BASELINE) -> Context:
     return BASELINE
 
 
-def say(ctx: Context, outcome: Outcome = Outcome.REACHED) -> Testimony:
-    return Testimony(surface=SURFACE, context=ctx, outcome=outcome)
+def say(ctx: Context, outcome: Outcome = Outcome.REACHED) -> WitnessTestimony:
+    return WitnessTestimony(surface=SURFACE, context=ctx, outcome=outcome)
 
 
 def moment(
@@ -90,8 +90,8 @@ def test_access_delegates_to_differ_and_keeps_only_privilege_findings() -> None:
         [],
         [
             say(BASELINE),
-            say(member),
-            say(anonymous, Outcome.BLOCKED),
+            say(member, Outcome.BLOCKED),
+            say(anonymous),
         ],
     )
     assert [finding.kind for finding in findings] == [FindingKind.ESCALATION]

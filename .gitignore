@@ -9,6 +9,9 @@ build/
 dist/
 /runs/
 .playwright-mcp/
+.playwright/
+playwright-report/
+test-results/
 /*.png
 !docs/architecture.png
 console/runs/*/storage-*.json

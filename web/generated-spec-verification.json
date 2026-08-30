@@ -1,0 +1,13 @@
+{
+  "expected": 21,
+  "total": 21,
+  "failed": 21,
+  "passed": 0,
+  "skipped": 0,
+  "flaky": 0,
+  "assertion_failures": 21,
+  "setup_failures": [],
+  "unclassified_failures": [],
+  "global_errors": [],
+  "verdict": "PASS"
+}

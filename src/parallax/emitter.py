@@ -4,11 +4,25 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-from .types import Axis, Defect, Finding, FindingKind, SurfaceKind, Testimony
+from .types import (
+    Axis,
+    Context,
+    Defect,
+    DefectObservation,
+    EffectExpectation,
+    Finding,
+    FindingKind,
+    Privilege,
+    RelationalReplay,
+    SurfaceKind,
+    Testimony,
+)
+from .witness import contextual_url
 
 
 def _ts(value: str) -> str:
@@ -31,6 +45,10 @@ def _base_url_path(value: str) -> str:
     return f"{path}?{query}" if query else path
 
 
+def _witness_path(finding: Finding, testimony: Testimony) -> str:
+    return _base_url_path(contextual_url(finding.surface.path, testimony.context))
+
+
 def _storage_state_path(privilege: str, storage_states: Mapping[str, str] | None) -> str | None:
     """Return the state file the run actually used for this role, or none.
 
@@ -38,13 +56,25 @@ def _storage_state_path(privilege: str, storage_states: Mapping[str, str] | None
     root-level route yielded the literal "runs/site/storage-owner.json", and a
     sweep given no credentials still claimed one. A spec that cannot open its
     storage state fails on ENOENT before reaching a single assertion, which turns
-    the one deliverable that is supposed to prove the finding into noise. Only a
-    path the operator supplied is written, and anonymous witnesses carry none.
+    the one deliverable that is supposed to prove the finding into noise. A
+    supplied state enables an environment-only reference; its path is never
+    embedded, and anonymous witnesses carry none.
     """
     if privilege == "anon" or not storage_states:
         return None
     path = storage_states.get(privilege)
     return str(path) if path else None
+
+
+def _storage_state_expression(context: Context, path: str | None) -> str | None:
+    if path is None:
+        return None
+    variable = f"PARALLAX_{context.privilege.value.upper()}_STORAGE_STATE"
+    return f'''(() => {{
+    const storageState = process.env.{variable};
+    if (!storageState) throw new Error({_ts(f"Parallax generated spec requires {variable}")});
+    return storageState;
+  }})()'''
 
 
 def _context_for(finding: Finding) -> Testimony:
@@ -60,7 +90,9 @@ def _context_for(finding: Finding) -> Testimony:
     return sorted(candidates or finding.testimonies, key=lambda t: t.context.name)[0]
 
 
-def _target(finding: Finding) -> str:
+def _target(finding: Finding, selector: str | None = None) -> str:
+    if selector:
+        return f"page.locator({_ts(selector)})"
     if finding.surface.kind is SurfaceKind.ROUTE:
         return 'page.locator("body")'
     if finding.surface.selector:
@@ -82,49 +114,95 @@ def _reachability_assertion(finding: Finding, *, must_reach: bool) -> str:
   expect(blocked).toBeTruthy();'''
 
 
+def _render_observation(finding: Finding, witness: Testimony) -> tuple[Defect | None, DefectObservation | None]:
+    defect = finding.defect
+    if defect is None:
+        defects = sorted(
+            {item for testimony in finding.testimonies for item in testimony.defects},
+            key=lambda item: item.value,
+        )
+        defect = defects[0] if defects else None
+    observation = next((item for item in witness.observations if item.defect is defect), None)
+    return defect, observation
+
+
+def _render_skip(defect: Defect, reason: str) -> str:
+    return f'''  test.skip({_ts(f"Parallax cannot assert {defect.value}: {reason}")});
+  // The rendered test has no honest assertion for this observation.'''
+
+
+def _detail_number(observation: DefectObservation, key: str) -> float | None:
+    try:
+        value = json.loads(observation.detail).get(key)
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        return None
+    return float(value)
+
+
 def _render_assertion(finding: Finding) -> str:
-    defects = sorted(
-        {defect for testimony in finding.testimonies for defect in testimony.defects}, key=lambda defect: defect.value
-    )
-    defect = defects[0] if defects else None
-    target = _target(finding)
+    witness = _context_for(finding)
+    defect, observation = _render_observation(finding, witness)
+    if defect is None:
+        return "  throw new Error(\"Parallax render finding did not include a known defect\");"
+    if observation is None or not observation.selector:
+        return _render_skip(defect, "the probe recorded no element selector.")
     if defect is Defect.HORIZONTAL_OVERFLOW:
-        return "  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBeTruthy();"
-    if defect in (Defect.OFFSCREEN_CONTROL, Defect.CLIPPED):
-        return f'''  const box = await {target}.boundingBox();
-  expect(box).not.toBeNull();
-  expect(await {target}.evaluate((_, box) => box.x >= 0 && box.y >= 0 && box.x + box.width <= window.innerWidth && box.y + box.height <= window.innerHeight, box!)).toBeTruthy();'''
+        return "  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBeTruthy();"
+    target = _target(finding, observation.selector)
+    if defect is Defect.OFFSCREEN_CONTROL:
+        return f'''  const withinViewport = await {target}.evaluate((element) => {{
+    const box = element.getBoundingClientRect();
+    return box.left >= 0 && box.right <= window.innerWidth;
+  }});
+  expect(withinViewport).toBeTruthy();'''
     if defect is Defect.SMALL_TAP_TARGET:
         return f'''  const box = await {target}.boundingBox();
   expect(box).not.toBeNull();
   expect(Math.min(box!.width, box!.height)).toBeGreaterThanOrEqual(44);'''
+    if defect is Defect.CLIPPED:
+        return f"  expect(await {target}.evaluate((element) => element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight)).toBeTruthy();"
     if defect is Defect.LOW_CONTRAST:
+        threshold = _detail_number(observation, "required")
+        if threshold is None:
+            return _render_skip(defect, "the probe recorded no contrast threshold.")
         return f'''  const contrastRatio = await {target}.evaluate((element) => {{
-    const rgb = (value: string) => value.match(/\\d+(?:\\.\\d+)?/g)?.slice(0, 3).map(Number) ?? [0, 0, 0];
+    const parseColor = (value: string) => {{
+      const match = value.match(/rgba?\\(([^)]+)\\)/);
+      if (!match) return null;
+      const channels = match[1].split(",").map(Number);
+      if (channels.length === 4 && channels[3] === 0) return null;
+      return channels.slice(0, 3);
+    }};
     const luminance = (color: number[]) => color.map(channel => {{ const s = channel / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }}).reduce((total, channel, index) => total + channel * [0.2126, 0.7152, 0.0722][index], 0);
-    const style = getComputedStyle(element); const a = luminance(rgb(style.color)); const b = luminance(rgb(style.backgroundColor));
+    const backdrop = () => {{
+      let background: Element | null = element;
+      while (background && background !== document.documentElement) {{
+        const color = parseColor(getComputedStyle(background).backgroundColor);
+        if (color) return color;
+        background = background.parentElement;
+      }}
+      return [255, 255, 255];
+    }};
+    const foreground = parseColor(getComputedStyle(element).color);
+    if (!foreground) throw new Error("Parallax could not parse the recorded element color");
+    const a = luminance(foreground); const b = luminance(backdrop());
     return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
   }});
-  expect(contrastRatio).toBeGreaterThanOrEqual(4.5);'''
+  expect(contrastRatio).toBeGreaterThanOrEqual({threshold});'''
     if defect is Defect.UNTRANSLATED:
-        return '''  const rawI18nKey = await page.locator("body").evaluate((element) => /\\b[a-z][\\w-]*(?:\\.[a-z][\\w-]*)+\\b/i.test(element.textContent ?? ""));
+        return f'''  const rawI18nKey = await {target}.evaluate((element) => {{
+    const text = (element.textContent ?? "").trim();
+    const rawKey = /(⟦[^⟧]+⟧)|(\\{{\\{{[^}}]+\\}}\\}})|(^[a-z][a-z0-9]*(\\.[a-z0-9_]+){{2,}}$)/i.test(text);
+    const latin = text.match(/\\b[A-Za-z]{{3,}}\\b/g) ?? [];
+    return rawKey || (document.documentElement.lang.toLowerCase().startsWith("ar") && latin.length >= 2 && !/[@/\\\\_]|\\d{{3,}}/.test(text));
+  }});
   expect(rawI18nKey).toBeFalsy();'''
     if defect is Defect.THEME_LAYOUT_SHIFT:
-        # Dark mode is allowed to recolour and nothing else, so the check is the
-        # same page measured twice: only the colour scheme may differ.
-        return '''  const fingerprint = () => page.evaluate(() => Array.from(
-    document.querySelectorAll("header, nav, main, footer, aside, section, button, a[href], h1, h2, [role]")
-  ).map((element) => {
-    const rect = element.getBoundingClientRect();
-    return element.tagName + ":" + Math.round(rect.x) + "," + Math.round(rect.y) + "," + Math.round(rect.width) + "," + Math.round(rect.height);
-  }).join("|"));
-  await page.emulateMedia({ colorScheme: "light" });
-  const lightLayout = await fingerprint();
-  await page.emulateMedia({ colorScheme: "dark" });
-  expect(await fingerprint()).toBe(lightLayout);'''
+        return _render_skip(defect, "the probe has no replayable cross-theme geometry assertion.")
     if defect is Defect.RTL_NOT_MIRRORED:
-        return f'''  expect(await page.locator("html").getAttribute("dir")).toBe("rtl");
-  expect(await {target}.evaluate((element) => getComputedStyle(element).direction)).toBe("rtl");'''
+        return _render_skip(defect, "the probe has no replayable cross-locale geometry assertion.")
     return "  throw new Error(\"Parallax render finding did not include a known defect\");"
 
 
@@ -137,7 +215,8 @@ def _content_assertion(finding: Finding) -> str:
     # page's normalised innerText. Any other hash — SHA-256 included — would make
     # this spec fail for a reason that has nothing to do with the finding.
     return f'''  const contentSignature = await page.evaluate(() => {{
-    const text = (document.body.innerText || "").replace(/\\s+/g, " ").trim();
+    const root = document.querySelector("main") ?? document.body;
+    const text = (root.innerText || "").replace(/\\s+/g, " ").trim();
     let h = 2166136261;
     for (let i = 0; i < text.length; i++) {{ h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }}
     return (h >>> 0).toString(16);
@@ -145,29 +224,206 @@ def _content_assertion(finding: Finding) -> str:
   expect(contentSignature).toBe({_ts(expected)});'''
 
 
-def _revocation_assertion(finding: Finding) -> str:
-    measurement = finding.revocation
-    assert measurement is not None
-    target = (
-        f"page.locator({_ts(measurement.effect_selector)})"
-        if measurement.effect_selector else _target(finding)
+def _relational_context(finding: Finding, privilege: Privilege) -> Context:
+    return next(
+        (testimony.context for testimony in finding.testimonies if testimony.context.privilege is privilege),
+        Context(privilege=privilege, varies=Axis.RELATIONAL),
     )
-    return f'''  const revocationCompletedAt = performance.now();
-  await expect.poll(async () => await {target}.isVisible().catch(() => false), {{ timeout: {measurement.deadline_ms} }}).toBeFalsy();
+
+
+def _context_literal(context: Context, storage_state: str | None) -> str:
+    storage_expression = _storage_state_expression(context, storage_state)
+    storage_line = f"\n    storageState: {storage_expression}," if storage_expression else ""
+    return f'''{{
+    baseURL,
+    viewport: {{ width: {context.viewport.width}, height: {context.viewport.height} }},
+    locale: {_ts(context.locale.value)},
+    colorScheme: {_ts(context.theme.value)},{storage_line}
+  }}'''
+
+
+def _effect_expression(page: str, effect: EffectExpectation) -> str | None:
+    if effect.kind == "visible" and effect.selector:
+        return f'await {page}.locator({_ts(effect.selector)}).isVisible().catch(() => false)'
+    if effect.kind == "json_contains" and all((effect.url, effect.items, effect.field, effect.equals)):
+        expectation = (
+            f'{{ url: {_ts(effect.url or "")}, items: {_ts(effect.items or "")}, '
+            f'field: {_ts(effect.field or "")}, equals: {_ts(effect.equals or "")} }}'
+        )
+        return f'''await {page}.evaluate(async (expectation) => {{
+      const response = await fetch(new URL(expectation.url, location.href));
+      if (!response.ok) return false;
+      const payload = await response.json();
+      return Array.isArray(payload[expectation.items]) && payload[expectation.items]
+        .some((item) => item && item[expectation.field] === expectation.equals);
+    }}, {expectation})'''
+    return None
+
+
+def _action_lines(page: str, replay: RelationalReplay) -> str:
+    lines = [f"  await {page}.locator({_ts(selector)}).check();" for selector in replay.action.checks]
+    lines.extend(
+        f"  await {page}.locator({_ts(selector)}).fill({_ts(value)});"
+        for selector, value in replay.action.fills
+    )
+    lines.append(
+        f"  await {page}.locator({_ts(replay.action.form)}).evaluate((form: HTMLFormElement) => form.requestSubmit());"
+    )
+    return "\n".join(lines)
+
+
+def _relational_spec(
+    finding: Finding,
+    storage_states: Mapping[str, str] | None,
+) -> str:
+    title = _ts(f"Parallax: {finding.id}")
+    replay = finding.replay
+    reason: str | None = None
+    effect: str | None = None
+    if replay is None:
+        reason = "no replayable relational declaration was retained with this finding"
+    else:
+        effect = _effect_expression("receiverPage", replay.effect)
+        if effect is None:
+            reason = "the receiver effect is outside the replayable scenario vocabulary"
+    sender_state = _storage_state_path(replay.sender.value, storage_states) if replay else None
+    receiver_state = _storage_state_path(replay.receiver.value, storage_states) if replay else None
+    if replay and replay.sender is not Privilege.ANON and sender_state is None:
+        reason = f"no storage state was supplied for the {replay.sender.value} sender"
+    if replay and replay.receiver is not Privilege.ANON and receiver_state is None:
+        reason = f"no storage state was supplied for the {replay.receiver.value} receiver"
+    if finding.kind is FindingKind.REVOCATION_LAG and replay and replay.max_lag_ms is None:
+        reason = "the revocation declaration did not retain an acceptable lag threshold"
+    header = f'''/*
+ * Parallax generated relational regression spec
+ * Finding: {_comment(finding.id)}
+ * Axis: {_comment(finding.axis.value)}
+ * Evidence: {_comment(finding.evidence_line())}
+ * In playwright.config.ts: use: {{ baseURL: "https://your-app.example" }}
+ */
+import {{ test, expect }} from "@playwright/test";
+'''
+    if reason or replay is None or effect is None:
+        return f'''{header}
+test({title}, async () => {{
+  test.skip({_ts(f"Parallax cannot replay this relation: {reason}")});
+}});
+'''
+    sender = _relational_context(finding, replay.sender)
+    receiver = _relational_context(finding, replay.receiver)
+    action = _action_lines("senderPage", replay)
+    if finding.kind is FindingKind.PROPAGATION_FAILURE:
+        assertion = f'''{action}
+  await expect.poll(async () => {effect}, {{ timeout: {replay.deadline_ms} }}).toBeTruthy();'''
+    else:
+        assertion = f'''  expect({effect}).toBeTruthy();
+{action}
+  const revocationCompletedAt = performance.now();
+  await expect.poll(async () => {effect}, {{ timeout: {replay.deadline_ms} }}).toBeFalsy();
   const revocationLagMs = performance.now() - revocationCompletedAt;
-  expect(revocationLagMs).toBeLessThan({measurement.deadline_ms});'''
+  expect(revocationLagMs).toBeLessThanOrEqual({replay.max_lag_ms});'''
+    return f'''{header}
+test({title}, async ({{ browser }}) => {{
+  const baseURL = test.info().project.use.baseURL;
+  if (typeof baseURL !== "string") throw new Error("Parallax relational specs require use.baseURL in playwright.config.ts");
+  const senderContext = await browser.newContext({_context_literal(sender, sender_state)});
+  const receiverContext = await browser.newContext({_context_literal(receiver, receiver_state)});
+  try {{
+    const senderPage = await senderContext.newPage();
+    const receiverPage = await receiverContext.newPage();
+    await Promise.all([senderPage.goto({_ts(_base_url_path(finding.surface.path))}), receiverPage.goto({_ts(_base_url_path(finding.surface.path))})]);
+{assertion}
+  }} finally {{
+    await Promise.all([senderContext.close(), receiverContext.close()]);
+  }}
+}});
+'''
+
+
+def _mirror_spec(
+    finding: Finding, storage_states: Mapping[str, str] | None,
+) -> str | None:
+    defect = (
+        Defect.RTL_NOT_MIRRORED if finding.axis is Axis.LOCALE
+        else Defect.THEME_LAYOUT_SHIFT if finding.axis is Axis.THEME
+        else None
+    )
+    if defect is None:
+        return None
+    baseline = next((item for item in finding.testimonies if item.context.varies is Axis.BASELINE), None)
+    variant = next((item for item in finding.testimonies if defect in item.defects), None)
+    observation = next(
+        (item for item in variant.observations if item.defect is defect and item.selector),
+        None,
+    ) if variant else None
+    if baseline is None or variant is None or observation is None or observation.selector is None:
+        return None
+    baseline_state = _storage_state_path(baseline.context.privilege.value, storage_states)
+    variant_state = _storage_state_path(variant.context.privilege.value, storage_states)
+    selector = _ts(observation.selector)
+    if defect is Defect.RTL_NOT_MIRRORED:
+        assertion = '''  const variantViewportWidth = await variantPage.evaluate(() => window.innerWidth);
+  const expectedVariantX = variantViewportWidth - baselineBox!.x - variantBox!.width;
+  expect(Math.abs(variantBox!.x - expectedVariantX)).toBeLessThanOrEqual(3);
+  expect(Math.abs(variantBox!.y - baselineBox!.y)).toBeLessThanOrEqual(3);'''
+    else:
+        assertion = '''  expect(Math.abs(variantBox!.x - baselineBox!.x)).toBeLessThanOrEqual(3);
+  expect(Math.abs(variantBox!.y - baselineBox!.y)).toBeLessThanOrEqual(3);
+  expect(Math.abs(variantBox!.width - baselineBox!.width)).toBeLessThanOrEqual(3);
+  expect(Math.abs(variantBox!.height - baselineBox!.height)).toBeLessThanOrEqual(3);'''
+    return f'''/*
+ * Parallax generated cross-context geometry regression spec
+ * Finding: {_comment(finding.id)}
+ * Axis: {_comment(finding.axis.value)}
+ * Evidence: {_comment(finding.evidence_line())}
+ * In playwright.config.ts: use: {{ baseURL: "https://your-app.example" }}
+ */
+import {{ test, expect }} from "@playwright/test";
+
+test({_ts(f"Parallax: {finding.id}")}, async ({{ browser }}) => {{
+  const baseURL = test.info().project.use.baseURL;
+  if (typeof baseURL !== "string") throw new Error("Parallax geometry specs require use.baseURL in playwright.config.ts");
+  const baselineContext = await browser.newContext({_context_literal(baseline.context, baseline_state)});
+  const variantContext = await browser.newContext({_context_literal(variant.context, variant_state)});
+  try {{
+    const baselinePage = await baselineContext.newPage();
+    const variantPage = await variantContext.newPage();
+    await Promise.all([baselinePage.goto({_ts(_witness_path(finding, baseline))}), variantPage.goto({_ts(_witness_path(finding, variant))})]);
+    const [baselineBox, variantBox] = await Promise.all([
+      baselinePage.locator({selector}).boundingBox(),
+      variantPage.locator({selector}).boundingBox(),
+    ]);
+    expect(baselineBox).not.toBeNull();
+    expect(variantBox).not.toBeNull();
+{assertion}
+  }} finally {{
+    await Promise.all([baselineContext.close(), variantContext.close()]);
+  }}
+}});
+'''
 
 
 def spec_for(finding: Finding, storage_states: Mapping[str, str] | None = None) -> str:
     """Render one self-contained, failing-until-fixed Playwright TypeScript spec."""
+    if finding.kind in (FindingKind.PROPAGATION_FAILURE, FindingKind.REVOCATION_LAG):
+        return _relational_spec(finding, storage_states)
+    if finding.kind is FindingKind.RENDER_DEFECT:
+        mirror = _mirror_spec(finding, storage_states)
+        if mirror is not None:
+            return mirror
     witness = _context_for(finding)
     context = witness.context
-    path = _ts(_base_url_path(finding.surface.path))
+    path = _ts(_witness_path(finding, witness))
     title = _ts(f"Parallax: {finding.id}")
     storage_state = _storage_state_path(context.privilege.value, storage_states)
-    storage_line = f"\n  storageState: {_ts(storage_state)}," if storage_state else ""
+    storage_variable = (
+        f"PARALLAX_{context.privilege.value.upper()}_STORAGE_STATE"
+        if storage_state
+        else None
+    )
+    storage_line = f"\n  storageState: process.env.{storage_variable}," if storage_variable else ""
     storage_note = (
-        " * The storage state below is the file this run was given for that role."
+        " * Set PARALLAX_<ROLE>_STORAGE_STATE to the role state file before running this spec."
         if storage_state
         else " * This run had no credentials for that role, so the spec opens the page anonymously."
     )
@@ -176,7 +432,13 @@ def spec_for(finding: Finding, storage_states: Mapping[str, str] | None = None) 
   locale: {_ts(context.locale.value)},
   colorScheme: {_ts(context.theme.value)},{storage_line}
 }});'''
-    prelude = f'''  const response = await page.goto({path});
+    storage_guard = (
+        f'''  if (!process.env.{storage_variable}) throw new Error({_ts(f"Parallax generated spec requires {storage_variable}")});
+'''
+        if storage_variable
+        else ""
+    )
+    prelude = f'''{storage_guard}  const response = await page.goto({path});
   const isLoginPage = /\\/(?:login|sign-in|auth)(?:[/?#]|$)/i.test(new URL(page.url()).pathname);'''
     if finding.kind is FindingKind.ESCALATION:
         assertion = _reachability_assertion(finding, must_reach=False)
@@ -186,8 +448,8 @@ def spec_for(finding: Finding, storage_states: Mapping[str, str] | None = None) 
         assertion = _render_assertion(finding)
     elif finding.kind is FindingKind.CONTENT_DIVERGENCE:
         assertion = _content_assertion(finding)
-    elif finding.kind is FindingKind.REVOCATION_LAG and finding.revocation is not None:
-        assertion = _revocation_assertion(finding)
+    elif finding.kind is FindingKind.DEAD_SURFACE:
+        assertion = _reachability_assertion(finding, must_reach=True)
     else:
         prelude = ""
         assertion = f'''  test.skip({_ts(finding.summary)});
@@ -213,7 +475,14 @@ test({title}, async ({{ page }}) => {{
 
 def filename_for(finding: Finding) -> str:
     """Return a stable filesystem-safe name, unique to the finding identity."""
-    identity = "|".join((finding.kind.value, finding.axis.value, finding.surface.kind.value, finding.surface.path, finding.surface.selector or ""))
+    identity = "|".join((
+        finding.kind.value,
+        finding.axis.value,
+        finding.surface.kind.value,
+        finding.surface.path,
+        finding.surface.selector or "",
+        finding.defect.value if finding.defect is not None else "",
+    ))
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
     return f"parallax-{finding.kind.value}-{finding.axis.value}-{digest}.spec.ts"
 
@@ -221,11 +490,15 @@ def filename_for(finding: Finding) -> str:
 def emit_all(
     findings: Iterable[Finding], out_dir: Path, storage_states: Mapping[str, str] | None = None
 ) -> list[Path]:
-    """Write one spec per finding and return paths in input order."""
+    """Replace the generated spec set and return paths in input order."""
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for finding in findings:
         path = out_dir / filename_for(finding)
         path.write_text(spec_for(finding, storage_states), encoding="utf-8")
         written.append(path)
+    expected = set(written)
+    for path in out_dir.glob("parallax-*.spec.ts"):
+        if path not in expected and (path.is_file() or path.is_symlink()):
+            path.unlink()
     return written

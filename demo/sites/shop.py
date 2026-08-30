@@ -84,7 +84,7 @@ class ShopSite:
         else:
             return Response.not_found()
         markup = self._page(copy, lang, theme, path, content, request.mount)
-        overrides = ".brand{display:inline-flex;align-items:center;min-block-size:44px}.filter-list a{min-height:44px}"
+        overrides = ".brand{display:inline-flex;align-items:center;min-block-size:44px}.filter-list a{min-height:44px}.filter-list a.is-active{color:var(--ink)}.nav-link,.text-link,.footer-links a{min-inline-size:44px}.product-art{min-width:0;inline-size:100%}.product-title-box{height:auto;overflow:visible}.cart-table{table-layout:fixed}.checkout-form{min-width:0;grid-template-columns:minmax(0,1fr)}.checkout-action-clip{max-width:100%;min-width:0;overflow-x:visible;contain:paint}@media (max-width:560px){.product-title-box.intentional-clip{height:2.35em;overflow:hidden}.cart-object{min-width:0}}"
         return Response.html(markup.replace("</style>", f"{overrides}</style>", 1))
 
     def _page(self, copy: dict[str, object], lang: str, theme: str, path: str, content: str, mount: str) -> str:
@@ -109,9 +109,10 @@ class ShopSite:
     def _product(self, copy: dict[str, object], lang: str, product_id: str, mount: str) -> str:
         product = _PRODUCTS[product_id]
         title, description, price, _ = product[lang]
+        title_class = " intentional-clip" if product_id == "organizer" else ""
         specs = "".join(f'<div><dt>{label}</dt><dd>{value}</dd></div>' for label, value in copy[f"{product_id}_specs"])
         related = "".join(f'<article class="related-card">{self._art(other)}<div><h3>{escape(other[lang][0])}</h3><span class="price">{other[lang][2]}</span><a class="text-link" href="{mount}/product/{other_id}">{copy["view"]}</a></div></article>' for other_id, other in _PRODUCTS.items() if other_id != product_id)
-        return f'''<a class="text-link" href="{mount}/"><span aria-hidden="true">←</span> {copy["back"]}</a><section class="product-layout" style="margin-block-start:22px"><div class="product-art art {product["art"]}" aria-hidden="true"></div><div><p class="eyebrow">{copy["details"]} · {copy[product["stock"]]}</p><div class="product-title-box"><h1>{escape(title)}</h1></div><p class="intro">{escape(description)}</p><p class="price product-price">{price}</p><dl class="spec-list">{specs}</dl><div class="purchase-row"><label><span class="field-label">{copy["quantity"]}</span><input class="quantity-input mono" type="number" name="quantity" value="1" min="1" inputmode="numeric" aria-label="{copy["quantity"]}"></label><a class="button" href="{mount}/cart">{copy["add"]}</a></div></div></section><section class="related"><p class="eyebrow">{copy["includes"]}</p><h2>{copy["related"]}</h2><div class="related-grid">{related}</div></section>'''
+        return f'''<a class="text-link" href="{mount}/"><span aria-hidden="true">←</span> {copy["back"]}</a><section class="product-layout" style="margin-block-start:22px"><div class="product-art art {product["art"]}" aria-hidden="true"></div><div><p class="eyebrow">{copy["details"]} · {copy[product["stock"]]}</p><div class="product-title-box{title_class}"><h1>{escape(title)}</h1></div><p class="intro">{escape(description)}</p><p class="price product-price">{price}</p><dl class="spec-list">{specs}</dl><div class="purchase-row"><label><span class="field-label">{copy["quantity"]}</span><input class="quantity-input mono" type="number" name="quantity" value="1" min="1" inputmode="numeric" aria-label="{copy["quantity"]}"></label><a class="button" href="{mount}/cart">{copy["add"]}</a></div></div></section><section class="related"><p class="eyebrow">{copy["includes"]}</p><h2>{copy["related"]}</h2><div class="related-grid">{related}</div></section>'''
 
     def _cart_row(self, copy: dict[str, object], lang: str, ident: str, quantity: int) -> str:
         product = _PRODUCTS[ident]

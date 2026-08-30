@@ -28,6 +28,24 @@ def test_home_and_users_keep_their_correct_baseline_access() -> None:
     assert all(site.handle(request("/users", role)).status == 200 for role in ("member", "owner"))
 
 
+def test_anonymous_logout_is_blocked_but_authenticated_logout_clears_the_session() -> None:
+    site = AdminSite()
+    anonymous = site.handle(Request(path="/logout", mount="/admin"))
+    authenticated = site.handle(Request(path="/logout", mount="/admin", cookies={"session": "owner"}))
+    assert (anonymous.status, anonymous.headers["Location"]) == (302, "/admin/login")
+    assert "Set-Cookie" not in anonymous.headers
+    assert (authenticated.status, authenticated.headers["Location"]) == (302, "/admin/")
+    assert "Max-Age=0" in authenticated.headers["Set-Cookie"]
+
+
+def test_mobile_shell_constrains_the_navigation_rail_to_the_viewport() -> None:
+    markup = AdminSite().handle(request("/")).body.decode()
+    assert ".sidebar{min-inline-size:0;" in markup
+    assert ".nav{min-inline-size:0;" in markup
+    assert "@media (max-width:760px){.shell{grid-template-columns:minmax(0,1fr)}" in markup
+    assert "@media (max-width:760px){thead{clip-path:inset(50%);overflow:visible}}" in markup
+
+
 def test_product_pages_render_real_operational_data() -> None:
     site = AdminSite()
     home = site.handle(request("/", "owner")).body.decode()
