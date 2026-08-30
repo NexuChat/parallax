@@ -41,7 +41,13 @@ gcloud run deploy "$SERVICE" \
   --timeout=900 \
   --max-instances=1 \
   --no-cpu-throttling \
+  --set-env-vars="GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global" \
   --set-secrets="GEMINI_API_KEY=GEMINI_API_KEY:latest"
+
+# The lens prefers Vertex when GOOGLE_CLOUD_PROJECT is set, and on Cloud Run that
+# resolves to the runtime service account through the metadata server — no key
+# leaves the project. The AI Studio secret stays mounted only as a fallback for
+# running this image outside Google Cloud.
 
 cat <<EOF
 

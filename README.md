@@ -142,6 +142,31 @@ tool inventing its own evidence. Every run prints what it did not test:
 "axis_summary": "1 axes exercised, 3 not applicable"
 ```
 
+## Grouping the noise
+
+A sweep of the five demo applications publishes ninety-four findings that are not
+defects. That number is measured against declared plants and printed on the front
+page rather than hidden — but ninety-four lines is not a report anyone reads, and
+most of them repeat: the same overflow, seen from six witnesses across four routes.
+
+Grouping them is a judgement about wording, not a measurement, which is the one
+place a small model earns its place here. Gemma 3 reads only the summaries the
+deterministic layers already produced and returns a partition of their ids:
+
+```
+31 findings grouped into 3 causes by gemma3:4b
+  [19]  Horizontal overflow
+  [ 7]  Text contrast below WCAG AA
+  [ 4]  Tap target too small
+```
+
+It cannot invent a finding, change a severity, or reach a page. An id it returns
+that was not in its input is discarded, and a finding is claimed by one group
+only. Point `PARALLAX_GEMMA_URL` at any Ollama-compatible endpoint to enable it;
+without one the run says the grouping was disabled rather than silently skipping
+it, and an unreachable grouper is reported as unreachable rather than as a run
+that found nothing to group.
+
 ## Reproducing the published figures
 
 The figures on the front page come from a graded sweep of five bundled demo

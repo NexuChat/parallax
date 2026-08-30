@@ -34,12 +34,20 @@ class LayoutI18nSpecialist:
         self._project = os.environ.get("GOOGLE_CLOUD_PROJECT")
         self._location = os.environ.get("GOOGLE_CLOUD_LOCATION", "global")
         self.route = self._select_route()
+        # Counted so a run can state whether the model was actually reached. The
+        # mandatory model integration must be provable from the output, not
+        # assumed from the fact that a key was present in the environment.
+        self.calls_attempted = 0
+        self.calls_succeeded = 0
+        self.last_error: str | None = None
 
     def judge(
         self, moments: Sequence[Moment], testimonies: Sequence[Testimony]
     ) -> list[Finding]:
         client = self._client or self._environment_client()
         if client is None:
+            self.calls_attempted += 1
+            self.last_error = self.last_error or "no client: credentials for the selected route were rejected"
             return []
 
         findings: list[Finding] = []
@@ -48,11 +56,18 @@ class LayoutI18nSpecialist:
             if not moment.changed or sent >= self._max_moments:
                 continue
             sent += 1
+            self.calls_attempted += 1
             try:
                 response = self._generate(client, moment)
                 verdict = self._parse_response(response)
-            except Exception:
+            except Exception as error:
+                # A swallowed model error is indistinguishable from a model that
+                # found nothing, which is the one failure this project cannot
+                # afford to hide: the run would look identical whether Gemini
+                # answered or was never reachable at all.
+                self.last_error = f"{type(error).__name__}: {str(error)[:200]}"
                 continue
+            self.calls_succeeded += 1
             findings.extend(self._findings_from_verdict(verdict, moment, testimonies))
         return findings
 

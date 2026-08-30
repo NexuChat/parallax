@@ -18,6 +18,7 @@ from urllib.parse import urljoin
 
 from .conductor import Conductor, RelationalScenario
 from .specialists import LayoutI18nSpecialist, RealtimeSpecialist
+from .triage import GemmaTriage
 from .types import Context, Privilege, Severity, Surface, SurfaceKind
 
 
@@ -77,6 +78,23 @@ def _specialists(no_vision: bool) -> list[object]:
     print(f"vision lens route: {vision.route}", file=sys.stderr)
     lenses.append(vision)
     return lenses
+
+
+def _model_report(specialists: list[object]) -> dict[str, object]:
+    """State what the vision lens actually did, so its silence is never ambiguous."""
+    for lens in specialists:
+        if not hasattr(lens, "calls_attempted"):
+            continue
+        report: dict[str, object] = {
+            "name": getattr(lens, "model", "unknown"),
+            "route": getattr(lens, "route", "unknown"),
+            "calls_attempted": lens.calls_attempted,
+            "calls_succeeded": lens.calls_succeeded,
+        }
+        if lens.last_error:
+            report["last_error"] = lens.last_error
+        return report
+    return {"route": "disabled", "calls_attempted": 0, "calls_succeeded": 0}
 
 
 def _scenario_error(source: str, problem: str) -> SystemExit:
@@ -208,18 +226,22 @@ async def _run(args: argparse.Namespace) -> int:
     from playwright.async_api import async_playwright
 
     relational_scenarios = _relational_scenarios(args.relational_scenarios, args.url) if args.relational_scenarios else None
+    # Built once and kept, because the run summary has to report what the lens
+    # actually did and cannot ask a list the conductor threw away.
+    specialists = _specialists(args.no_vision)
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(
             headless=not args.headed, args=["--no-sandbox", "--disable-dev-shm-usage"]
         )
         try:
-            summary = await _conduct(args, browser, relational_scenarios)
+            summary = await _conduct(args, browser, relational_scenarios, specialists)
         finally:
             await browser.close()
 
     counts: dict[str, int] = {}
     for finding in summary.findings:
         counts[finding.severity.value] = counts.get(finding.severity.value, 0) + 1
+    triage = GemmaTriage().group(summary.findings)
     exercised = [decision for decision in summary.axis_applicability if decision.applicable]
     not_applicable = [decision for decision in summary.axis_applicability if not decision.applicable]
     print(json.dumps({
@@ -238,6 +260,18 @@ async def _run(args: argparse.Namespace) -> int:
             "ran": len(relational_scenarios or []),
             "findings": sum(finding.axis.value == "relational" for finding in summary.findings),
         },
+        # Whether the mandatory model was actually reached, not whether a key
+        # happened to be set. A run that could not call it says so here.
+        "model": _model_report(specialists),
+        # Grouping is a wording judgement, not a measurement, so it is reported
+        # separately from the findings themselves and never alters them.
+        "triage": {
+            "summary": triage.summary,
+            "groups": [
+                {"label": group.label, "findings": len(group.finding_ids)}
+                for group in triage.groups
+            ],
+        },
     }, indent=2))
     print(f"\nconsole: open console/index.html?feed=../{summary.feed_path}", file=sys.stderr)
     # A run that found nothing is a finished run, not a failed one.
@@ -245,12 +279,13 @@ async def _run(args: argparse.Namespace) -> int:
 
 
 async def _conduct(
-    args: argparse.Namespace, browser: object, relational_scenarios: list[RelationalScenario] | None
+    args: argparse.Namespace, browser: object, relational_scenarios: list[RelationalScenario] | None,
+    specialists: list[object] | None = None,
 ) -> object:
     """Make the CLI-to-conductor contract testable without launching Chromium."""
     options: dict[str, object] = {
         "browser": browser,
-        "specialists": _specialists(args.no_vision),
+        "specialists": _specialists(args.no_vision) if specialists is None else specialists,
         "storage_states": _storage_states(args.storage_state) or None,
         "max_surfaces": args.max_surfaces,
         "settle_ms": args.settle_ms,
