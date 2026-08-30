@@ -59,6 +59,12 @@ class RelationalScenario:
     action: Callable[[Any], Awaitable[None] | None]
     effect: Expectation
     deadline_ms: int
+    # "propagation" asks how long until the receiver SEES the sender's action;
+    # "revocation" asks how long until it STOPS seeing what was taken away. Same
+    # two live sessions, opposite predicate, and the elapsed time is the result.
+    kind: str = "propagation"
+    distribution: Expectation | None = None
+    enforcement: Expectation | None = None
 
 
 class Conductor:
@@ -332,9 +338,17 @@ class Conductor:
                     pass
             collector = asyncio.create_task(collect())
             try:
-                observed = await pair.observe(
-                    scenario.action, scenario.effect, scenario.deadline_ms, surface=scenario.surface
-                )
+                if scenario.kind == "revocation":
+                    observed = await pair.measure_revocation_lag(
+                        scenario.action, scenario.effect, scenario.deadline_ms,
+                        surface=scenario.surface,
+                        distribution=scenario.distribution,
+                        enforcement=scenario.enforcement,
+                    )
+                else:
+                    observed = await pair.observe(
+                        scenario.action, scenario.effect, scenario.deadline_ms, surface=scenario.surface
+                    )
             finally:
                 collecting = False
                 collector.cancel()

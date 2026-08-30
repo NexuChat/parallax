@@ -8,7 +8,20 @@ from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from typing import Any
 
-from .types import Axis, Context, Finding, FindingKind, Outcome, Severity, Surface, SurfaceKind, Testimony
+from .types import (
+    Axis,
+    Context,
+    Finding,
+    FindingKind,
+    Outcome,
+    RevocationLag,
+    RevocationPlane,
+    RevocationPlanes,
+    Severity,
+    Surface,
+    SurfaceKind,
+    Testimony,
+)
 from .witness import StorageState, Witness
 
 
@@ -140,6 +153,168 @@ class RelationalPair:
             ),
             testimonies=testimonies,
         )
+
+    async def measure_revocation_lag(
+        self,
+        action: PageAction,
+        expectation: Expectation,
+        deadline_ms: int,
+        *,
+        surface: Surface | None = None,
+        distribution: Expectation | None = None,
+        enforcement: Expectation | None = None,
+    ) -> Finding:
+        """Measure how long an already-open session keeps revoked authority."""
+        action_name = self._describe(action, "revoker action")
+        sender_error: Exception | None = None
+        receiver_error: Exception | None = None
+        action_task: asyncio.Task[None] | None = None
+        probes: list[str] = []
+        lag_ms: int | None = None
+        setup_error: str | None = None
+        measurement_error: str | None = None
+        planes = RevocationPlanes(None, None, None, None)
+
+        try:
+            try:
+                await self.open()
+                assert self.sender.page is not None
+                assert self.receiver.page is not None
+                if surface is not None:
+                    await asyncio.gather(
+                        self.sender.page.goto(surface.path, wait_until="domcontentloaded", timeout=5_000),
+                        self.receiver.page.goto(surface.path, wait_until="domcontentloaded", timeout=5_000),
+                    )
+            except Exception as error:
+                sender_error = error
+                receiver_error = error
+                setup_error = f"could not open revocation sessions: {Witness._short_error(error)}"
+            else:
+                assert self.receiver.page is not None
+                try:
+                    held = await self._matches(self.receiver.page, expectation)
+                except Exception as error:
+                    receiver_error = error
+                    setup_error = f"could not establish revokee authority: {Witness._short_error(error)}"
+                else:
+                    if not held:
+                        setup_error = "revokee expectation did not hold before revocation"
+                    else:
+                        action_task = asyncio.create_task(self._perform(action, self.sender.page))
+                        try:
+                            await action_task
+                        except Exception as error:
+                            sender_error = error
+                            planes = RevocationPlanes(False, None, None, None)
+                        else:
+                            action_completed = self._clock()
+                            try:
+                                distribution_passed = await self._revocation_plane(distribution)
+                            except Exception as error:
+                                distribution_passed = None
+                                measurement_error = (
+                                    f"could not measure distribution: {Witness._short_error(error)}"
+                                )
+                            try:
+                                enforcement_passed = await self._revocation_plane(enforcement)
+                            except Exception as error:
+                                enforcement_passed = None
+                                enforcement_error = (
+                                    f"could not measure enforcement: {Witness._short_error(error)}"
+                                )
+                                measurement_error = "; ".join(
+                                    part for part in (measurement_error, enforcement_error) if part
+                                )
+                            planes = RevocationPlanes(
+                                True,
+                                distribution_passed,
+                                enforcement_passed,
+                                None,
+                            )
+                            deadline = action_completed + deadline_ms / 1_000
+                            while self._clock() <= deadline:
+                                try:
+                                    still_held = await self._matches(self.receiver.page, expectation)
+                                except Exception as error:
+                                    receiver_error = error
+                                    effects_error = (
+                                        f"could not measure authority cessation: {Witness._short_error(error)}"
+                                    )
+                                    measurement_error = "; ".join(
+                                        part for part in (measurement_error, effects_error) if part
+                                    )
+                                    break
+                                if not still_held:
+                                    lag_ms = round((self._clock() - action_completed) * 1_000)
+                                    planes = RevocationPlanes(
+                                        planes.decision,
+                                        planes.distribution,
+                                        planes.enforcement,
+                                        not probes,
+                                    )
+                                    break
+                                probes.append("effects")
+                                remaining = deadline - self._clock()
+                                if remaining <= 0:
+                                    break
+                                await self._sleep(min(self._poll_interval, remaining))
+                            if lag_ms is None and measurement_error is None:
+                                planes = RevocationPlanes(
+                                    planes.decision,
+                                    planes.distribution,
+                                    planes.enforcement,
+                                    False,
+                                )
+        finally:
+            if action_task is not None and not action_task.done():
+                action_task.cancel()
+                await asyncio.gather(action_task, return_exceptions=True)
+            testimonies = [
+                self._testimony(self.sender, sender_error, "revocation action"),
+                self._testimony(self.receiver, receiver_error, "revocation expectation"),
+            ]
+            await self.close()
+
+        revocation = RevocationLag(
+            lag_ms=lag_ms,
+            deadline_ms=deadline_ms,
+            probes=tuple(probes),
+            planes=planes,
+            effect_selector=expectation if isinstance(expectation, str) else None,
+            setup_error=setup_error,
+            measurement_error=measurement_error,
+        )
+        if setup_error:
+            summary = f"Revocation setup error: {setup_error}"
+        elif sender_error:
+            summary = f"Revocation action {action_name} failed; authority could not be measured"
+        elif measurement_error:
+            summary = f"Revocation authority could not be measured: {measurement_error}"
+        elif lag_ms is None:
+            summary = f"Revocation authority did not cease within {deadline_ms}ms (lag >= {deadline_ms}ms)"
+        else:
+            summary = f"Revocation authority ceased after {lag_ms}ms"
+        failed = ", ".join(plane.value for plane in planes.failed)
+        if failed:
+            summary = f"{summary}; failed plane: {failed}"
+        unmeasured = ", ".join(plane.value for plane in planes.unmeasured)
+        if unmeasured:
+            summary = f"{summary}; unmeasured plane: {unmeasured}"
+        return Finding(
+            kind=FindingKind.REVOCATION_LAG,
+            severity=Severity.HIGH if RevocationPlane.EFFECTS in planes.failed else Severity.INFO,
+            surface=testimonies[1].surface,
+            axis=Axis.RELATIONAL,
+            summary=summary,
+            testimonies=testimonies,
+            revocation=revocation,
+        )
+
+    async def _revocation_plane(self, expectation: Expectation | None) -> bool | None:
+        if expectation is None:
+            return None
+        assert self.receiver.page is not None
+        return not await self._matches(self.receiver.page, expectation)
 
     @staticmethod
     async def _perform(action: PageAction, page: Any) -> None:

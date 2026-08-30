@@ -15,6 +15,8 @@ from parallax.types import (
     Locale,
     Outcome,
     Privilege,
+    RevocationLag,
+    RevocationPlanes,
     Severity,
     Surface,
     SurfaceKind,
@@ -124,6 +126,22 @@ def test_each_finding_kind_emits_the_required_assertion() -> None:
     dead = spec_for(finding(FindingKind.DEAD_SURFACE))
     assert "test.skip(" in dead
     assert "No assertion is emitted" in dead
+
+
+def test_revocation_lag_spec_polls_an_open_session_under_the_recorded_threshold() -> None:
+    item = finding(FindingKind.REVOCATION_LAG)
+    item.revocation = RevocationLag(
+        lag_ms=20,
+        deadline_ms=30,
+        probes=("effects",),
+        planes=RevocationPlanes(decision=True, distribution=True, enforcement=True, effects=False),
+    )
+
+    generated = spec_for(item)
+
+    assert "expect.poll" in generated
+    assert "toBeLessThan(30)" in generated
+    assert "revocationLagMs" in generated
 
 
 def test_render_defects_have_specific_invariants() -> None:

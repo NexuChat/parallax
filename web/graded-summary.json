@@ -1,6 +1,6 @@
 {
-  "host": "http://127.0.0.1:8099",
-  "generated_at": "2026-08-29T23:50:32.951183+00:00",
+  "host": "http://127.0.0.1:8321",
+  "generated_at": "2026-08-30T00:18:45.044645+00:00",
   "sites": {
     "admin": {
       "planted": 3,
@@ -104,11 +104,25 @@
       ]
     },
     "workspace": {
-      "planted": 4,
-      "found": 0,
-      "missed": 4,
-      "false_positives": 24,
+      "planted": 5,
+      "found": 2,
+      "missed": 3,
+      "false_positives": 26,
       "plants": [
+        {
+          "name": "Quiet-thread messages do not reach polling clients.",
+          "defect": "propagation",
+          "axis": "relational",
+          "route": "/threads",
+          "verdict": "found"
+        },
+        {
+          "name": "A removed member keeps a live session until the membership cache expires.",
+          "defect": "revocation",
+          "axis": "relational",
+          "route": "/threads",
+          "verdict": "found"
+        },
         {
           "name": "The audit template is accidentally public.",
           "defect": "escalation",
@@ -129,21 +143,14 @@
           "axis": "theme",
           "route": "/threads",
           "verdict": "missed"
-        },
-        {
-          "name": "Quiet-thread messages do not reach polling clients.",
-          "defect": "propagation",
-          "axis": "relational",
-          "route": "/threads",
-          "verdict": "missed"
         }
       ]
     }
   },
   "totals": {
-    "planted": 14,
-    "found": 7,
-    "missed": 7,
-    "false_positives": 99
+    "planted": 15,
+    "found": 9,
+    "missed": 6,
+    "false_positives": 101
   }
 }

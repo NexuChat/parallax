@@ -137,6 +137,19 @@ def _content_assertion(finding: Finding) -> str:
   expect(contentSignature).toBe({_ts(expected)});'''
 
 
+def _revocation_assertion(finding: Finding) -> str:
+    measurement = finding.revocation
+    assert measurement is not None
+    target = (
+        f"page.locator({_ts(measurement.effect_selector)})"
+        if measurement.effect_selector else _target(finding)
+    )
+    return f'''  const revocationCompletedAt = performance.now();
+  await expect.poll(async () => await {target}.isVisible().catch(() => false), {{ timeout: {measurement.deadline_ms} }}).toBeFalsy();
+  const revocationLagMs = performance.now() - revocationCompletedAt;
+  expect(revocationLagMs).toBeLessThan({measurement.deadline_ms});'''
+
+
 def spec_for(finding: Finding) -> str:
     """Render one self-contained, failing-until-fixed Playwright TypeScript spec."""
     witness = _context_for(finding)
@@ -160,6 +173,8 @@ def spec_for(finding: Finding) -> str:
         assertion = _render_assertion(finding)
     elif finding.kind is FindingKind.CONTENT_DIVERGENCE:
         assertion = _content_assertion(finding)
+    elif finding.kind is FindingKind.REVOCATION_LAG and finding.revocation is not None:
+        assertion = _revocation_assertion(finding)
     else:
         prelude = ""
         assertion = f'''  test.skip({_ts(finding.summary)});

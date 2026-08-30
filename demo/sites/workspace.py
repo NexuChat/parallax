@@ -8,10 +8,17 @@ session cookie issued by ``/login``.
 from __future__ import annotations
 
 from html import escape
+import os
+import time
 from urllib.parse import parse_qs
 
 from .base import Account, Planted, Request, Response
 
+
+# How long a removed member keeps working inside an already-open session.
+# Configurable so the demo can show a short window on camera and a longer one
+# when the point is that the window exists at all.
+_REVOCATION_DELAY = float(os.environ.get("WORKSPACE_REVOCATION_DELAY", "2.5"))
 
 _STORE: dict[str, object] = {
     "accounts": {
@@ -19,6 +26,7 @@ _STORE: dict[str, object] = {
         "member@demo": {"role": "member", "name": "Samira", "initials": "SK"},
     },
     "sessions": {},
+    "revoked": {},
     "messages": [
         {"id": 1, "thread": "general", "author": "Avery", "initials": "AK", "text": "Morning — the launch checklist is ready for a final pass.", "day": "Today", "time": "9:12 AM"},
         {"id": 2, "thread": "general", "author": "Maya Chen", "initials": "MC", "text": "I added the customer notes from yesterday’s interviews.", "day": "Today", "time": "9:28 AM"},
@@ -39,7 +47,7 @@ _COPY = {
         "threads": "Threads", "settings": "Settings", "billing": "Billing", "audit": "Audit log", "overview": "Workspace overview", "team_space": "Team space", "members": "5 members", "updated": "Updated moments ago",
         "general": "General", "quiet": "Quiet", "launch": "Launch room", "customer": "Customer notes", "unread": "unread", "message": "Write a message", "send": "Send", "format": "Formatting", "attach": "Attach a file", "mention": "Mention someone",
         "today": "Today", "yesterday": "Yesterday", "all_caught_up": "You’re all caught up", "thread_list": "All conversations", "new_thread": "New thread", "activity": "Live activity", "activity_note": "Avery moved the launch checklist to Ready", "minutes": "14 min ago",
-        "owner": "Owner tools", "not_allowed": "You do not have access to this page.", "signed_out": "Please sign in to continue.",
+        "owner": "Owner tools", "remove_member": "Remove from workspace", "members_title": "Members", "members_lead": "Remove a member and their access ends.", "name": "Name", "email": "Email", "role": "Role", "status": "Status", "not_allowed": "You do not have access to this page.", "signed_out": "Please sign in to continue.",
         "settings_title": "Workspace settings", "settings_lead": "Set the defaults that keep Fieldnotes useful for everyone.", "general_settings": "General", "general_desc": "Name, timezone, and the workspace identity.", "notifications": "Notifications", "notifications_desc": "Choose which shared activity reaches the team.", "permissions": "Permissions", "permissions_desc": "Control invitations and owner-only workspace access.", "workspace_name": "Workspace name", "timezone": "Timezone", "save": "Save changes", "invite": "Anyone with an invite can join", "digest": "Weekly activity digest", "member_role": "Default member role", "member": "Member",
         "billing_title": "Plan & billing", "billing_lead": "A simple view of the workspace plan and its monthly use.", "current_plan": "Current plan", "team_plan": "Team", "plan_price": "$24 / member / month", "manage_plan": "Manage plan", "usage": "Usage this month", "messages_used": "1,284 of 2,000 shared messages", "invoices": "Invoices", "invoice": "Invoice", "date": "Date", "amount": "Amount", "status": "Status", "paid": "Paid", "download": "Download PDF",
         "audit_title": "Audit log", "audit_copy": "Recent workspace access and policy changes.", "actor": "Actor", "action": "Action", "target": "Target", "timestamp": "Timestamp", "footer": "Fieldnotes for teams that keep momentum visible.", "primary_nav": "Primary navigation", "thread_options": "More thread options",
@@ -50,7 +58,7 @@ _COPY = {
         "threads": "المحادثات", "settings": "الإعدادات", "billing": "الفوترة", "audit": "سجل التدقيق", "overview": "نظرة على مساحة العمل", "team_space": "مساحة الفريق", "members": "٥ أعضاء", "updated": "تم التحديث الآن",
         "general": "عام", "quiet": "هادئ", "launch": "غرفة الإطلاق", "customer": "ملاحظات العملاء", "unread": "غير مقروء", "message": "اكتب رسالة", "send": "إرسال", "format": "تنسيق", "attach": "إرفاق ملف", "mention": "إشارة إلى شخص",
         "today": "اليوم", "yesterday": "أمس", "all_caught_up": "أنت على اطلاع كامل", "thread_list": "كل المحادثات", "new_thread": "محادثة جديدة", "activity": "نشاط مباشر", "activity_note": "نقل أفيري قائمة الإطلاق إلى جاهزة", "minutes": "قبل ١٤ دقيقة",
-        "owner": "أدوات المالك", "not_allowed": "ليس لديك صلاحية الوصول إلى هذه الصفحة.", "signed_out": "يرجى تسجيل الدخول للمتابعة.",
+        "owner": "أدوات المالك", "remove_member": "إزالة من مساحة العمل", "members_title": "الأعضاء", "members_lead": "أزل عضواً ينتهِ وصوله.", "name": "الاسم", "email": "البريد", "role": "الدور", "status": "الحالة", "not_allowed": "ليس لديك صلاحية الوصول إلى هذه الصفحة.", "signed_out": "يرجى تسجيل الدخول للمتابعة.",
         "settings_title": "إعدادات مساحة العمل", "settings_lead": "اضبط الإعدادات التي تحافظ على فائدة ملاحظات العمل للجميع.", "general_settings": "عام", "general_desc": "الاسم والمنطقة الزمنية وهوية مساحة العمل.", "notifications": "الإشعارات", "notifications_desc": "اختر النشاط المشترك الذي يصل إلى الفريق.", "permissions": "الصلاحيات", "permissions_desc": "تحكم في الدعوات ووصول المالك فقط.", "workspace_name": "اسم مساحة العمل", "timezone": "المنطقة الزمنية", "save": "حفظ التغييرات", "invite": "يمكن لأي شخص لديه دعوة الانضمام", "digest": "ملخص النشاط الأسبوعي", "member_role": "دور العضو الافتراضي", "member": "عضو",
         "billing_title": "الخطة والفوترة", "billing_lead": "عرض بسيط لخطة مساحة العمل واستخدامها الشهري.", "current_plan": "الخطة الحالية", "team_plan": "الفريق", "plan_price": "٢٤ دولارًا / عضو / شهر", "manage_plan": "إدارة الخطة", "usage": "استخدام هذا الشهر", "messages_used": "١٬٢٨٤ من ٢٬٠٠٠ رسالة مشتركة", "invoices": "الفواتير", "invoice": "الفاتورة", "date": "التاريخ", "amount": "المبلغ", "status": "الحالة", "paid": "مدفوعة", "download": "تنزيل PDF",
         "audit_title": "سجل التدقيق", "audit_copy": "آخر عمليات الوصول إلى مساحة العمل وتغييرات السياسات.", "actor": "الفاعل", "action": "الإجراء", "target": "الهدف", "timestamp": "الوقت", "footer": "ملاحظات العمل للفرق التي تحافظ على وضوح التقدم.", "primary_nav": "التنقل الرئيسي", "thread_options": "خيارات إضافية للمحادثة",
@@ -67,6 +75,63 @@ class WorkspaceSite:
         Planted("rtl_not_mirrored", "locale", "/threads", "Composer controls use physical left spacing."),
         Planted("theme_layout_shift", "theme", "/threads", "Dark mode adds a header border."),
         Planted("propagation", "relational", "/threads", "Quiet-thread messages do not reach polling clients."),
+        Planted("revocation", "relational", "/threads", "A removed member keeps a live session until the membership cache expires."),
+    ]
+    # The relational axis is the one claim that cannot be checked from a single
+    # session: the sender must still be posting while the receiver is watching.
+    # /api/messages filters the quiet thread out of its polling response, so the
+    # receiver never learns the message exists — a defect no sequential sweep can
+    # observe, because by its turn the sender's session is already closed.
+    relational_scenarios = [
+        {
+            "surface": "/threads",
+            "sender": "owner",
+            "receiver": "member",
+            "action": {
+                "type": "submit_form",
+                "form": "form.composer",
+                "checks": ["input[value='quiet']"],
+                "fills": [{"selector": "#message", "value": "Parallax propagation check"}],
+            },
+            "effect": {
+                "type": "json_contains",
+                "url": "api/messages?since=0",
+                "items": "messages",
+                "field": "text",
+                "equals": "Parallax propagation check",
+            },
+            "deadline_ms": 3000,
+        },
+        # The revocation axis. The owner removes Samira; her already-open session
+        # keeps rendering the thread list until the membership cache is re-read.
+        # Decision, distribution and enforcement all succeed — only Effects lags,
+        # and that lag is what no existing tool measures.
+        {
+            "type": "revocation",
+            "surface": "/threads",
+            "sender": "owner",
+            "receiver": "member",
+            "action": {
+                "type": "submit_form",
+                # The member to remove is already a hidden field of this form, so
+                # the action is the submit alone: no boxes to tick, nothing to type.
+                "form": "form.revoke-form",
+                "checks": [],
+                "fills": [],
+            },
+            # Authority is not what the DOM still shows — a rendered page keeps its
+            # markup forever. It is what the open session can still FETCH. This asks
+            # the member's live page for data it is allowed to read; once the
+            # membership cache expires the API answers 401 and the effect goes false.
+            "effect": {
+                "type": "json_contains",
+                "url": "api/messages?since=0",
+                "items": "messages",
+                "field": "text",
+                "equals": "I can take the handoff copy before lunch.",
+            },
+            "deadline_ms": 15000,
+        },
     ]
 
     def handle(self, request: Request) -> Response:
@@ -94,9 +159,40 @@ class WorkspaceSite:
                 return self._page(request, f'<main class="notice"><h1>{escape(_COPY[lang]["not_allowed"])}</h1></main>', lang, theme, "")
             content = self._settings(request, lang) if request.path == "/settings" else self._billing(request, lang)
             return self._page(request, content, lang, theme, request.path[1:])
+        if request.path == "/members":
+            user = self._user(request)
+            if user is None:
+                return self._login_redirect(request)
+            if user["role"] != "owner":
+                return self._page(request, f'<main class="notice"><h1>{escape(_COPY[lang]["not_allowed"])}</h1></main>', lang, theme, "")
+            if request.method == "POST":
+                removed = self._form(request).get("remove", "")
+                if removed in _STORE["accounts"]:  # type: ignore[operator]
+                    _STORE["revoked"][removed] = time.monotonic()  # type: ignore[index]
+                return Response.redirect(f"{request.mount}/members")
+            return self._page(request, self._members(request, lang), lang, theme, "members")
         if request.path == "/audit":
             return self._page(request, self._audit(lang), lang, theme, "audit")
         return Response.not_found()
+
+    def _members(self, request: Request, lang: str) -> str:
+        copy = _COPY[lang]
+        rows = "".join(
+            f'<tr><td>{escape(account["name"])}</td><td>{escape(email)}</td><td>{escape(account["role"])}</td>'
+            f'<td>{"revoked" if email in _STORE["revoked"] else "active"}</td>'
+            f'<td><form method="post" action="{request.mount}/members">'
+            f'<input type="hidden" name="remove" value="{escape(email)}">'
+            f'<button type="submit" class="secondary" id="remove-{escape(email.split("@")[0])}">'
+            f'{escape(copy["remove_member"])}</button></form></td></tr>'
+            for email, account in _STORE["accounts"].items() if account["role"] != "owner"
+        )
+        return (
+            f'<main class="admin"><p class="kicker">{escape(copy["owner"])}</p>'
+            f'<h1>{escape(copy["members_title"])}</h1><p class="lead">{escape(copy["members_lead"])}</p>'
+            f'<div class="table-card"><div class="table-scroll"><table><thead><tr>'
+            f'<th>{escape(copy["name"])}</th><th>{escape(copy["email"])}</th><th>{escape(copy["role"])}</th>'
+            f'<th>{escape(copy["status"])}</th><th></th></tr></thead><tbody>{rows}</tbody></table></div></div></main>'
+        )
 
     @staticmethod
     def _form(request: Request) -> dict[str, str]:
@@ -105,7 +201,19 @@ class WorkspaceSite:
     @staticmethod
     def _user(request: Request) -> dict[str, str] | None:
         email = _STORE["sessions"].get(request.cookies.get("session", ""))  # type: ignore[union-attr]
-        return _STORE["accounts"].get(email) if email else None  # type: ignore[union-attr,return-value]
+        if not email:
+            return None
+        # The planted defect, and the one this whole axis exists to measure: the
+        # membership check is answered from a per-session cache that is only
+        # re-read after REVOCATION_DELAY. Removing a member is recorded at once
+        # and enforced late, so an already-open session keeps its authority for a
+        # window nobody measures. Supabase documents this exact shape for realtime
+        # authorization: "client access policies are cached for the duration of
+        # the connection".
+        revoked_at = _STORE["revoked"].get(email)  # type: ignore[union-attr]
+        if revoked_at is not None and time.monotonic() - revoked_at >= _REVOCATION_DELAY:
+            return None
+        return _STORE["accounts"].get(email)  # type: ignore[union-attr,return-value]
 
     @staticmethod
     def _login_redirect(request: Request) -> Response:
@@ -120,6 +228,9 @@ class WorkspaceSite:
                 number = int(_STORE["next_session"])
                 token = f"workspace-{number}"
                 _STORE["next_session"] = number + 1
+                # Signing in again is a re-invitation: it clears any prior removal
+                # so the revocation demo is repeatable without restarting the server.
+                _STORE["revoked"].pop(form["email"], None)  # type: ignore[union-attr]
                 _STORE["sessions"][token] = form["email"]  # type: ignore[index]
                 return Response.redirect(f"{request.mount}/threads", **{"Set-Cookie": f"session={token}; Path=/; HttpOnly; SameSite=Lax"})
             return self._page(request, f'<main class="auth"><p class="error">{escape(copy["bad_login"])}</p>{self._login_form(request, copy)}</main>', lang, theme, "")
@@ -162,7 +273,19 @@ class WorkspaceSite:
         items = "".join(f'<a class="thread-item {"active" if key == "general" else ""}" href="{request.mount}/threads#{key}"><span><strong>{escape(name)}</strong><small>{escape(previews[key])}</small></span>{"<b>3</b>" if key == "general" else ""}</a>' for key, name in names.items())
         message_rows = "".join(f'<article class="message"><span class="avatar">{escape(item["initials"])}</span><div><p><strong>{escape(item["author"])}</strong><time>{escape(c["today"] if item["day"] == "Today" else c["yesterday"])} · {escape(item["time"])}</time></p><span>{escape(item["text"])}</span></div></article>' for item in _STORE["messages"] if item["thread"] == "general")  # type: ignore[index]
         last_id = max(item["id"] for item in _STORE["messages"])  # type: ignore[index]
-        return f'''<main class="app-shell"><aside class="thread-nav"><div class="side-heading"><div><p class="kicker">{escape(c["team_space"])}</p><h1>{escape(c["threads"])}</h1></div><a class="icon-button" href="{request.mount}/threads#new" aria-label="{escape(c["new_thread"])}">+</a></div><nav aria-label="{escape(c["thread_list"])}">{items}</nav><div class="member-card"><span class="avatar">{escape(user["initials"])}</span><div><strong>{escape(user["name"])}</strong><small>{escape(c["members"])}</small></div></div></aside><section class="thread-view"><header class="thread-header"><div><p class="kicker">{escape(c["team_space"])}</p><h1>{escape(c["general"])}</h1><p>{escape(c["members"])} · {escape(c["updated"])}</p></div><button class="more" type="button" aria-label="{escape(c["thread_options"])}">•••</button></header><div class="day-label"><span>{escape(c["today"])}</span></div><div class="messages" data-latest="{last_id}">{message_rows}</div><form class="composer" method="post" action="{request.mount}/threads"><div class="composer-tools"><button type="button" aria-label="{escape(c["format"])}">B</button><button type="button" aria-label="{escape(c["attach"])}">+</button><button type="button" aria-label="{escape(c["mention"])}">@</button><label><input type="radio" name="thread" value="general" checked>{escape(c["general"])}</label><label><input type="radio" name="thread" value="quiet">{escape(c["quiet"])}</label></div><label class="sr-only" for="message">{escape(c["message"])}</label><input id="message" name="message" type="text" placeholder="{escape(c["message"])}" required><button type="submit">{escape(c["send"])}</button></form></section></main><script>const box=document.querySelector('.messages');let latest=Number(box.dataset.latest);setInterval(async()=>{{try{{const r=await fetch('{request.mount}/api/messages?since='+latest);const d=await r.json();if(d.messages&&d.messages.length)location.reload()}}catch(e){{}}}},1000);</script>'''
+        # Member management lives beside the roster an owner already reads, which
+        # is also what lets the revocation scenario act and observe on one surface.
+        owner_tools = ""
+        if user["role"] == "owner":
+            rows = "".join(
+                f'<form method="post" action="{request.mount}/members" class="revoke-form">'
+                f'<input type="hidden" name="remove" value="{escape(email)}">'
+                f'<button type="submit" class="secondary">{escape(c["remove_member"])} · {escape(account["name"])}</button>'
+                f'</form>'
+                for email, account in _STORE["accounts"].items() if account["role"] != "owner"
+            )
+            owner_tools = f'<div class="owner-tools"><p class="kicker">{escape(c["owner"])}</p>{rows}</div>'
+        return f'''<main class="app-shell"><aside class="thread-nav"><div class="side-heading"><div><p class="kicker">{escape(c["team_space"])}</p><h1>{escape(c["threads"])}</h1></div><a class="icon-button" href="{request.mount}/threads#new" aria-label="{escape(c["new_thread"])}">+</a></div><nav aria-label="{escape(c["thread_list"])}">{items}</nav><div class="member-card"><span class="avatar">{escape(user["initials"])}</span><div><strong>{escape(user["name"])}</strong><small>{escape(c["members"])}</small></div></div>{owner_tools}</aside><section class="thread-view"><header class="thread-header"><div><p class="kicker">{escape(c["team_space"])}</p><h1>{escape(c["general"])}</h1><p>{escape(c["members"])} · {escape(c["updated"])}</p></div><button class="more" type="button" aria-label="{escape(c["thread_options"])}">•••</button></header><div class="day-label"><span>{escape(c["today"])}</span></div><div class="messages" data-latest="{last_id}">{message_rows}</div><form class="composer" method="post" action="{request.mount}/threads"><div class="composer-tools"><button type="button" aria-label="{escape(c["format"])}">B</button><button type="button" aria-label="{escape(c["attach"])}">+</button><button type="button" aria-label="{escape(c["mention"])}">@</button><label><input type="radio" name="thread" value="general" checked>{escape(c["general"])}</label><label><input type="radio" name="thread" value="quiet">{escape(c["quiet"])}</label></div><label class="sr-only" for="message">{escape(c["message"])}</label><input id="message" name="message" type="text" placeholder="{escape(c["message"])}" required><button type="submit">{escape(c["send"])}</button></form></section></main><script>const box=document.querySelector('.messages');let latest=Number(box.dataset.latest);setInterval(async()=>{{try{{const r=await fetch('{request.mount}/api/messages?since='+latest);const d=await r.json();if(d.messages&&d.messages.length)location.reload()}}catch(e){{}}}},1000);</script>'''
 
     def _settings(self, request: Request, lang: str) -> str:
         c = _COPY[lang]

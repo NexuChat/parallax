@@ -152,6 +152,13 @@ def _effect(spec: Any, name: str, source: str) -> object:
     raise _scenario_error(source, f"{name}.effect.type must be 'visible' or 'json_contains'")
 
 
+def _scenario_type(spec: dict[str, Any], name: str, source: str) -> str:
+    scenario_type = spec.get("type", "propagation")
+    if scenario_type not in ("propagation", "revocation"):
+        raise _scenario_error(source, f"{name}.type must be 'propagation' or 'revocation'")
+    return scenario_type
+
+
 def relational_scenarios_from_data(data: Any, start_url: str, *, source: str = "declaration") -> list[RelationalScenario]:
     """Turn the restricted, data-only relational scenario format into conductor calls."""
     scenarios = data.get("scenarios") if isinstance(data, dict) else data
@@ -162,6 +169,7 @@ def relational_scenarios_from_data(data: Any, start_url: str, *, source: str = "
         name = f"scenario {index}"
         if not isinstance(spec, dict):
             raise _scenario_error(source, f"{name} must be an object")
+        scenario_type = _scenario_type(spec, name, source)
         surface = _string(spec.get("surface"), f"{name}.surface", source)
         try:
             sender = Context(privilege=Privilege(_string(spec.get("sender"), f"{name}.sender", source)))
@@ -171,11 +179,16 @@ def relational_scenarios_from_data(data: Any, start_url: str, *, source: str = "
         deadline_ms = spec.get("deadline_ms")
         if not isinstance(deadline_ms, int) or isinstance(deadline_ms, bool) or deadline_ms < 1:
             raise _scenario_error(source, f"{name}.deadline_ms must be a positive integer")
-        result.append(RelationalScenario(
+        distribution = spec.get("distribution")
+        enforcement = spec.get("enforcement")
+        scenario = RelationalScenario(
             Surface(SurfaceKind.ROUTE, urljoin(start_url, surface)), sender=sender, receiver=receiver,
             action=_action(spec.get("action"), name, source), effect=_effect(spec.get("effect"), name, source),
-            deadline_ms=deadline_ms,
-        ))
+            deadline_ms=deadline_ms, kind=scenario_type,
+            distribution=_effect(distribution, f"{name}.distribution", source) if distribution else None,
+            enforcement=_effect(enforcement, f"{name}.enforcement", source) if enforcement else None,
+        )
+        result.append(scenario)
     return result
 
 

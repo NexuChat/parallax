@@ -217,6 +217,7 @@ class FindingKind(str, Enum):
     RENDER_DEFECT = "render"           # axis-specific invariant broken (RTL, overflow, contrast…)
     CONTENT_DIVERGENCE = "divergence"  # same surface, materially different content across an equivalence axis
     PROPAGATION_FAILURE = "propagation"  # the sender acted and the receiver never saw it
+    REVOCATION_LAG = "revocation"        # an already-open session retained authority after revocation
     DEAD_SURFACE = "dead"              # nobody could reach it
 
 
@@ -227,6 +228,63 @@ class Severity(str, Enum):
     INFO = "info"
 
 
+class RevocationPlane(str, Enum):
+    DECISION = "decision"
+    DISTRIBUTION = "distribution"
+    ENFORCEMENT = "enforcement"
+    EFFECTS = "effects"
+
+
+@dataclass(frozen=True)
+class RevocationPlanes:
+    """The four independently observable parts of a revocation."""
+
+    decision: bool | None
+    distribution: bool | None
+    enforcement: bool | None
+    effects: bool | None
+
+    @property
+    def passed(self) -> tuple[RevocationPlane, ...]:
+        return tuple(
+            plane for plane in RevocationPlane
+            if getattr(self, plane.value) is True
+        )
+
+    @property
+    def failed(self) -> tuple[RevocationPlane, ...]:
+        return tuple(
+            plane for plane in RevocationPlane
+            if getattr(self, plane.value) is False
+        )
+
+    @property
+    def unmeasured(self) -> tuple[RevocationPlane, ...]:
+        return tuple(
+            plane for plane in RevocationPlane
+            if getattr(self, plane.value) is None
+        )
+
+
+@dataclass(frozen=True)
+class RevocationLag:
+    """Measured authority persistence for a session that stayed open."""
+
+    lag_ms: int | None
+    deadline_ms: int
+    probes: tuple[str, ...]
+    planes: RevocationPlanes
+    effect_selector: str | None = None
+    setup_error: str | None = None
+    measurement_error: str | None = None
+
+    @property
+    def display_lag(self) -> str:
+        if self.setup_error or self.measurement_error:
+            return "unmeasured"
+        return f"{self.lag_ms}ms" if self.lag_ms is not None else f">= {self.deadline_ms}ms"
+
+
 @dataclass
 class Finding:
     kind: FindingKind
@@ -235,6 +293,7 @@ class Finding:
     axis: Axis
     summary: str
     testimonies: list[Testimony]   # the exact evidence this rests on
+    revocation: RevocationLag | None = None
 
     @property
     def id(self) -> str:

@@ -1,7 +1,7 @@
 {
  "admin": {
   "feed": "runs/admin/feed.jsonl",
-  "mosaics": 13,
+  "mosaics": 12,
   "findings": 31,
   "by_severity": {
    "medium": 19,
@@ -19,7 +19,7 @@
  },
  "control": {
   "feed": "runs/control/feed.jsonl",
-  "mosaics": 4,
+  "mosaics": 2,
   "findings": 2,
   "by_severity": {
    "medium": 2
@@ -31,7 +31,7 @@
  },
  "docs": {
   "feed": "runs/docs/feed.jsonl",
-  "mosaics": 7,
+  "mosaics": 9,
   "findings": 16,
   "by_severity": {
    "medium": 15,
@@ -44,7 +44,7 @@
  },
  "shop": {
   "feed": "runs/shop/feed.jsonl",
-  "mosaics": 16,
+  "mosaics": 14,
   "findings": 33,
   "by_severity": {
    "medium": 22,
@@ -57,17 +57,19 @@
  },
  "workspace": {
   "feed": "runs/workspace/feed.jsonl",
-  "mosaics": 13,
-  "findings": 24,
+  "mosaics": 14,
+  "findings": 28,
   "by_severity": {
    "medium": 8,
-   "high": 6,
-   "low": 10
+   "high": 9,
+   "low": 11
   },
   "by_kind": {
-   "render": 16,
+   "render": 18,
    "escalation": 5,
-   "divergence": 3
+   "divergence": 3,
+   "propagation": 1,
+   "revocation": 1
   }
  }
 }

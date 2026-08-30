@@ -72,6 +72,32 @@ def test_relational_scenario_file_builds_safe_conductor_scenarios(tmp_path, monk
     assert received["relational_scenarios"] == scenarios
 
 
+def test_revocation_scenario_uses_the_same_safe_action_and_effect_vocabulary(tmp_path) -> None:
+    path = tmp_path / "revocation.json"
+    path.write_text(json.dumps({"scenarios": [{
+        "type": "revocation",
+        "surface": "/workspace",
+        "sender": "owner",
+        "receiver": "member",
+        "action": {"type": "submit_form", "form": "form.disable"},
+        "effect": {"type": "visible", "selector": "#workspace"},
+        "deadline_ms": 200,
+    }]}), encoding="utf-8")
+
+    scenario = cli._relational_scenarios(path, "https://app.example.test")[0]
+
+    assert scenario.kind == "revocation"
+    assert scenario.deadline_ms == 200
+
+
+def test_relational_scenario_rejects_unknown_scenario_types(tmp_path) -> None:
+    path = tmp_path / "invalid.json"
+    path.write_text(json.dumps({"scenarios": [{"type": "javascript"}]}), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="scenario 1.type"):
+        cli._relational_scenarios(path, "https://app.example.test")
+
+
 @pytest.mark.parametrize("payload, problem", [
     ({"scenarios": [{"surface": "/threads"}]}, "scenario 1.sender"),
     ({"scenarios": "not a list"}, "scenarios must be a list"),

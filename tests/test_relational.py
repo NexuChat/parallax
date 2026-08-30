@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from parallax.relational import RelationalPair
-from parallax.types import Axis, Context, Finding, FindingKind, Outcome, Privilege
+from parallax.types import Axis, Context, Finding, FindingKind, Outcome, Privilege, RevocationPlane
 from test_witness import FakeBrowser
 
 
@@ -127,5 +127,105 @@ def test_deadline_uses_injected_time_without_real_sleeping() -> None:
         assert isinstance(result, Finding)
         assert clock.now == 0.025
         assert clock.sleeps == pytest.approx([0.01, 0.01, 0.005])
+
+    asyncio.run(check())
+
+
+def test_revocation_lag_measures_the_open_session_after_the_revoke_completes() -> None:
+    async def check() -> None:
+        browser = FakeBrowser()
+        clock = Clock()
+        relational = pair(browser, clock)
+
+        result = await relational.measure_revocation_lag(
+            lambda _sender: None,
+            lambda _receiver: clock() < 0.02,
+            deadline_ms=30,
+            distribution=lambda _receiver: False,
+            enforcement=lambda _receiver: False,
+        )
+
+        assert result.kind is FindingKind.REVOCATION_LAG
+        assert result.revocation is not None
+        assert result.revocation.lag_ms == 20
+        assert result.revocation.probes == ("effects", "effects")
+        assert result.revocation.planes.passed == (
+            RevocationPlane.DECISION,
+            RevocationPlane.DISTRIBUTION,
+            RevocationPlane.ENFORCEMENT,
+        )
+        assert result.revocation.planes.failed == (RevocationPlane.EFFECTS,)
+        assert clock.sleeps == pytest.approx([0.01, 0.01])
+
+    asyncio.run(check())
+
+
+def test_revocation_never_reports_a_deadline_as_an_unknown_lag() -> None:
+    async def check() -> None:
+        browser = FakeBrowser()
+        clock = Clock()
+        relational = pair(browser, clock)
+
+        result = await relational.measure_revocation_lag(
+            lambda _sender: None,
+            "#still-authorized",
+            deadline_ms=25,
+        )
+
+        assert result.revocation is not None
+        assert result.revocation.lag_ms is None
+        assert result.revocation.display_lag == ">= 25ms"
+        assert result.revocation.planes.failed == (RevocationPlane.EFFECTS,)
+        assert "authority did not cease within 25ms" in result.summary
+        assert clock.sleeps == pytest.approx([0.01, 0.01, 0.005])
+
+    asyncio.run(check())
+
+
+def test_revocation_precondition_is_a_setup_error_not_zero_lag() -> None:
+    async def check() -> None:
+        browser = FakeBrowser([{}, {"visible": False}])
+        relational = pair(browser, Clock())
+        acted: list[bool] = []
+
+        async def revoke(_sender: object) -> None:
+            acted.append(True)
+
+        result = await relational.measure_revocation_lag(revoke, "#authorized", deadline_ms=30)
+
+        assert result.revocation is not None
+        assert result.revocation.setup_error == "revokee expectation did not hold before revocation"
+        assert result.revocation.lag_ms is None
+        assert result.revocation.planes.failed == ()
+        assert acted == []
+        assert "setup error" in result.summary
+
+    asyncio.run(check())
+
+
+def test_revocation_probe_errors_are_unmeasured_not_deadline_lag() -> None:
+    async def check() -> None:
+        relational = pair(FakeBrowser(), Clock())
+        calls = 0
+
+        def effect(_receiver: object) -> bool:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return True
+            raise RuntimeError("probe disconnected")
+
+        result = await relational.measure_revocation_lag(lambda _sender: None, effect, deadline_ms=30)
+
+        assert result.revocation is not None
+        assert result.revocation.display_lag == "unmeasured"
+        assert result.revocation.measurement_error == "could not measure authority cessation: probe disconnected"
+        assert result.revocation.planes.effects is None
+        assert result.revocation.planes.unmeasured == (
+            RevocationPlane.DISTRIBUTION,
+            RevocationPlane.ENFORCEMENT,
+            RevocationPlane.EFFECTS,
+        )
+        assert "could not be measured" in result.summary
 
     asyncio.run(check())
