@@ -6,9 +6,12 @@ COPY pyproject.toml ./
 COPY src ./src
 COPY console ./console
 COPY service ./service
+# service/app.py serves web/index.html at "/"; without this the root is a 404.
+COPY web ./web
 
-# Parallax's optional Gemini lens needs google-genai; Pillow composes mosaics.
-RUN pip install --no-cache-dir Pillow google-genai .
+# Parallax declares its own runtime dependencies, so this single install pulls
+# Playwright, Pillow and google-genai. The base image supplies the browsers.
+RUN pip install --no-cache-dir .
 
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080

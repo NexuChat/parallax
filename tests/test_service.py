@@ -47,7 +47,7 @@ def request(
 def make_app(tmp_path: Path) -> tuple[Application, threading.Event]:
     release = threading.Event()
 
-    def launch(_command: list[str]) -> FakeProcess:
+    def launch(_command: list[str], **_streams: object) -> FakeProcess:
         return FakeProcess(release)
 
     return Application(runs_root=tmp_path / "runs", launcher=launch), release

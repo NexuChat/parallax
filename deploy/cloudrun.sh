@@ -25,12 +25,22 @@ gcloud builds submit --tag "$IMAGE" --project="$PROJECT_ID" .
 
 # GEMINI_API_KEY must already exist as a Secret Manager secret; its value is never
 # placed in this script, image, or source tree.
+# Seven concurrent Chromium contexts plus JPEG mosaic composition do not fit the
+# 512Mi default. The run registry lives in one instance's memory, so a second
+# instance would answer GET /runs/<id> with 404; pin the service to one. A sweep
+# outlives the 300s request default, and it continues on a background thread, so
+# the CPU must stay allocated between requests.
 gcloud run deploy "$SERVICE" \
   --image="$IMAGE" \
   --region="$REGION" \
   --project="$PROJECT_ID" \
   --platform=managed \
   --allow-unauthenticated \
+  --memory=4Gi \
+  --cpu=4 \
+  --timeout=900 \
+  --max-instances=1 \
+  --no-cpu-throttling \
   --set-secrets="GEMINI_API_KEY=GEMINI_API_KEY:latest"
 
 cat <<EOF

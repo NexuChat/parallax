@@ -10,6 +10,9 @@ body { margin:0; min-width:320px; background:var(--bg); color:var(--text); font-
 .brand { display:flex; align-items:center; gap:10px; letter-spacing:.13em; font-weight:800; font-size:18px; }
 .brand-mark { color:#061016; background:var(--cyan); padding:4px 8px; font-weight:900; }
 .live-dot, .feed-indicator { font-size:11px; color:var(--cyan); border:1px solid #287384; padding:4px 7px; letter-spacing:.08em; white-space:nowrap; }
+/* A replay must not borrow the live badge's colour: the difference between a run
+   in flight and a recording of one is exactly what this badge exists to state. */
+.live-dot.is-replay { color:var(--muted); border-color:var(--line); }
 .run-state, .clock, .footer { color:var(--muted); font-size:12px; letter-spacing:.04em; }
 .metrics { display:grid; grid-template-columns:220px 220px 1fr; min-height:88px; }
 .metric { padding:13px 18px; border-right:1px solid var(--line); display:flex; flex-direction:column; justify-content:center; }

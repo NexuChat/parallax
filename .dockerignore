@@ -16,3 +16,7 @@ __pycache__/
 tests/
 docs/
 *.png
+# console/runs holds the published sweeps the front page and live wall read, so
+# it belongs in the image. Its per-role storage states do not: they are session
+# credentials, and every file under a run directory is served unauthenticated.
+console/runs/*/storage-*.json

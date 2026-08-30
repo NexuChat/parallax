@@ -2,6 +2,14 @@
 name = "parallax"
 version = "0.1.0"
 requires-python = ">=3.12"
+# Playwright is pinned to the version whose browsers ship in the container base
+# image (mcr.microsoft.com/playwright/python:v1.62.0-noble); a different release
+# looks for browser builds that are not there.
+dependencies = [
+    "playwright==1.62.0",
+    "Pillow>=10",
+    "google-genai>=1.0",
+]
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -10,5 +18,13 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# probe.js is read at runtime with Path(__file__).with_name("probe.js"), so it
+# must travel inside the installed package, not just the source checkout.
+[tool.setuptools.package-data]
+parallax = ["probe.js"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# tests/test_demo_fleet.py imports `serve` and `sites.base` from demo/, and
+# `scripts.run_demo_suite` from the repository root.
+pythonpath = ["src", "demo", "."]

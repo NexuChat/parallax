@@ -7,4 +7,7 @@ __pycache__/
 htmlcov/
 build/
 dist/
-runs/
+/runs/
+.playwright-mcp/
+/*.png
+console/runs/*/storage-*.json

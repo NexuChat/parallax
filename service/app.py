@@ -16,7 +16,16 @@ from wsgiref.simple_server import make_server
 
 
 Response = tuple[str, list[tuple[str, str]], bytes]
-Launcher = Callable[[list[str]], Any]
+Launcher = Callable[..., Any]
+
+
+def _tail(path: Path, limit: int = 2_000) -> str:
+    """Return the end of a sweep log, which is where its diagnosis lands."""
+    try:
+        text = path.read_text(errors="replace").strip()
+    except OSError:
+        return ""
+    return text[-limit:]
 
 
 class Application:
@@ -149,13 +158,20 @@ class Application:
         with self.lock:
             self.runs[run_id]["status"] = "running"
         command = [sys.executable, "-m", "parallax", url, "--out", str(output), "--max-surfaces", str(max_surfaces)]
+        log_path = output / "sweep.log"
         try:
-            process = self.launcher(command)
-            code = process.wait()
+            # An exit status alone cannot be acted on. The sweep's own diagnosis —
+            # the vision route it chose, the navigation that failed, the traceback —
+            # goes to stderr, so keep it beside the run's other artifacts and carry
+            # its last lines in the status a caller already polls.
+            with log_path.open("wb") as log:
+                process = self.launcher(command, stdout=log, stderr=subprocess.STDOUT)
+                code = process.wait()
             with self.lock:
                 self.runs[run_id]["status"] = "complete" if code == 0 else "failed"
                 if code != 0:
                     self.runs[run_id]["error"] = f"sweep exited with status {code}"
+                    self.runs[run_id]["log"] = _tail(log_path)
         except Exception as error:  # Keep failures observable without killing the HTTP server.
             with self.lock:
                 self.runs[run_id].update(status="failed", error=str(error))
@@ -172,6 +188,7 @@ class Application:
             "url": details["url"],
             "counts": self.counts(self.runs_root / run_id / "feed.jsonl"),
             "error": details["error"],
+            "log": details.get("log", ""),
         })
 
     @staticmethod

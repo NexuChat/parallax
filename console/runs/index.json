@@ -1,0 +1,73 @@
+{
+ "admin": {
+  "feed": "runs/admin/feed.jsonl",
+  "mosaics": 13,
+  "findings": 31,
+  "by_severity": {
+   "medium": 19,
+   "low": 10,
+   "info": 1,
+   "high": 1
+  },
+  "by_kind": {
+   "render": 13,
+   "divergence": 10,
+   "escalation": 6,
+   "inversion": 1,
+   "dead": 1
+  }
+ },
+ "control": {
+  "feed": "runs/control/feed.jsonl",
+  "mosaics": 4,
+  "findings": 2,
+  "by_severity": {
+   "medium": 2
+  },
+  "by_kind": {
+   "render": 1,
+   "escalation": 1
+  }
+ },
+ "docs": {
+  "feed": "runs/docs/feed.jsonl",
+  "mosaics": 7,
+  "findings": 16,
+  "by_severity": {
+   "medium": 15,
+   "low": 1
+  },
+  "by_kind": {
+   "render": 15,
+   "divergence": 1
+  }
+ },
+ "shop": {
+  "feed": "runs/shop/feed.jsonl",
+  "mosaics": 16,
+  "findings": 33,
+  "by_severity": {
+   "medium": 22,
+   "low": 11
+  },
+  "by_kind": {
+   "render": 22,
+   "divergence": 11
+  }
+ },
+ "workspace": {
+  "feed": "runs/workspace/feed.jsonl",
+  "mosaics": 13,
+  "findings": 24,
+  "by_severity": {
+   "medium": 8,
+   "high": 6,
+   "low": 10
+  },
+  "by_kind": {
+   "render": 16,
+   "escalation": 5,
+   "divergence": 3
+  }
+ }
+}

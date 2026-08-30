@@ -1,12 +1,12 @@
 {
   "host": "http://127.0.0.1:8099",
-  "generated_at": "2026-08-29T16:14:35.971674+00:00",
+  "generated_at": "2026-08-29T23:50:32.951183+00:00",
   "sites": {
     "admin": {
       "planted": 3,
       "found": 2,
       "missed": 1,
-      "false_positives": 24,
+      "false_positives": 29,
       "plants": [
         {
           "name": "Owners are redirected while members may read reports.",
@@ -35,14 +35,14 @@
       "planted": 0,
       "found": 0,
       "missed": 0,
-      "false_positives": 6,
+      "false_positives": 2,
       "plants": []
     },
     "docs": {
       "planted": 3,
-      "found": 2,
-      "missed": 1,
-      "false_positives": 18,
+      "found": 3,
+      "missed": 0,
+      "false_positives": 13,
       "plants": [
         {
           "name": "Arabic renders one guide heading as its translation key.",
@@ -52,18 +52,18 @@
           "verdict": "found"
         },
         {
+          "name": "Dark-only secondary help text uses #6b6b6b.",
+          "defect": "low_contrast",
+          "axis": "theme",
+          "route": "/",
+          "verdict": "found"
+        },
+        {
           "name": "Related questions disappear under 768px.",
           "defect": "divergence",
           "axis": "viewport",
           "route": "/faq",
           "verdict": "found"
-        },
-        {
-          "name": "Dark-only secondary help text uses #6b6b6b.",
-          "defect": "low_contrast",
-          "axis": "theme",
-          "route": "/",
-          "verdict": "missed"
         }
       ]
     },
@@ -71,7 +71,7 @@
       "planted": 4,
       "found": 2,
       "missed": 2,
-      "false_positives": 30,
+      "false_positives": 31,
       "plants": [
         {
           "name": "The cart table has a fixed minimum width.",
@@ -105,24 +105,10 @@
     },
     "workspace": {
       "planted": 4,
-      "found": 2,
-      "missed": 2,
-      "false_positives": 32,
+      "found": 0,
+      "missed": 4,
+      "false_positives": 24,
       "plants": [
-        {
-          "name": "Composer controls use physical left spacing.",
-          "defect": "rtl_not_mirrored",
-          "axis": "locale",
-          "route": "/threads",
-          "verdict": "found"
-        },
-        {
-          "name": "Quiet-thread messages do not reach polling clients.",
-          "defect": "propagation",
-          "axis": "relational",
-          "route": "/threads",
-          "verdict": "found"
-        },
         {
           "name": "The audit template is accidentally public.",
           "defect": "escalation",
@@ -131,9 +117,23 @@
           "verdict": "missed"
         },
         {
+          "name": "Composer controls use physical left spacing.",
+          "defect": "rtl_not_mirrored",
+          "axis": "locale",
+          "route": "/threads",
+          "verdict": "missed"
+        },
+        {
           "name": "Dark mode adds a header border.",
           "defect": "theme_layout_shift",
           "axis": "theme",
+          "route": "/threads",
+          "verdict": "missed"
+        },
+        {
+          "name": "Quiet-thread messages do not reach polling clients.",
+          "defect": "propagation",
+          "axis": "relational",
           "route": "/threads",
           "verdict": "missed"
         }
@@ -142,8 +142,8 @@
   },
   "totals": {
     "planted": 14,
-    "found": 8,
-    "missed": 6,
-    "false_positives": 110
+    "found": 7,
+    "missed": 7,
+    "false_positives": 99
   }
 }

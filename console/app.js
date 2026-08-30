@@ -2,8 +2,12 @@
   'use strict';
 
   const severityRank = { high: 0, medium: 1, low: 2, info: 3 };
-  const source = new URLSearchParams(location.search).get('feed') || 'fixtures/feed.jsonl';
-  const state = { seen: new Set(), findings: [], mosaicsBySurface: new Map(), latestMosaic: null, tiles: [], lastFileText: '', byteOffset: 0, activeWitnesses: [], selectedFindingId: null, eventCount: 0 };
+  // A caller who names a feed is asking about a specific run. If that feed cannot
+  // be read we must say so: rendering the bundled sample in its place would show
+  // invented findings under the caption of the run they asked for.
+  const requestedFeed = new URLSearchParams(location.search).get('feed');
+  const source = requestedFeed || 'fixtures/feed.jsonl';
+  const state = { seen: new Set(), findings: [], mosaicsBySurface: new Map(), latestMosaic: null, tiles: [], lastFileText: '', byteOffset: 0, activeWitnesses: [], selectedFindingId: null, eventCount: 0, surfacesSeen: new Set(), witnessCount: 0, polled: false };
   const $ = (id) => document.getElementById(id);
   const el = {
     image: $('mosaicImage'), stage: $('mosaicStage'), layer: $('tileLayer'), mosaicEmpty: $('mosaicEmpty'),
@@ -41,12 +45,24 @@
     if (event.kind === 'status') renderStatus(event.payload);
   }
   function renderStatus(payload) {
-    if (Number.isFinite(payload.witnesses)) $('witnessCount').textContent = payload.witnesses;
-    if (Number.isFinite(payload.surfaces)) $('surfaceCount').textContent = payload.surfaces;
+    // A real sweep announces one surface at a time and never carries a witness or
+    // surface total, so counting the surfaces it has announced is the only source
+    // for these two figures. Reading payload.witnesses/payload.surfaces left both
+    // stuck at zero for every genuine feed.
+    if (typeof payload.surface_id === 'string') state.surfacesSeen.add(payload.surface_id);
+    else if (typeof payload.surface === 'string') state.surfacesSeen.add(payload.surface);
+    $('surfaceCount').textContent = state.surfacesSeen.size;
+    if (Number.isFinite(payload.witnesses)) state.witnessCount = payload.witnesses;
+    $('witnessCount').textContent = state.witnessCount;
     el.runState.textContent = `${String(payload.state || 'status').toUpperCase()} · ${payload.message || 'feed received'}`;
   }
   function renderMosaic(payload) {
     if (!Array.isArray(payload.tiles) || !payload.image) return;
+    // The wall itself is the record of how many witnesses reported.
+    if (payload.tiles.length > state.witnessCount) {
+      state.witnessCount = payload.tiles.length;
+      $('witnessCount').textContent = state.witnessCount;
+    }
     const surfaceId = typeof payload.surface_id === 'string' ? payload.surface_id : null;
     if (surfaceId && Number.isFinite(payload.seq)) {
       if (!state.mosaicsBySurface.has(surfaceId)) state.mosaicsBySurface.set(surfaceId, new Map());
@@ -56,7 +72,7 @@
     if (state.selectedFindingId) showSelectedFinding(); else showLiveMosaic();
   }
   function displayMosaic(payload, { title, mode, caption, dim = false } = {}) {
-    state.tiles = payload.tiles; el.title.textContent = title || 'Live witness mosaic'; el.wallMode.textContent = mode || 'LIVE FRAME';
+    state.tiles = payload.tiles; el.title.textContent = title || 'Live witness mosaic'; el.wallMode.textContent = mode || 'SETTLED FRAME';
     el.wallMode.className = `wall-mode${mode === 'EVIDENCE FRAME' ? ' is-evidence' : ''}`;
     el.sequence.textContent = `FRAME ${payload.seq ?? '—'} · ${payload.tiles.length} WITNESSES`;
     el.stage.classList.toggle('is-unavailable', dim);
@@ -133,6 +149,14 @@
   function updateTotals() { const counts = { high:0, medium:0, low:0, info:0 }; state.findings.forEach((f) => { if (f.severity in counts) counts[f.severity] += 1; }); Object.entries(counts).forEach(([severity, count]) => { $(`${severity}Count`).textContent = count; }); $('findingCount').textContent = state.findings.length; }
   function escape(value) { const node = document.createElement('span'); node.textContent = value ?? ''; return node.innerHTML; }
   function setFeedMode(label) { el.feedIndicator.textContent = label; el.feedSource.textContent = `feed: ${source}`; }
+  // A finished sweep is a recording. Polling a file that has stopped growing is
+  // not a live run, and saying so would misrepresent the wall as a run in flight.
+  function setLiveness(receivingNow) {
+    const dot = $('liveDot');
+    if (!dot) return;
+    dot.textContent = receivingNow ? 'LIVE' : 'REPLAY';
+    dot.classList.toggle('is-replay', !receivingNow);
+  }
   async function poll() {
     try {
       const headers = state.byteOffset ? { Range: `bytes=${state.byteOffset}-` } : {};
@@ -140,8 +164,13 @@
       const text = await response.text(); let incoming = text;
       if (response.status === 206) state.byteOffset += new TextEncoder().encode(text).length;
       else { incoming = text.startsWith(state.lastFileText) ? text.slice(state.lastFileText.length) : text; state.lastFileText = text; state.byteOffset = new TextEncoder().encode(text).length; }
-      incoming.split(/\r?\n/).filter(Boolean).forEach(processLine); setFeedMode('POLLING');
-    } catch (_) { setFeedMode('OFFLINE FIXTURE'); }
+      const lines = incoming.split(/\r?\n/).filter(Boolean);
+      lines.forEach(processLine);
+      const growing = lines.length > 0 && state.eventCount > 0 && state.polled;
+      state.polled = true;
+      setFeedMode(growing ? 'STREAMING' : 'RECORDED FEED');
+      setLiveness(growing);
+    } catch (_) { setFeedMode('FEED UNREADABLE'); setLiveness(false); }
   }
   function connectSse() {
     if (!('EventSource' in window) || location.protocol === 'file:') return;
@@ -149,11 +178,29 @@
     // still works — polling takes over — but it logs a MIME-type error, and a
     // red console line during a live demo reads as a broken product.
     if (/\.(jsonl|json|txt)(\?|$)/i.test(source)) return;
-    try { const stream = new EventSource(source); stream.onopen = () => setFeedMode('SSE LIVE'); stream.onmessage = (message) => processLine(message.data); stream.onerror = () => { stream.close(); setTimeout(poll, 100); }; } catch (_) { /* Polling remains available. */ }
+    try { const stream = new EventSource(source); stream.onopen = () => { setFeedMode('SSE LIVE'); setLiveness(true); }; stream.onmessage = (message) => processLine(message.data); stream.onerror = () => { stream.close(); setTimeout(poll, 100); }; } catch (_) { /* Polling remains available. */ }
   }
   function useFixture() {
     fallback.forEach(processEvent);
-    setFeedMode(location.protocol === 'file:' ? 'OFFLINE SAMPLE' : 'SAMPLE — NO RUN FOUND');
+    setFeedMode('SAMPLE — NOT A RUN');
+  }
+  // Shown when a named feed could not be read. It must stay empty of findings:
+  // an unreadable run has produced no evidence, and anything drawn here would be
+  // read as that run's result.
+  function showNoFeed() {
+    const fileScheme = location.protocol === 'file:';
+    setFeedMode(fileScheme ? 'BLOCKED BY file://' : 'FEED UNREADABLE');
+    if (el.findingsEmpty) {
+      el.findingsEmpty.textContent = fileScheme
+        ? `The browser blocks reading ${source} over file://. Serve the repository — python -m http.server — and open the console over http:// with the same ?feed= value.`
+        : `No feed could be read from ${source}. Nothing is shown because this run produced no readable evidence.`;
+      el.findingsEmpty.hidden = false;
+    }
+    if (el.mosaicEmpty) {
+      el.mosaicEmpty.textContent = 'No mosaic — the feed was not read.';
+      el.mosaicEmpty.hidden = false;
+    }
+    if (el.runState) el.runState.textContent = 'no feed';
   }
   async function boot() {
     $('clock').textContent = new Date().toISOString().slice(11, 19) + ' UTC'; setInterval(() => { $('clock').textContent = new Date().toISOString().slice(11, 19) + ' UTC'; }, 1000);
@@ -161,9 +208,14 @@
     // The sample used to be drawn FIRST, unconditionally, so a console attached
     // to a real sweep still opened on frame 42 and six invented findings. It is
     // a fallback, not a seed: it appears only when no real feed can be read.
-    if (location.protocol === 'file:') { useFixture(); return; }
+    // Always attempt the real feed first, file:// included — some setups do read
+    // a sibling file, and when the browser refuses we owe the reader the reason
+    // rather than a wall of fabricated findings.
     await poll();
-    if (!state.eventCount) useFixture();
+    if (!state.eventCount) {
+      if (requestedFeed) showNoFeed(); else useFixture();
+      if (location.protocol === 'file:') return;
+    }
     setInterval(poll, 2500); connectSse();
   }
   boot();
