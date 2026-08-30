@@ -59,7 +59,10 @@ def test_specs_encode_context_and_header_evidence() -> None:
         viewport=MOBILE,
         varies=Axis.PRIVILEGE,
     )
-    generated = spec_for(finding(FindingKind.ESCALATION, testimonies=[make_testimony(BASELINE), make_testimony(varied)]))
+    generated = spec_for(
+        finding(FindingKind.ESCALATION, testimonies=[make_testimony(BASELINE), make_testimony(varied)]),
+        {"member": "runs/admin/storage-member.json"},
+    )
 
     assert "Finding: escalation-privilege-" in generated
     assert "Axis: privilege" in generated
@@ -69,7 +72,7 @@ def test_specs_encode_context_and_header_evidence() -> None:
     assert 'locale: "ar"' in generated
     assert 'colorScheme: "dark"' in generated
     assert 'storageState: "runs/admin/storage-member.json"' in generated
-    assert "storage-state convention" in generated
+    assert "the file this run was given" in generated
     assert 'use: { baseURL: "https://your-app.example" }' in generated
 
 
@@ -77,6 +80,7 @@ def test_specs_use_base_url_relative_routes_and_pipeline_storage_states() -> Non
     anonymous = Context(privilege=Privilege.ANON, varies=Axis.PRIVILEGE)
     member = Context(privilege=Privilege.MEMBER, varies=Axis.PRIVILEGE)
     owner = Context(privilege=Privilege.OWNER, varies=Axis.PRIVILEGE)
+    states = {"member": "runs/workspace/storage-member.json", "owner": "runs/workspace/storage-owner.json"}
     absolute_surface = Surface(
         SurfaceKind.ROUTE,
         "https://demo.example/workspace/audit?return=https://elsewhere.example",
@@ -85,17 +89,20 @@ def test_specs_use_base_url_relative_routes_and_pipeline_storage_states() -> Non
     anon_spec = spec_for(
         Finding(FindingKind.ESCALATION, Severity.HIGH, absolute_surface, Axis.PRIVILEGE, "anonymous access", [
             Testimony(absolute_surface, anonymous, Outcome.REACHED),
-        ])
+        ]),
+        states,
     )
     member_spec = spec_for(
         Finding(FindingKind.CAPABILITY_DRIFT, Severity.HIGH, absolute_surface, Axis.PRIVILEGE, "member access", [
             Testimony(absolute_surface, member, Outcome.REACHED),
-        ])
+        ]),
+        states,
     )
     owner_spec = spec_for(
         Finding(FindingKind.CAPABILITY_DRIFT, Severity.HIGH, absolute_surface, Axis.PRIVILEGE, "owner access", [
             Testimony(absolute_surface, owner, Outcome.REACHED),
-        ])
+        ]),
+        states,
     )
 
     assert "storageState" not in anon_spec
@@ -211,3 +218,19 @@ def test_emit_all_writes_exactly_the_expected_files(tmp_path: Path) -> None:
     assert written == [tmp_path / filename_for(item) for item in findings]
     assert {path.name for path in tmp_path.iterdir()} == {filename_for(item) for item in findings}
     assert all(path.read_text(encoding="utf-8") == spec_for(item) for path, item in zip(written, findings))
+
+
+def test_a_run_without_credentials_emits_a_spec_that_can_open() -> None:
+    """The guessed path made every credential-free spec fail on ENOENT first."""
+    surface = Surface(SurfaceKind.ROUTE, "https://example.com/")
+    owner = Context(privilege=Privilege.OWNER, varies=Axis.VIEWPORT)
+
+    generated = spec_for(
+        Finding(FindingKind.RENDER_DEFECT, Severity.MEDIUM, surface, Axis.VIEWPORT, "tap target too small", [
+            Testimony(surface, owner, Outcome.PARTIAL),
+        ]),
+        storage_states=None,
+    )
+
+    assert "storageState" not in generated
+    assert "runs/site/" not in generated

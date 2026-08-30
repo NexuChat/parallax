@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
@@ -31,12 +31,20 @@ def _base_url_path(value: str) -> str:
     return f"{path}?{query}" if query else path
 
 
-def _storage_state_path(route: str, privilege: str) -> str | None:
-    """Return the state-file location created by run_demo_suite for a role."""
-    if privilege == "anon":
+def _storage_state_path(privilege: str, storage_states: Mapping[str, str] | None) -> str | None:
+    """Return the state file the run actually used for this role, or none.
+
+    Guessing a path from the finding's URL produced specs that could not run: a
+    root-level route yielded the literal "runs/site/storage-owner.json", and a
+    sweep given no credentials still claimed one. A spec that cannot open its
+    storage state fails on ENOENT before reaching a single assertion, which turns
+    the one deliverable that is supposed to prove the finding into noise. Only a
+    path the operator supplied is written, and anonymous witnesses carry none.
+    """
+    if privilege == "anon" or not storage_states:
         return None
-    site = _base_url_path(route).lstrip("/").split("/", 1)[0] or "site"
-    return f"runs/{site}/storage-{privilege}.json"
+    path = storage_states.get(privilege)
+    return str(path) if path else None
 
 
 def _context_for(finding: Finding) -> Testimony:
@@ -150,14 +158,19 @@ def _revocation_assertion(finding: Finding) -> str:
   expect(revocationLagMs).toBeLessThan({measurement.deadline_ms});'''
 
 
-def spec_for(finding: Finding) -> str:
+def spec_for(finding: Finding, storage_states: Mapping[str, str] | None = None) -> str:
     """Render one self-contained, failing-until-fixed Playwright TypeScript spec."""
     witness = _context_for(finding)
     context = witness.context
     path = _ts(_base_url_path(finding.surface.path))
     title = _ts(f"Parallax: {finding.id}")
-    storage_state = _storage_state_path(finding.surface.path, context.privilege.value)
+    storage_state = _storage_state_path(context.privilege.value, storage_states)
     storage_line = f"\n  storageState: {_ts(storage_state)}," if storage_state else ""
+    storage_note = (
+        " * The storage state below is the file this run was given for that role."
+        if storage_state
+        else " * This run had no credentials for that role, so the spec opens the page anonymously."
+    )
     setup = f'''test.use({{
   viewport: {{ width: {context.viewport.width}, height: {context.viewport.height} }},
   locale: {_ts(context.locale.value)},
@@ -185,7 +198,7 @@ def spec_for(finding: Finding) -> str:
  * Axis: {_comment(finding.axis.value)}
  * Evidence: {_comment(finding.evidence_line())}
  * In playwright.config.ts: use: {{ baseURL: "https://your-app.example" }}
- * storage-state convention: scripts/run_demo_suite.py writes runs/<site>/storage-<role>.json after login for member and owner; anonymous runs use no stored state.
+{storage_note}
  */
 import {{ test, expect }} from "@playwright/test";
 
@@ -205,12 +218,14 @@ def filename_for(finding: Finding) -> str:
     return f"parallax-{finding.kind.value}-{finding.axis.value}-{digest}.spec.ts"
 
 
-def emit_all(findings: Iterable[Finding], out_dir: Path) -> list[Path]:
+def emit_all(
+    findings: Iterable[Finding], out_dir: Path, storage_states: Mapping[str, str] | None = None
+) -> list[Path]:
     """Write one spec per finding and return paths in input order."""
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for finding in findings:
         path = out_dir / filename_for(finding)
-        path.write_text(spec_for(finding), encoding="utf-8")
+        path.write_text(spec_for(finding, storage_states), encoding="utf-8")
         written.append(path)
     return written

@@ -4,7 +4,7 @@
  * Axis: privilege
  * Evidence: owner-en-light-desktop=reached · anon-en-light-desktop=reached
  * In playwright.config.ts: use: { baseURL: "https://your-app.example" }
- * storage-state convention: scripts/run_demo_suite.py writes runs/<site>/storage-<role>.json after login for member and owner; anonymous runs use no stored state.
+ * This run had no credentials for that role, so the spec opens the page anonymously.
  */
 import { test, expect } from "@playwright/test";
 

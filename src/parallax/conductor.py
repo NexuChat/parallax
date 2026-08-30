@@ -168,7 +168,12 @@ class Conductor:
             for finding in findings:
                 self._write(feed_path, "finding", finding_payload(finding, mosaic=scenario_mosaic))
 
-        spec_paths = emit_all(all_findings, self.out_dir / "specs")
+        spec_paths = emit_all(
+            all_findings, self.out_dir / "specs",
+            # Only the roles this run was actually given; a guessed path makes a
+            # spec that cannot open its state and never reaches an assertion.
+            {str(role): str(path) for role, path in (self.storage_states or {}).items()},
+        )
         return ConductSummary(surfaces, all_testimonies, all_findings, spec_paths, feed_path, axis_applicability)
 
     async def _discover(self) -> list[Surface]:
