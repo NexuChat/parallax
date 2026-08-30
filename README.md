@@ -2,6 +2,13 @@
 
 Parallax is a browser-based regression investigator for an existing web application. It visits the same discovered surfaces from seven isolated contexts, records what each context can reach and what it renders, then turns broken expectations into findings and Playwright regression specs. The live console is available at [perallax.mlki.app](https://perallax.mlki.app).
 
+![Parallax architecture](docs/architecture.png)
+
+The diagram above is the whole system on one page: what runs on Google Cloud,
+how Gemini is reached, where state lives, and what a run leaves behind. Its
+source is [`docs/architecture-diagram.html`](docs/architecture-diagram.html), and
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) is the prose version.
+
 ## Quickstart
 
 Parallax requires Python 3.12+, Chromium for Playwright, and its runtime packages. From the repository root, install the runtime packages and the browser:

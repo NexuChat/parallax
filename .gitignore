@@ -10,4 +10,5 @@ dist/
 /runs/
 .playwright-mcp/
 /*.png
+!docs/architecture.png
 console/runs/*/storage-*.json

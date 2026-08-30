@@ -1,0 +1,215 @@
+<meta charset="utf-8">
+<title>Parallax architecture</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  html,body{margin:0;background:#fff}
+  svg{display:block}
+  .t{font-family:"IBM Plex Sans",system-ui,sans-serif}
+  .m{font-family:"IBM Plex Mono",monospace}
+</style>
+<svg id="d" width="1640" height="1080" viewBox="0 0 1640 1080" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6b75"/>
+    </marker>
+    <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0a7385"/>
+    </marker>
+  </defs>
+
+  <rect width="1640" height="1080" fill="#ffffff"/>
+
+  <!-- title -->
+  <text class="t" x="56" y="60" font-size="34" font-weight="700" fill="#0d1418">Parallax</text>
+  <text class="t" x="200" y="60" font-size="19" fill="#5b6b75">seven simultaneous browser witnesses · one comparison engine</text>
+  <text class="m" x="56" y="90" font-size="14" fill="#0a7385">All Things Agentic · Taskmaster · github.com/NexuChat/parallax</text>
+  <line x1="56" y1="108" x2="1584" y2="108" stroke="#dbe3e7" stroke-width="1"/>
+
+  <!-- ══ GOOGLE CLOUD BOUNDARY ══ -->
+  <rect x="56" y="132" width="1234" height="256" rx="12" fill="#f4f9fb" stroke="#0a7385" stroke-width="2" stroke-dasharray="7 5"/>
+  <text class="t" x="76" y="160" font-size="13" font-weight="700" fill="#0a7385" letter-spacing="1.4">GOOGLE CLOUD · project rasikh-fleet-2026</text>
+
+  <!-- Cloud Run -->
+  <rect x="80" y="180" width="430" height="184" rx="9" fill="#fff" stroke="#0a7385" stroke-width="1.6"/>
+  <text class="t" x="102" y="210" font-size="18" font-weight="700" fill="#0d1418">Cloud Run</text>
+  <text class="m" x="102" y="232" font-size="12.5" fill="#0a7385">parallax · us-central1 · 4 GiB · max-instances 1</text>
+  <text class="m" x="102" y="258" font-size="12.5" fill="#3d4c54">service/app.py — WSGI, no framework</text>
+  <text class="m" x="102" y="280" font-size="12.5" fill="#3d4c54">POST /runs        → starts a sweep, 202</text>
+  <text class="m" x="102" y="300" font-size="12.5" fill="#3d4c54">GET  /runs/&lt;id&gt;   → status + sweep log tail</text>
+  <text class="m" x="102" y="320" font-size="12.5" fill="#3d4c54">GET  /runs/&lt;id&gt;/feed.jsonl</text>
+  <text class="m" x="102" y="344" font-size="12.5" fill="#3d4c54">image: playwright/python v1.62 + Chromium</text>
+
+  <!-- Vertex AI -->
+  <rect x="560" y="180" width="392" height="184" rx="9" fill="#fff" stroke="#0a7385" stroke-width="1.6"/>
+  <text class="t" x="582" y="210" font-size="18" font-weight="700" fill="#0d1418">Vertex AI</text>
+  <text class="m" x="582" y="232" font-size="12.5" fill="#0a7385">gemini-3.5-flash · location global</text>
+  <text class="t" x="582" y="262" font-size="13.5" fill="#3d4c54">Sees one composed frame of all seven</text>
+  <text class="t" x="582" y="281" font-size="13.5" fill="#3d4c54">witnesses and names the tile that</text>
+  <text class="t" x="582" y="300" font-size="13.5" fill="#3d4c54">disagrees with its peers.</text>
+  <text class="m" x="582" y="328" font-size="12" fill="#0d7346">auth: Cloud Run service account (ADC)</text>
+  <text class="m" x="582" y="347" font-size="12" fill="#0d7346">no API key leaves the project</text>
+
+  <!-- Secret Manager -->
+  <rect x="1002" y="180" width="270" height="86" rx="9" fill="#fff" stroke="#c5d1d7" stroke-width="1.4"/>
+  <text class="t" x="1024" y="208" font-size="15" font-weight="600" fill="#0d1418">Secret Manager</text>
+  <text class="m" x="1024" y="230" font-size="11.5" fill="#67787f">GEMINI_API_KEY — fallback only,</text>
+  <text class="m" x="1024" y="248" font-size="11.5" fill="#67787f">for running the image off-cloud</text>
+
+  <!-- Artifact Registry / Cloud Build -->
+  <rect x="1002" y="278" width="270" height="86" rx="9" fill="#fff" stroke="#c5d1d7" stroke-width="1.4"/>
+  <text class="t" x="1024" y="306" font-size="15" font-weight="600" fill="#0d1418">Cloud Build → Artifact Registry</text>
+  <text class="m" x="1024" y="328" font-size="11.5" fill="#67787f">deploy/cloudrun.sh builds the image</text>
+  <text class="m" x="1024" y="346" font-size="11.5" fill="#67787f">and deploys it. Safe to re-run.</text>
+
+  <!-- Gemma outside the cloud boundary -->
+  <rect x="1312" y="132" width="272" height="256" rx="12" fill="#fffaf2" stroke="#a86400" stroke-width="2" stroke-dasharray="7 5"/>
+  <text class="t" x="1332" y="160" font-size="13" font-weight="700" fill="#a86400" letter-spacing="1.4">SELF-HOSTED · NOT GOOGLE CLOUD</text>
+  <rect x="1330" y="176" width="236" height="192" rx="9" fill="#fff" stroke="#a86400" stroke-width="1.4"/>
+  <text class="t" x="1348" y="206" font-size="17" font-weight="700" fill="#0d1418">Gemma 3 · 4B</text>
+  <text class="m" x="1348" y="227" font-size="11.5" fill="#a86400">Ollama · RTX 4000 Ada</text>
+  <text class="t" x="1348" y="256" font-size="13" fill="#3d4c54">Groups repeated findings into</text>
+  <text class="t" x="1348" y="274" font-size="13" fill="#3d4c54">the few causes a reviewer can</text>
+  <text class="t" x="1348" y="292" font-size="13" fill="#3d4c54">act on. Reads summaries only;</text>
+  <text class="t" x="1348" y="310" font-size="13" fill="#3d4c54">cannot add to its input.</text>
+  <text class="m" x="1348" y="338" font-size="11" fill="#67787f">PARALLAX_GEMMA_URL · optional</text>
+
+  <!-- ══ THE SWEEP ══ -->
+  <text class="t" x="56" y="432" font-size="13" font-weight="700" fill="#5b6b75" letter-spacing="1.4">ONE SWEEP, INSIDE THE CONTAINER</text>
+
+  <!-- Conductor -->
+  <rect x="56" y="450" width="228" height="118" rx="9" fill="#0d1418"/>
+  <text class="t" x="78" y="482" font-size="18" font-weight="700" fill="#fff">Conductor</text>
+  <text class="t" x="78" y="506" font-size="12.5" fill="#b3c4cc">Discovers routes and controls</text>
+  <text class="t" x="78" y="524" font-size="12.5" fill="#b3c4cc">from one baseline context, then</text>
+  <text class="t" x="78" y="542" font-size="12.5" fill="#b3c4cc">derives the witness matrix.</text>
+  <text class="m" x="78" y="560" font-size="11.5" fill="#55d2e5">conductor.py</text>
+
+  <!-- Witnesses -->
+  <rect x="320" y="450" width="536" height="118" rx="9" fill="#fff" stroke="#c5d1d7" stroke-width="1.6"/>
+  <text class="t" x="342" y="478" font-size="16" font-weight="700" fill="#0d1418">Seven isolated witnesses — one Chromium, seven contexts</text>
+  <text class="t" x="342" y="498" font-size="12.5" fill="#5b6b75">Each varies exactly one axis from the baseline, so a disagreement has one cause.</text>
+  <g class="m" font-size="11">
+    <rect x="342" y="510" width="96" height="24" rx="4" fill="#eef4f6"/><text x="352" y="526" fill="#0a7385">baseline</text>
+    <rect x="446" y="510" width="80" height="24" rx="4" fill="#eef4f6"/><text x="456" y="526" fill="#3d4c54">member</text>
+    <rect x="534" y="510" width="66" height="24" rx="4" fill="#eef4f6"/><text x="544" y="526" fill="#3d4c54">anon</text>
+    <rect x="608" y="510" width="76" height="24" rx="4" fill="#eef4f6"/><text x="618" y="526" fill="#3d4c54">ar / RTL</text>
+    <rect x="692" y="510" width="60" height="24" rx="4" fill="#eef4f6"/><text x="702" y="526" fill="#3d4c54">dark</text>
+    <rect x="760" y="510" width="74" height="24" rx="4" fill="#eef4f6"/><text x="770" y="526" fill="#3d4c54">360 · 768</text>
+  </g>
+  <text class="m" x="342" y="556" font-size="11.5" fill="#67787f">witness.py · CDP screencast per context, never a shared cookie jar</text>
+
+  <!-- Relational pair -->
+  <rect x="892" y="450" width="674" height="118" rx="9" fill="#fff" stroke="#c8232c" stroke-width="1.8"/>
+  <text class="t" x="914" y="478" font-size="16" font-weight="700" fill="#0d1418">Relational pair — two live sessions, coupled in time</text>
+  <text class="t" x="914" y="500" font-size="12.5" fill="#5b6b75">The only axis a sequential sweep cannot test: by its turn, the other session is already closed.</text>
+  <rect x="914" y="512" width="310" height="40" rx="5" fill="#fdf3f3"/>
+  <text class="m" x="926" y="529" font-size="11.5" font-weight="600" fill="#c8232c">PROPAGATION</text>
+  <text class="m" x="926" y="545" font-size="11" fill="#3d4c54">sender acts → did the receiver ever see it?</text>
+  <rect x="1234" y="512" width="318" height="40" rx="5" fill="#fdf3f3"/>
+  <text class="m" x="1246" y="529" font-size="11.5" font-weight="600" fill="#c8232c">REVOCATION LAG</text>
+  <text class="m" x="1246" y="545" font-size="11" fill="#3d4c54">admin revokes → how long did access persist?</text>
+
+  <!-- ══ JUDGEMENT ══ -->
+  <text class="t" x="56" y="618" font-size="13" font-weight="700" fill="#5b6b75" letter-spacing="1.4">JUDGEMENT — MEASURED FIRST, MODEL LAST</text>
+
+  <rect x="56" y="636" width="240" height="150" rx="9" fill="#fff" stroke="#c5d1d7" stroke-width="1.6"/>
+  <text class="t" x="76" y="664" font-size="15" font-weight="700" fill="#0d1418">1 · In-page probe</text>
+  <text class="m" x="76" y="684" font-size="11.5" fill="#0a7385">probe.js — deterministic</text>
+  <text class="t" x="76" y="708" font-size="12.5" fill="#3d4c54">overflow · offscreen control</text>
+  <text class="t" x="76" y="726" font-size="12.5" fill="#3d4c54">WCAG AA contrast · clipping</text>
+  <text class="t" x="76" y="744" font-size="12.5" fill="#3d4c54">44px tap targets · raw i18n keys</text>
+  <text class="t" x="76" y="770" font-size="12" fill="#67787f">repeatable, so a live demo holds</text>
+
+  <rect x="316" y="636" width="240" height="150" rx="9" fill="#fff" stroke="#c5d1d7" stroke-width="1.6"/>
+  <text class="t" x="336" y="664" font-size="15" font-weight="700" fill="#0d1418">2 · Comparison</text>
+  <text class="m" x="336" y="684" font-size="11.5" fill="#0a7385">mirror.py · differ.py</text>
+  <text class="t" x="336" y="708" font-size="12.5" fill="#3d4c54">RTL geometry mirrored by</text>
+  <text class="m" x="336" y="726" font-size="12" fill="#0d1418">x' = W − x − w</text>
+  <text class="t" x="336" y="748" font-size="12.5" fill="#3d4c54">Privilege must diverge; locale,</text>
+  <text class="t" x="336" y="766" font-size="12.5" fill="#3d4c54">theme and viewport must not.</text>
+
+  <rect x="576" y="636" width="240" height="150" rx="9" fill="#fff" stroke="#0d7346" stroke-width="1.6"/>
+  <text class="t" x="596" y="664" font-size="15" font-weight="700" fill="#0d1418">3 · Applicability gate</text>
+  <text class="m" x="596" y="684" font-size="11.5" fill="#0d7346">judge only what the app claims</text>
+  <text class="t" x="596" y="708" font-size="12.5" fill="#3d4c54">No hreflang or switcher → the</text>
+  <text class="t" x="596" y="726" font-size="12.5" fill="#3d4c54">locale axis is NOT APPLICABLE</text>
+  <text class="t" x="596" y="744" font-size="12.5" fill="#3d4c54">and reports its reason.</text>
+  <text class="t" x="596" y="770" font-size="12" fill="#67787f">the tool never invents evidence</text>
+
+  <rect x="836" y="636" width="240" height="150" rx="9" fill="#fff" stroke="#0a7385" stroke-width="1.8"/>
+  <text class="t" x="856" y="664" font-size="15" font-weight="700" fill="#0d1418">4 · Gemini lens</text>
+  <text class="m" x="856" y="684" font-size="11.5" fill="#0a7385">gemini-3.5-flash · Vertex</text>
+  <text class="t" x="856" y="708" font-size="12.5" fill="#3d4c54">Sent the composed mosaic, not</text>
+  <text class="t" x="856" y="726" font-size="12.5" fill="#3d4c54">seven screenshots: the outlier</text>
+  <text class="t" x="856" y="744" font-size="12.5" fill="#3d4c54">is spatial, and comparison is</text>
+  <text class="t" x="856" y="762" font-size="12.5" fill="#3d4c54">native to one image.</text>
+  <text class="m" x="856" y="782" font-size="11" fill="#0d7346">every call is counted</text>
+
+  <rect x="1096" y="636" width="240" height="150" rx="9" fill="#fff" stroke="#a86400" stroke-width="1.6"/>
+  <text class="t" x="1116" y="664" font-size="15" font-weight="700" fill="#0d1418">5 · Gemma triage</text>
+  <text class="m" x="1116" y="684" font-size="11.5" fill="#a86400">gemma3:4b · self-hosted</text>
+  <text class="t" x="1116" y="708" font-size="12.5" fill="#3d4c54">31 findings → 3 causes.</text>
+  <text class="t" x="1116" y="730" font-size="12.5" fill="#3d4c54">Partitions ids it was given;</text>
+  <text class="t" x="1116" y="748" font-size="12.5" fill="#3d4c54">an id it never received is</text>
+  <text class="t" x="1116" y="766" font-size="12.5" fill="#3d4c54">discarded.</text>
+
+  <!-- state -->
+  <rect x="1356" y="636" width="228" height="150" rx="9" fill="#0d1418"/>
+  <text class="t" x="1376" y="664" font-size="15" font-weight="700" fill="#fff">State</text>
+  <text class="t" x="1376" y="686" font-size="12" fill="#b3c4cc">One directory per run.</text>
+  <text class="m" x="1376" y="710" font-size="11.5" fill="#55d2e5">feed.jsonl</text>
+  <text class="t" x="1376" y="726" font-size="11" fill="#8298a2">append-only, one event per line</text>
+  <text class="m" x="1376" y="746" font-size="11.5" fill="#55d2e5">mosaics/*.jpg</text>
+  <text class="m" x="1376" y="764" font-size="11.5" fill="#55d2e5">specs/*.spec.ts</text>
+  <text class="m" x="1376" y="780" font-size="11.5" fill="#55d2e5">sweep.log</text>
+
+  <!-- ══ OUTPUT ══ -->
+  <text class="t" x="56" y="836" font-size="13" font-weight="700" fill="#5b6b75" letter-spacing="1.4">OUTPUT</text>
+
+  <rect x="56" y="854" width="500" height="122" rx="9" fill="#fff" stroke="#c5d1d7" stroke-width="1.6"/>
+  <text class="t" x="78" y="882" font-size="16" font-weight="700" fill="#0d1418">A failing Playwright spec, not a report</text>
+  <text class="t" x="78" y="904" font-size="12.5" fill="#5b6b75">Each finding is emitted as a test configured with the</text>
+  <text class="t" x="78" y="922" font-size="12.5" fill="#5b6b75">witness viewport, locale, colour scheme and role state</text>
+  <text class="t" x="78" y="940" font-size="12.5" fill="#5b6b75">that observed it — ready to merge into CI.</text>
+  <text class="m" x="78" y="964" font-size="11.5" fill="#0a7385">emitter.py</text>
+
+  <rect x="576" y="854" width="500" height="122" rx="9" fill="#fff" stroke="#c5d1d7" stroke-width="1.6"/>
+  <text class="t" x="598" y="882" font-size="16" font-weight="700" fill="#0d1418">Live console — the wall of seven</text>
+  <text class="t" x="598" y="904" font-size="12.5" fill="#5b6b75">Reads the append-only feed and highlights the exact</text>
+  <text class="t" x="598" y="922" font-size="12.5" fill="#5b6b75">tiles that support a finding. Says REPLAY when it is</text>
+  <text class="t" x="598" y="940" font-size="12.5" fill="#5b6b75">replaying a recording, LIVE only when events arrive.</text>
+  <text class="m" x="598" y="964" font-size="11.5" fill="#0a7385">console/app.js</text>
+
+  <rect x="1096" y="854" width="488" height="122" rx="9" fill="#f4f9fb" stroke="#0a7385" stroke-width="1.6"/>
+  <text class="t" x="1118" y="882" font-size="16" font-weight="700" fill="#0d1418">Measured, not asserted</text>
+  <text class="m" x="1118" y="906" font-size="12.5" fill="#0d1418">9 of 15 planted defects found · 94 false positives</text>
+  <text class="m" x="1118" y="926" font-size="12.5" fill="#0d1418">2 of them on an application with nothing planted</text>
+  <text class="t" x="1118" y="950" font-size="12.5" fill="#5b6b75">The error rate leads the page rather than hiding</text>
+  <text class="t" x="1118" y="966" font-size="12.5" fill="#5b6b75">behind it. Every figure regenerates from HEAD.</text>
+
+  <!-- ══ ARROWS ══ -->
+  <!-- conductor → witnesses -->
+  <line x1="284" y1="509" x2="316" y2="509" stroke="#5b6b75" stroke-width="1.8" marker-end="url(#a)"/>
+  <!-- witnesses → relational -->
+  <line x1="856" y1="509" x2="888" y2="509" stroke="#5b6b75" stroke-width="1.8" marker-end="url(#a)"/>
+  <!-- cloud run → conductor -->
+  <path d="M170 364 L170 450" stroke="#0a7385" stroke-width="1.8" fill="none" marker-end="url(#ac)"/>
+  <text class="m" x="180" y="412" font-size="11" fill="#0a7385">POST /runs</text>
+  <!-- gemini lens ↔ vertex -->
+  <path d="M956 636 L956 600 L756 600 L756 368" stroke="#0a7385" stroke-width="1.8" fill="none" marker-end="url(#ac)"/>
+  <text class="m" x="770" y="592" font-size="11" fill="#0a7385">one composed mosaic → structured verdict</text>
+  <!-- gemma ↔ host -->
+  <path d="M1216 636 L1216 604 L1448 604 L1448 372" stroke="#a86400" stroke-width="1.8" fill="none" marker-end="url(#ac)" opacity=".85"/>
+  <text class="m" x="1240" y="596" font-size="11" fill="#a86400">finding summaries → id partition</text>
+  <!-- witnesses → judgement -->
+  <path d="M588 568 L588 608 L176 608 L176 636" stroke="#5b6b75" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+  <!-- state → output -->
+  <path d="M1470 786 L1470 820 L1340 820 L1340 854" stroke="#5b6b75" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+  <path d="M1400 786 L1400 826 L306 826 L306 854" stroke="#5b6b75" stroke-width="1.4" fill="none" marker-end="url(#a)" opacity=".7"/>
+  <path d="M1400 786 L1400 826 L826 826 L826 854" stroke="#5b6b75" stroke-width="1.4" fill="none" marker-end="url(#a)" opacity=".7"/>
+  <!-- judgement → state -->
+  <line x1="1336" y1="711" x2="1352" y2="711" stroke="#5b6b75" stroke-width="1.8" marker-end="url(#a)"/>
+
+  <text class="m" x="56" y="1024" font-size="11.5" fill="#67787f">Gemini 3.5 Flash reached through Vertex AI with the Cloud Run service account · Google GenAI SDK (google-genai) · Cloud Run, Cloud Build, Artifact Registry, Secret Manager</text>
+  <text class="m" x="56" y="1044" font-size="11.5" fill="#67787f">225 tests · every published figure regenerated from the commit it describes</text>
+</svg>
