@@ -26,6 +26,7 @@
   const generatedSpec = document.getElementById('generated-spec');
   const generatedSpecFigures = document.getElementById('generated-spec-figures');
   const generatedSpecSummaryNote = document.getElementById('generated-spec-summary-note');
+  const footerLinks = document.getElementById('footer-links');
 
   function cell(value) {
     return Number.isFinite(value) ? String(value) : '<span class="not-run">not yet run</span>';
@@ -172,6 +173,14 @@
     entries.forEach((entry) => {
       gallery.querySelector(`[data-app="${entry.name}"] .app-select`).addEventListener('click', () => updateWall(entry, true));
     });
+    // The footer used to name five demo targets by hand, which is the same
+    // second source of truth that went stale in the scoreboard.
+    const local = entries.filter((entry) => !EXTERNAL[entry.name]);
+    if (footerLinks && local.length) {
+      footerLinks.innerHTML = local
+        .map((entry) => `<a href="https://demo.mlki.app/${entry.name}/">${entry.name}</a>`)
+        .join('');
+    }
     const requestedApp = new URLSearchParams(location.search).get('app');
     const selected = entries.find((entry) => entry.name === requestedApp)
       || entries.find((entry) => entry.name === 'the-internet')
