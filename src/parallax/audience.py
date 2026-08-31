@@ -174,7 +174,10 @@ class AudienceRun:
         for watcher, observer in zip(watchers, scenario.observers):
             target = (observer.surface or scenario.surface).path
             moves.append(watcher.page.goto(target, wait_until="domcontentloaded", timeout=5_000))
-        await asyncio.gather(*moves)
+        # One observer that cannot reach its surface must not stop the others
+        # from watching: the run reports it as unreadable, which is evidence,
+        # rather than losing every other vantage point with it.
+        await asyncio.gather(*moves, return_exceptions=True)
 
     @staticmethod
     async def _perform(action: PageAction, page: Any) -> None:

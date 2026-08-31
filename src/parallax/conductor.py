@@ -482,7 +482,21 @@ class Conductor:
 
         collector = asyncio.create_task(collect())
         try:
-            testimonies = list(await asyncio.gather(*(run(context) for context in self.contexts)))
+            # `run` already turns a witness failure into testimony, so nothing
+            # here should raise. `return_exceptions` is the guarantee that if
+            # something ever does — a cancellation, an error escaping teardown —
+            # one witness cannot take the other six with it and cost the surface
+            # its entire evidence.
+            gathered = await asyncio.gather(
+                *(run(context) for context in self.contexts), return_exceptions=True
+            )
+            testimonies = [
+                item if isinstance(item, Testimony) else Testimony(
+                    surface, context, Outcome.ERROR,
+                    note=f"witness failed: {type(item).__name__}: {item}",
+                )
+                for item, context in zip(gathered, self.contexts)
+            ]
         finally:
             collecting = False
             collector.cancel()

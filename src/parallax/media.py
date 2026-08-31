@@ -60,7 +60,7 @@ INSTRUMENT_MEDIA = """
 # Answers "is sound arriving now", not "is a track present". A muted participant
 # negotiates and receives packets exactly like a listening one.
 AUDIO_RECEIVED = """
-async ({ minLevel, minPackets, windowMs }) => {
+async ({ minLevel, minPackets, windowMs, passes }) => {
   const state = window.__parallaxMedia;
   const result = { level: 0, packets: 0, connections: 0, streams: 0, source: 'none' };
 
@@ -130,11 +130,20 @@ async ({ minLevel, minPackets, windowMs }) => {
   result.streams = streams.length;
   result.audibleStreams = audible.length;
 
+  // Speech is not continuous. A single window can land in a gap between
+  // syllables, and under load — eight sessions negotiating in one headless
+  // browser — the window can be starved outright. Measured that way, a speaking
+  // participant read 0.011 while two quieter runs of the same session read
+  // 1.02. Several short windows and the loudest wins: silence stays silent,
+  // because a muted track has no loud window to find.
   const peakAcross = async (list) => {
     let peak = 0;
-    for (const stream of list.slice(0, 4)) {
-      const measured = await peakOf(stream);
-      if (measured > peak) peak = measured;
+    for (let pass = 0; pass < passes; pass += 1) {
+      for (const stream of list.slice(0, 4)) {
+        const measured = await peakOf(stream);
+        if (measured > peak) peak = measured;
+      }
+      if (peak >= minLevel) break;
     }
     return peak;
   };
@@ -192,6 +201,9 @@ class MediaExpectation:
     # Long enough to catch a syllable, short enough that several observers can be
     # measured inside one scenario deadline.
     window_ms: int = 400
+    # Retried windows, not a longer one: three short looks catch a syllable that
+    # one long look can still miss if it lands in a pause.
+    passes: int = 3
 
     def describe(self) -> str:
         if self.kind == "audio_received":
@@ -208,6 +220,7 @@ def media_probe(expectation: MediaExpectation) -> tuple[str, dict[str, Any]]:
             "minLevel": expectation.min_level,
             "minPackets": expectation.min_packets,
             "windowMs": expectation.window_ms,
+            "passes": expectation.passes,
         }
     return VIDEO_RECEIVED, {"minFrames": expectation.min_frames}
 

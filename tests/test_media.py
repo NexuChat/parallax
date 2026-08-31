@@ -54,7 +54,7 @@ def test_each_expectation_carries_its_own_thresholds_to_the_page() -> None:
     script, arguments = media_probe(MediaExpectation("audio_received", min_level=0.2, min_packets=9))
 
     assert script is AUDIO_RECEIVED
-    assert arguments == {"minLevel": 0.2, "minPackets": 9, "windowMs": 400}
+    assert arguments == {"minLevel": 0.2, "minPackets": 9, "windowMs": 400, "passes": 3}
 
     script, arguments = media_probe(MediaExpectation("video_received", min_frames=12))
 

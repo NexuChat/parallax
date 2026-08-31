@@ -949,3 +949,39 @@ def test_declared_roles_count_toward_the_privilege_axis() -> None:
 
     assert decisions[Axis.PRIVILEGE].applicable is True
     assert "distinct role storage states" in decisions[Axis.PRIVILEGE].reason
+
+
+def test_one_collapsing_witness_does_not_cost_the_surface_its_other_six(tmp_path: Path) -> None:
+    """gather propagates the first exception and discards its siblings' results.
+
+    `run` turns a witness failure into testimony, so nothing should raise — but
+    a cancellation or an error escaping teardown would have taken all seven
+    witnesses down together and left the surface with no evidence at all.
+    """
+    import parallax.conductor as conductor_module
+
+    class ExplodingWitness(conductor_module.Witness):  # type: ignore[misc]
+        async def visit(self, surface):  # type: ignore[override]
+            if self.context.varies is Axis.LOCALE:
+                raise RuntimeError("the locale witness died")
+            return await super().visit(surface)
+
+    async def check() -> None:
+        browser = FakeBrowser([{} for _ in range(30)])
+        conductor = Conductor(
+            f"{SITE}/", tmp_path, browser=browser, max_surfaces=1, settle_ms=0, poll_ms=1
+        )
+        original = conductor_module.Witness
+        conductor_module.Witness = ExplodingWitness  # type: ignore[assignment]
+        try:
+            result = await conductor.conduct()
+        finally:
+            conductor_module.Witness = original  # type: ignore[assignment]
+
+        assert len(result.testimonies) >= 7
+        failed = [t for t in result.testimonies if t.outcome is Outcome.ERROR]
+        assert failed, "the collapsed witness must still appear as testimony"
+        assert any("the locale witness died" in (t.note or "") for t in failed)
+        assert any(t.outcome is Outcome.REACHED for t in result.testimonies)
+
+    asyncio.run(check())

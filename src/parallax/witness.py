@@ -434,9 +434,17 @@ async def run_witnesses(
             Witness(context, browser, storage_state=_storage_for(context, storage_states))
             for context in contexts or derive_witnesses()
         ]
-        testimonies = list(
-            await asyncio.gather(*(_visit_and_close(witness, surface) for witness in witnesses))
+        gathered = await asyncio.gather(
+            *(_visit_and_close(witness, surface) for witness in witnesses),
+            return_exceptions=True,
         )
+        testimonies = [
+            item if isinstance(item, Testimony) else Testimony(
+                surface, witness.context, Outcome.ERROR,
+                note=f"witness failed: {type(item).__name__}: {item}",
+            )
+            for item, witness in zip(gathered, witnesses)
+        ]
     finally:
         if owned_browser:
             await browser.close()
