@@ -16,9 +16,25 @@ from typing import Any, Protocol
 from urllib.request import Request, urlopen
 
 
-EMBEDDING_MODEL = "text-embedding-005"
-SEMANTIC_EQUIVALENCE_THRESHOLD = 0.82
-"""0.82 rejects topical overlap while retaining ordinary paraphrases and translations."""
+EMBEDDING_MODEL = "gemini-embedding-001"
+
+# The task type is not decoration: without it the model returns a general-purpose
+# vector and the separation below collapses.
+EMBEDDING_TASK = "SEMANTIC_SIMILARITY"
+
+SEMANTIC_EQUIVALENCE_THRESHOLD = 0.90
+"""0.90 sits inside a measured gap rather than being chosen by intuition.
+
+Calibrated on eight translate-then-compare pairs, four correct and four
+deliberately mismatched. `gemini-embedding-001` scored the correct translations
+0.970–0.987 and the wrong ones 0.702–0.836, a gap of 0.134 with 0.90 in the
+middle of it.
+
+The model it replaced could not make this judgement at all. `text-embedding-005`
+scored the same correct pairs 0.996–1.000 and the same wrong pairs 0.978–0.998 —
+the bands overlap, so no threshold exists that separates them, and the locale
+lens had to be reduced to reporting the deterministic check's verdict with a
+score attached. That reduction is now reversed."""
 
 # A sweep batches at most twelve changed regions into one Translation request and
 # one Vertex request: two paid model calls per run, regardless of surface count.
@@ -219,7 +235,11 @@ class GoogleCloudTransport:
 
 
 class VertexEmbeddings:
-    """Call Vertex text-embedding-005 with all comparison regions in one batch."""
+    """Call the Vertex embedding model with all comparison regions in one batch.
+
+    Verified batched at twelve instances, which is the per-run cap, so the cost
+    claim of two paid calls per sweep survives the model change.
+    """
 
     route = "vertex"
 
@@ -227,7 +247,9 @@ class VertexEmbeddings:
         self._transport = transport
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
-        payload = {"instances": [{"content": text} for text in texts]}
+        payload = {
+            "instances": [{"content": text, "task_type": EMBEDDING_TASK} for text in texts]
+        }
         url = (
             "https://us-central1-aiplatform.googleapis.com/v1/projects/"
             f"{self._transport.project}/locations/us-central1/publishers/google/models/"

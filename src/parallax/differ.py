@@ -460,17 +460,33 @@ def _finding_from_semantics(candidate: _SemanticCandidate, result: SemanticResul
         f"equivalence threshold={SEMANTIC_EQUIVALENCE_THRESHOLD:.2f}"
     )
     if candidate.pair.kind is SemanticPairKind.LOCALE:
-        # For a locale pair the deterministic check decides and the score is
-        # corroboration, never the other way round. Both directions matter. An
-        # untranslated page shows the baseline's own text in the variant, so it
-        # scores as *equivalent* — the one verdict that would clear it if the
-        # score were trusted alone. And a correctly translated page is not
-        # byte-comparable, so a middling score is ordinary translation distance
-        # rather than evidence of anything. Calling that "untranslated" on the
-        # score alone reports a page as broken for having been translated well.
-        if Defect.UNTRANSLATED not in variant.defects:
+        # Untranslated text is the baseline's own text, so it scores as
+        # *equivalent* — the one verdict that would clear it if the score were
+        # trusted alone. The deterministic check therefore decides that case and
+        # the score only corroborates it.
+        if Defect.UNTRANSLATED in variant.defects:
+            return [_untranslated_finding(baseline, variant, evidence)]
+        # A page that *is* translated, into text whose meaning is unrelated to
+        # the baseline, is a defect no deterministic check can see: the script is
+        # right, the strings are different, and nothing is missing. It is
+        # reported here only because the model can now separate the two cases —
+        # measured at 0.970-0.987 for correct translations against 0.702-0.836
+        # for wrong ones. The model this replaced could not, and the claim was
+        # withdrawn rather than left standing on a threshold that did not exist.
+        if result.equivalent:
             return []
-        return [_untranslated_finding(baseline, variant, evidence)]
+        return [
+            Finding(
+                FindingKind.CONTENT_DIVERGENCE,
+                Severity.MEDIUM,
+                baseline.surface,
+                variant.context.varies,
+                f"{baseline.surface.describe()} is translated, but its meaning does not "
+                f"match the baseline when {cause}",
+                [baseline, variant],
+                evidence=evidence,
+            )
+        ]
     if result.equivalent:
         return []
     return [

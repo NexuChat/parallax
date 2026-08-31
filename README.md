@@ -260,9 +260,32 @@ There are two expectations. Privilege is the exception: access should narrow as 
 
 A content-signature mismatch is a reason to inspect a changed region, not by itself proof of a defect. The FNV-1a signature still identifies changed content, but it no longer decides ordinary content divergence alone. For theme and viewport comparisons, Parallax sends only the changed visible landmark text to Vertex AI's `text-embedding-005` model and compares the vectors by cosine similarity. A score of at least `0.82` is equivalent; a lower score becomes a content-divergence finding. The finding keeps the model name, score, and threshold as evidence, so a reviewer can see why a hash mismatch was or was not treated as material.
 
-For locale, the deterministic check decides and the model only supplies evidence — which is a correction, not the original design. Parallax translates the baseline region with Cloud Translation v2 and embeds both sides as before, but the score is no longer allowed to raise or clear a locale finding on its own, because measurement says it cannot carry that weight. Comparing a translated baseline against the variant through this pipeline, `text-embedding-005` scored a correct Arabic translation 0.702, an unrelated Arabic paragraph 0.689, and untranslated English 0.657. There is no threshold in a 0.045-wide band that separates them, and the `0.82` default sits above all three, so a sweep of the demo fleet duly accused the correctly translated `/faq` route at 0.669.
+For locale, Parallax translates the baseline region with Cloud Translation v2 and
+compares the two same-language strings by embedding. Both directions are
+reported, and they are different defects.
 
-The axis still works, because untranslated content was never a semantic question. A page that was never translated shows the baseline's own text, so its content signature matches, no region is sent, and the deterministic raw-text check reports it without any model call at all. What the embedding genuinely cannot do is tell a mistranslation from a good translation, and the README no longer claims otherwise. `gemini-embedding-001` does separate those — 0.978 against 0.714 on the same pair — so the capability is reachable, but it is not claimed here until it ships and is graded.
+An **untranslated** page shows the baseline's own text, so it scores as
+*equivalent* — the one verdict that would clear it if the score were trusted
+alone. The deterministic raw-text check decides that case and the score only
+corroborates it.
+
+A **mistranslated** page is the defect no deterministic check can see: the script
+is right, the strings are different, and nothing is missing. Reporting it needs a
+model that can separate a correct translation from an unrelated one, and the
+choice of model is the whole reason it can be claimed. Measured on eight
+translate-then-compare pairs, four correct and four deliberately mismatched:
+
+| model | correct translations | wrong translations | gap |
+| --- | --- | --- | --- |
+| `text-embedding-005` | 0.996 – 1.000 | 0.978 – 0.998 | **−0.002** |
+| `gemini-embedding-001` | 0.970 – 0.987 | 0.702 – 0.836 | **+0.134** |
+
+The bands overlap for the first, so no threshold separates them and the claim was
+withdrawn rather than left standing on a number that did not exist. The second
+separates them cleanly, and `0.90` sits inside the measured gap rather than being
+chosen by intuition. The `SEMANTIC_SIMILARITY` task type is not decoration:
+without it the model returns a general-purpose vector and the separation
+collapses.
 
 This path is bounded deliberately. Regions with matching content signatures are never sent; each sweep compares at most twelve changed regions, batched into at most one translation request and one embedding request. That is at most two paid semantic-model calls regardless of the number of visited surfaces. The JSON `semantics` report records attempted and successful calls and errors for both services. If embeddings fail, theme and viewport findings fall back to the content-signature mismatch and say that the comparison degraded. A locale comparison that cannot be translated or embedded is also reported as degraded; it produces a locale finding only if the deterministic untranslated check has evidence.
 

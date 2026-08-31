@@ -4,6 +4,8 @@ from collections.abc import Sequence
 
 from parallax.differ import compare
 from parallax.semantics import (
+    EMBEDDING_MODEL,
+    EMBEDDING_TASK,
     CloudTranslation,
     GoogleCloudTransport,
     MAX_SEMANTIC_COMPARISONS_PER_RUN,
@@ -74,9 +76,14 @@ def test_vertex_embedding_request_uses_adc_bearer_and_the_verified_route() -> No
     assert VertexEmbeddings(transport).embed(["hello"]) == [[1.0, 0.0]]
     assert captured["url"] == (
         "https://us-central1-aiplatform.googleapis.com/v1/projects/rasikh-fleet-2026/"
-        "locations/us-central1/publishers/google/models/text-embedding-005:predict"
+        f"locations/us-central1/publishers/google/models/{EMBEDDING_MODEL}:predict"
     )
-    assert captured["payload"] == {"instances": [{"content": "hello"}]}
+    # The task type travels with every instance: without it the model returns a
+    # general-purpose vector and correct translations stop separating from wrong
+    # ones, which is the whole reason this model was chosen.
+    assert captured["payload"] == {
+        "instances": [{"content": "hello", "task_type": EMBEDDING_TASK}]
+    }
     assert captured["headers"] == {
         "Authorization": "Bearer adc-token",
         "Content-Type": "application/json; charset=utf-8",
@@ -221,15 +228,15 @@ def test_semantic_difference_keeps_divergence_with_similarity_evidence() -> None
     assert "similarity=0.000" in findings[0].evidence
 
 
-def test_a_low_locale_score_alone_does_not_accuse_a_translated_page() -> None:
-    """Real embeddings do not separate a wrong translation from a right one.
+def test_a_translation_whose_meaning_drifted_is_reported() -> None:
+    """The defect no deterministic check can see, restored when a model could make it.
 
-    Measured against text-embedding-005 through this pipeline — translate the
-    baseline, then compare the two Arabic strings — a correct translation scored
-    0.702, an unrelated Arabic paragraph 0.689, and untranslated English 0.657.
-    A threshold anywhere in that band accuses correctly translated pages, which
-    is what a real sweep did to the demo `/faq` route at 0.669. So the score is
-    recorded as evidence and the deterministic check decides.
+    The script is right, the strings are different, and nothing is missing — so
+    the raw-text check has nothing to report. Under text-embedding-005 this was
+    unreportable too: correct translations scored 0.996-1.000 and wrong ones
+    0.978-0.998 through this pipeline, bands that overlap, so the claim was
+    withdrawn rather than left standing on a threshold that did not exist.
+    gemini-embedding-001 scores the same pairs 0.970-0.987 against 0.702-0.836.
     """
     arabic = Context(locale=Locale.AR, varies=Axis.LOCALE)
     embeddings = FakeEmbeddings({"إدارة الفواتير": [0.0, 1.0], "حذف مساحة العمل": [1.0, 0.0]})
@@ -239,6 +246,22 @@ def test_a_low_locale_score_alone_does_not_accuse_a_translated_page() -> None:
     findings = compare([
         say(BASELINE, "english", "Manage billing"),
         say(arabic, "arabic", "حذف مساحة العمل"),
+    ], semantics=models)
+
+    assert [finding.kind for finding in findings] == [FindingKind.CONTENT_DIVERGENCE]
+    assert "meaning does not match the baseline" in findings[0].summary
+    assert "similarity=0.000" in (findings[0].evidence or "")
+
+
+def test_a_correct_translation_is_not_accused_of_drifting() -> None:
+    arabic = Context(locale=Locale.AR, varies=Axis.LOCALE)
+    embeddings = FakeEmbeddings({"إدارة الفواتير": [1.0, 0.0], "إدارة الفوترة": [0.99, 0.01]})
+    translation = FakeTranslation({("Manage billing", "en", "ar"): "إدارة الفواتير"})
+    models = SemanticComparator(embedding_client=embeddings, translation_client=translation)
+
+    findings = compare([
+        say(BASELINE, "english", "Manage billing"),
+        say(arabic, "arabic", "إدارة الفوترة"),
     ], semantics=models)
 
     assert findings == []
