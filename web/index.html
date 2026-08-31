@@ -30,8 +30,12 @@
           <h1 id="thesis-title">One eye sees no depth.<br>Two do.</h1>
           <p class="lede">A single browsing session cannot know what it is missing. A member does not know the page it just opened should have denied them. A sender does not know the message never arrived. The evidence is not in the page — it is in the relationship between sessions looking at it.</p>
           <p class="lede secondary">Parallax opens seven isolated browser contexts against the same commit at the same instant, changes exactly one property from a baseline in each, and reads the disagreement. There is no stored screenshot to compare against, so the first sweep of a site it has never seen still has something to say.</p>
+          <!-- The 40% of this hackathon's score asks how much friction the thing
+               removes on its own. That is the sentence, and it was missing. -->
+          <p class="lede">You hand it a URL and a credentials file. It finds the sign-in surface itself, signs in as each role, discovers the routes and controls, <b>decides which axes the application even supports</b>, judges what disagrees, writes the failing Playwright specs, and opens the pull request. Nobody writes a selector, records a baseline, or maintains a golden file.</p>
           <div class="hero-actions">
-            <a class="button" href="/demo.mp4">Watch the demo · 3:00</a>
+            <a class="button" href="/run.html">Run it on your own URL</a>
+            <a class="button ghost" href="/demo.mp4">Watch the demo · 3:39</a>
             <a class="button ghost" href="#evidence">See what it found</a>
             <a class="button ghost" href="https://github.com/NexuChat/parallax">Repository ↗</a>
           </div>
@@ -175,7 +179,7 @@ receive' but is not an intended audience for it
       <div><span class="kicker">DEMO FLEET</span><div class="footer-links" id="footer-links"><a href="https://demo.mlki.app/">all seven applications ↗</a></div>
       <!-- Named, not implied. A judge asked to see a Google Cloud backend should
            not have to take a Cloudflare-fronted hostname on trust. -->
-      <p class="host-note">This console is one Cloud Run service in <code>us-central1</code>, also reachable at <a href="https://parallax-x6nwdmf3oa-uc.a.run.app/console">parallax-x6nwdmf3oa-uc.a.run.app</a>. Gemini 3.7 Flash, <code>gemini-embedding-001</code> and Gemma 4 are reached through Vertex AI on the same project.</p></div>
+      <p class="host-note">Sweeps run on the same service: <a href="/run.html">start one against any URL</a> and watch it work. This console is one Cloud Run service in <code>us-central1</code>, also reachable at <a href="https://parallax-x6nwdmf3oa-uc.a.run.app/console">parallax-x6nwdmf3oa-uc.a.run.app</a>. Gemini 3.7 Flash, <code>gemini-embedding-001</code> and Gemma 4 are reached through Vertex AI on the same project.</p></div>
       <a class="repo-link" href="https://github.com/NexuChat/parallax">Repository ↗</a>
     </footer>
     <script src="/home.js"></script>

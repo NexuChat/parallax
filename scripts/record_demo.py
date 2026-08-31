@@ -103,9 +103,9 @@ async def act_one_thesis(rec: Recording) -> None:
         "<b>Parallax opens seven at once</b> against the same commit, "
         "changes exactly one property in each, and reads the disagreement."
     )
-    await rec.beat(6)
-    await rec.pane(0).locator("#evidence").scroll_into_view_if_needed()
     await rec.beat(5)
+    await rec.pane(0).locator("#evidence").scroll_into_view_if_needed()
+    await rec.beat(4)
 
 
 async def act_one_b_value(rec: Recording) -> None:
@@ -119,12 +119,12 @@ async def act_one_b_value(rec: Recording) -> None:
         "no configuration — signs in as each role, sweeps, decides which axes the application even supports, "
         "writes the failing Playwright specs, and <b>opens the pull request</b>."
     )
-    await rec.beat(9)
+    await rec.beat(7)
     await rec.note(
         "Nothing is compared against a stored screenshot, so there is <b>no baseline to record</b> and no golden "
         "file to maintain — and the first sweep of a site it has never seen still has something to say."
     )
-    await rec.beat(7)
+    await rec.beat(5)
 
 
 async def act_two_wall(rec: Recording) -> None:
@@ -140,16 +140,16 @@ async def act_two_wall(rec: Recording) -> None:
     )
     await rec.beat(4)
     await rec.pane(0).locator("#playButton").click()
-    await rec.beat(7)
+    await rec.beat(5)
     await rec.pane(0).locator("#playButton").click()
     await rec.note(
         "Seven contexts side by side are too small to read the control a finding is about. "
         "<b>Any tile opens across the whole screen.</b>"
     )
     await rec.pane(0).locator("#inspectButton").click()
-    await rec.beat(5)
+    await rec.beat(4)
     await rec.pane(0).locator(".inspector-witness", has_text="mobile").first.click()
-    await rec.beat(5)
+    await rec.beat(4)
     await rec.pane(0).locator("#inspectorClose").click()
     await rec.beat(1)
 
@@ -164,7 +164,7 @@ async def act_three_protocol(rec: Recording) -> None:
         "Two real sessions of one game. The route on screen is <b>pixel-identical</b> to the correct one — "
         "no screenshot comparison of any kind can tell them apart."
     )
-    await rec.beat(5)
+    await rec.beat(4)
 
     await rec.note("Step 1 — amira invites samir. The invitation must reach its recipient, and must <b>not</b> be offered to its sender.")
     await rec.pane(0).locator("#send-invite").click()
@@ -172,7 +172,7 @@ async def act_three_protocol(rec: Recording) -> None:
 
     await rec.note("Step 2 — samir accepts. Accepting starts the game for both players.")
     await rec.pane(1).locator("#accept").click()
-    await rec.beat(3)
+    await rec.beat(2.5)
 
     moves = [
         (0, 4, "Step 3 — amira takes the centre."),
@@ -183,25 +183,25 @@ async def act_three_protocol(rec: Recording) -> None:
     for who, cell, caption in moves:
         await rec.note(f"{caption} Every step is verified from <b>both</b> boards before the next one runs.")
         await rec.pane(who).locator(f"#cell-{cell}").click()
-        await rec.beat(2.4)
+        await rec.beat(2.0)
 
     await rec.note("Step 7 — amira completes the middle row and wins. Watch <span class='flag'>samir's board</span>.")
     await rec.pane(0).locator("#cell-5").click()
-    await rec.beat(5)
+    await rec.beat(4)
     await rec.tone(0, "good")
     await rec.tone(1, "hot")
     await rec.note(
         "Identical winning line on both boards. amira is told <b>WON</b>. "
         "<span class='flag'>samir is told the game is still playing, and that it is his turn.</span>"
     )
-    await rec.beat(6)
+    await rec.beat(5)
     await rec.verdict(
         "'invite, play, and win' broke at step 7 of 7,\n"
         "'amira completes the middle row and wins':\n"
         "samir should have seen it but it never appeared\n"
         "— and so is the player who lost"
     )
-    await rec.beat(6)
+    await rec.beat(5)
 
 
 async def act_four_audio(rec: Recording) -> None:
@@ -216,22 +216,22 @@ async def act_four_audio(rec: Recording) -> None:
         "A real WebRTC mesh — audio genuinely travels between these sessions. "
         "Watch the level meters find each other."
     )
-    await rec.beat(9)
+    await rec.beat(7)
     await rec.note("amira presses <b>Mute microphone</b>. Nobody should hear her after this.")
     await rec.pane(0).locator("#mute").click()
-    await rec.beat(6)
+    await rec.beat(5)
     await rec.tone(1, "hot")
     await rec.note(
         "Her control says <b>mic-off</b>. samir still hears her. "
         "omar hears nothing — but he turned his own speaker off, and is <b>not</b> reported."
     )
-    await rec.beat(5)
+    await rec.beat(4)
     await rec.verdict(
         "samir perceived 'muting stops the audio the others receive'\n"
         "but is not an intended audience for it\n"
         "— the event reached samir, layla"
     )
-    await rec.beat(6)
+    await rec.beat(5)
 
 
 async def act_four_b_production(rec: Recording) -> None:
@@ -277,7 +277,7 @@ async def act_five_graded(rec: Recording) -> None:
     )
     await rec.beat(4)
     await rec.pane(0).locator("#scoreboard").scroll_into_view_if_needed()
-    await rec.beat(8)
+    await rec.beat(6)
 
 
 async def act_six_cloud(rec: Recording) -> None:
@@ -314,9 +314,49 @@ async def act_eight_pull_request(rec: Recording) -> None:
     await rec.page.goto(PULL_REQUEST, wait_until="domcontentloaded")
     await rec.beat(7)
     await rec.page.mouse.wheel(0, 900)
-    await rec.beat(6)
+    await rec.beat(5)
     await rec.page.mouse.wheel(0, 900)
+    await rec.beat(5)
+
+
+async def act_six_b_live(rec: Recording) -> None:
+    """Trigger a real sweep on Cloud Run and watch it work.
+
+    Not a replay. The service accepts the URL, opens seven contexts on a
+    background thread, and reports mosaics and findings as they land — which is
+    the difference between showing evidence a sweep produced and showing the
+    sweep produce it.
+    """
+    await rec.say("Give it a URL. It does the rest.", "07 / A SWEEP, RIGHT NOW")
+    await rec.show([{
+        "label": "parallax-x6nwdmf3oa-uc.a.run.app/run.html — Cloud Run",
+        "url": f"{CLOUD_RUN}/run.html",
+        "hint": "no configuration",
+    }])
+    await rec.note(
+        "This is the deployed service, not a recording. It is about to sweep a site it has "
+        "never been configured for — <b>no selectors, no baseline, no golden file</b>."
+    )
     await rec.beat(6)
+    await rec.pane(0).locator("#go").click()
+    await rec.note(
+        "Seven browser contexts are open on Cloud Run, on a background thread. "
+        "Mosaics and findings appear as each surface settles."
+    )
+    # Waited for, not timed. A fixed pause put the closing caption on screen
+    # while the counter still read zero findings — the recording would have been
+    # claiming a result it did not yet have.
+    try:
+        await rec.pane(0).locator("#pill.is-complete").wait_for(timeout=150_000)
+    except Exception:  # noqa: BLE001 - a slow sweep is still worth showing
+        pass
+    findings = await rec.pane(0).locator("#findings").inner_text()
+    mosaics = await rec.pane(0).locator("#mosaics").inner_text()
+    await rec.note(
+        f"<b>{findings} findings</b> across {mosaics} settled frames, on a site nobody prepared for it, "
+        "produced while you watched. Each names the witnesses that disagreed."
+    )
+    await rec.beat(9)
 
 
 async def act_seven_close(rec: Recording) -> None:
@@ -328,7 +368,7 @@ async def act_seven_close(rec: Recording) -> None:
     )
     await rec.beat(4)
     await rec.pane(0).locator("#output").scroll_into_view_if_needed()
-    await rec.beat(7)
+    await rec.beat(5)
 
 
 async def record(out: Path) -> Path:
@@ -359,8 +399,8 @@ async def record(out: Path) -> Path:
         rec = Recording(page)
         for act in (
             act_one_thesis, act_one_b_value, act_two_wall, act_three_protocol,
-            act_four_audio, act_five_graded, act_six_cloud, act_seven_close,
-            act_eight_pull_request,
+            act_four_audio, act_five_graded, act_six_cloud, act_six_b_live,
+            act_seven_close, act_eight_pull_request,
         ):
             await act(rec)
         await rec.beat(1.5)

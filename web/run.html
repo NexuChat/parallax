@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="description" content="Start a Parallax sweep against any public URL and watch it work.">
+    <title>Parallax — start a sweep</title>
+    <link rel="stylesheet" href="/home.css">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230b1015'/%3E%3Cpath d='M7 25V7h9.5a5.5 5.5 0 0 1 0 11H11v7Z' fill='%2355d2e5'/%3E%3C/svg%3E">
+    <style>
+      /* The launcher is the product's front door for anyone who would rather
+         run it than read about it, so it stays inside the console's language
+         instead of inventing a second one. */
+      .runner { width:min(880px,calc(100% - 40px)); margin:auto; padding:clamp(40px,8vw,90px) 0; }
+      .runner h1 { max-width:none; font-size:clamp(2rem,4vw,3.2rem); margin-bottom:18px; }
+      .launch { display:flex; flex-wrap:wrap; gap:10px; margin:30px 0 14px; }
+      .launch input { flex:1 1 22rem; min-width:0; min-height:52px; padding:0 16px; border:1px solid var(--line);
+        background:var(--surface); color:var(--text); font:14px/1 ui-monospace,monospace; }
+      .launch input:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+      .launch button { min-height:52px; padding:0 24px; border:1px solid var(--accent); background:var(--accent);
+        color:#04252b; font:800 12px/1 ui-monospace,monospace; letter-spacing:.09em; cursor:pointer; }
+      .launch button:disabled { opacity:.45; cursor:not-allowed; }
+      .presets { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:26px; }
+      .presets button { min-height:44px; padding:0 12px; border:1px solid var(--line); background:transparent;
+        color:var(--muted); font:700 11px/1 ui-monospace,monospace; cursor:pointer; }
+      .presets button:hover { border-color:var(--accent); color:var(--accent); }
+      .status { border:1px solid var(--line); background:var(--surface); padding:18px; }
+      .status-line { display:flex; flex-wrap:wrap; align-items:center; gap:14px; }
+      .pill { padding:7px 11px; border:1px solid var(--line); font:800 10px/1 ui-monospace,monospace; letter-spacing:.1em; }
+      .pill.is-running { border-color:var(--accent); color:var(--accent); }
+      .pill.is-complete { border-color:#7fd8a4; color:#7fd8a4; }
+      .pill.is-failed { border-color:var(--danger); color:var(--danger); }
+      .tally { display:flex; gap:22px; margin-left:auto; font:700 13px/1 ui-monospace,monospace; }
+      .tally b { color:var(--accent); font-variant-numeric:tabular-nums; }
+      .status p { margin:14px 0 0; color:var(--muted); font-family:system-ui,sans-serif; font-size:13px; line-height:1.6; }
+      .status a { color:var(--accent); }
+      .runner .note { color:var(--muted); font-family:system-ui,sans-serif; font-size:12.5px; line-height:1.7; margin-top:26px; }
+    </style>
+  </head>
+  <body>
+    <header class="masthead">
+      <a class="wordmark" href="/" aria-label="Parallax home"><span>P</span> PARALLAX</a>
+      <nav aria-label="Page sections"><a href="/">Home</a><a href="/console">Console</a><a href="/demo.mp4">Demo</a></nav>
+    </header>
+
+    <main class="runner">
+      <p class="kicker">RUN IT YOURSELF</p>
+      <h1>Give it a URL. It does the rest.</h1>
+      <p class="lede">It opens seven browser contexts on Cloud Run, finds the routes and controls itself, decides which axes the application even supports, judges what disagrees, and writes the failing Playwright specs. You are not asked for a selector, a baseline, or a configuration file.</p>
+
+      <form class="launch" id="launch">
+        <input id="url" type="url" required value="https://the-internet.herokuapp.com/" aria-label="URL to sweep" placeholder="https://example.com">
+        <button type="submit" id="go">START SWEEP</button>
+      </form>
+      <div class="presets" id="presets" aria-label="Suggested targets"></div>
+
+      <div class="status" id="status" role="status" aria-live="polite">
+        <div class="status-line">
+          <span class="pill" id="pill">IDLE</span>
+          <span id="target">Nothing running.</span>
+          <span class="tally"><span><b id="mosaics">0</b> mosaics</span><span><b id="findings">0</b> findings</span></span>
+        </div>
+        <p id="detail">A sweep runs on a background thread in the Cloud Run service, so this page is polling it rather than holding it open. Two to three surfaces takes under a minute.</p>
+      </div>
+
+      <p class="note">Sweeps run against whatever public URL you give them, from one <code>us-central1</code> instance capped at a single container. Be considerate about what you point it at — it opens seven real browser contexts and loads the page in each.</p>
+    </main>
+
+    <script>
+      const el = (id) => document.getElementById(id);
+      const SUGGESTED = [
+        'https://the-internet.herokuapp.com/',
+        'https://demo.mlki.app/shop/',
+        'https://demo.mlki.app/docs/',
+        'https://example.com/',
+      ];
+
+      el('presets').innerHTML = SUGGESTED
+        .map((url) => `<button type="button" data-url="${url}">${new URL(url).host}${new URL(url).pathname}</button>`)
+        .join('');
+      el('presets').addEventListener('click', (event) => {
+        const url = event.target.dataset.url;
+        if (url) el('url').value = url;
+      });
+
+      function paint(state, target, counts, detail) {
+        el('pill').textContent = state.toUpperCase();
+        el('pill').className = `pill is-${state}`;
+        el('target').textContent = target;
+        el('mosaics').textContent = counts.mosaics ?? 0;
+        el('findings').textContent = counts.findings ?? 0;
+        el('detail').innerHTML = detail;
+      }
+
+      async function poll(id, url) {
+        // Polling, not a held connection: the sweep outlives any sensible
+        // request timeout, which is the whole reason it runs on its own thread.
+        for (let attempt = 0; attempt < 240; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          let run;
+          try {
+            run = await (await fetch(`/runs/${id}`, { cache: 'no-store' })).json();
+          } catch (_) { continue; }
+          const counts = run.counts || {};
+          if (run.status === 'complete') {
+            const feed = encodeURIComponent(`/runs/${id}/feed.jsonl`);
+            paint('complete', url, counts,
+              `Done. <a href="/console?feed=${feed}">Open this run in the console</a> — every finding carries the witnesses behind it.`);
+            return;
+          }
+          if (run.status === 'failed' || run.error) {
+            paint('failed', url, counts, `The sweep did not finish: ${run.error || 'unknown error'}`);
+            return;
+          }
+          paint('running', url, counts, 'Seven contexts are open on the same commit. Findings appear as the surfaces settle.');
+        }
+        paint('failed', url, {}, 'Stopped polling after eight minutes.');
+      }
+
+      el('launch').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const url = el('url').value.trim();
+        el('go').disabled = true;
+        paint('running', url, {}, 'Asking the service to start a sweep.');
+        try {
+          const response = await fetch('/runs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, max_surfaces: 3 }),
+          });
+          const started = await response.json();
+          if (!response.ok || !started.id) throw new Error(started.error || `HTTP ${response.status}`);
+          await poll(started.id, url);
+        } catch (error) {
+          paint('failed', url, {}, `Could not start: ${error.message}`);
+        } finally {
+          el('go').disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
