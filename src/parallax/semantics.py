@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
+import time
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -22,6 +24,35 @@ SEMANTIC_EQUIVALENCE_THRESHOLD = 0.82
 # one Vertex request: two paid model calls per run, regardless of surface count.
 MAX_SEMANTIC_COMPARISONS_PER_RUN = 12
 MAX_SEMANTIC_MODEL_CALLS_PER_RUN = 2
+
+# Well inside the hour a gcloud access token lives, so a sweep never
+# re-spawns the CLI and never presents an expired token.
+_GCLOUD_TOKEN_TTL_SECONDS = 30 * 60
+
+
+def _adc_is_available() -> bool:
+    """Answer in milliseconds whether application-default credentials exist.
+
+    `google.auth.default()` is the authority, but off Google Cloud it reaches
+    that answer by waiting on a link-local metadata address for about twelve
+    seconds. Every source it consults is cheap to check first: an explicit
+    credentials file, the file `gcloud auth application-default login` writes,
+    or a metadata server that accepts a TCP connection straight away. A wrong
+    answer here costs nothing, because the caller falls back to a gcloud token.
+    """
+    if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        return True
+    default_file = os.path.join(
+        os.path.expanduser("~"), ".config", "gcloud", "application_default_credentials.json"
+    )
+    if os.path.isfile(default_file):
+        return True
+    host = os.environ.get("GCE_METADATA_HOST", "169.254.169.254")
+    try:
+        with socket.create_connection((host, 80), timeout=0.2):
+            return True
+    except OSError:
+        return False
 
 
 class SemanticPairKind(str, Enum):
@@ -97,6 +128,8 @@ class GoogleCloudTransport:
         self.project = project or os.environ.get("GOOGLE_CLOUD_PROJECT", "rasikh-fleet-2026")
         self._post = post or self._urlopen_post
         self._credentials: Any | None = None
+        self._adc_unavailable = False
+        self._gcloud_cached: tuple[str, float] | None = None
 
     def post(self, url: str, payload: dict[str, object]) -> dict[str, object]:
         return self._post(url, self._headers(), payload)
@@ -117,23 +150,45 @@ class GoogleCloudTransport:
         used to disable the semantic lens with a credentials error while the
         vision lens on the same machine worked; both now accept the same two
         routes.
+
+        Both outcomes are remembered. Off Google Cloud, `google.auth.default()`
+        does not fail fast: it probes the metadata server at a link-local
+        address and takes about twelve seconds to give up. Asking again per
+        request turned a sweep whose browser work finishes in under a second
+        into a twenty-six second one, so a failure is cached exactly like a
+        success.
         """
         credentials = self._credentials
-        if credentials is None:
-            try:
-                import google.auth
+        if credentials is None and not self._adc_unavailable:
+            if not _adc_is_available():
+                self._adc_unavailable = True
+            else:
+                try:
+                    import google.auth
 
-                credentials, _ = google.auth.default(
-                    scopes=["https://www.googleapis.com/auth/cloud-platform"]
-                )
-            except Exception:
-                return self._gcloud_token()
-            self._credentials = credentials
+                    credentials, _ = google.auth.default(
+                        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+                    )
+                    self._credentials = credentials
+                except Exception:
+                    self._adc_unavailable = True
+        if credentials is None:
+            return self._cached_gcloud_token()
         if not credentials.valid or not credentials.token:
             from google.auth.transport.requests import Request as GoogleRequest
 
             credentials.refresh(GoogleRequest())
         return str(credentials.token)
+
+    def _cached_gcloud_token(self) -> str:
+        """Reuse a gcloud token well inside its hour, rather than per request."""
+        cached = self._gcloud_cached
+        now = time.monotonic()
+        if cached is not None and now < cached[1]:
+            return cached[0]
+        token = self._gcloud_token()
+        self._gcloud_cached = (token, now + _GCLOUD_TOKEN_TTL_SECONDS)
+        return token
 
     @staticmethod
     def _gcloud_token() -> str:

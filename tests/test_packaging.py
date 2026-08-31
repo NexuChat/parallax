@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -68,8 +69,11 @@ def test_demo_verifier_builds_private_mount_scoped_states_and_cleans_them() -> N
     assert package["scripts"]["verify:demo-generated"] == "python scripts/verify_demo_generated.py"
     assert wrapper.is_file()
 
+    # sys.executable, not a hardcoded .venv path: CI installs the package into
+    # the runner's interpreter and never creates one, so the literal path made
+    # this test pass only on a checkout that happened to have a local venv.
     help_result = subprocess.run(
-        [str(ROOT / ".venv" / "bin" / "python"), str(wrapper), "--help"],
+        [sys.executable, str(wrapper), "--help"],
         check=False,
         capture_output=True,
         text=True,

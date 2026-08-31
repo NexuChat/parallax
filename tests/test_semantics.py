@@ -221,7 +221,16 @@ def test_semantic_difference_keeps_divergence_with_similarity_evidence() -> None
     assert "similarity=0.000" in findings[0].evidence
 
 
-def test_wrong_arabic_translation_is_a_real_untranslated_finding() -> None:
+def test_a_low_locale_score_alone_does_not_accuse_a_translated_page() -> None:
+    """Real embeddings do not separate a wrong translation from a right one.
+
+    Measured against text-embedding-005 through this pipeline — translate the
+    baseline, then compare the two Arabic strings — a correct translation scored
+    0.702, an unrelated Arabic paragraph 0.689, and untranslated English 0.657.
+    A threshold anywhere in that band accuses correctly translated pages, which
+    is what a real sweep did to the demo `/faq` route at 0.669. So the score is
+    recorded as evidence and the deterministic check decides.
+    """
     arabic = Context(locale=Locale.AR, varies=Axis.LOCALE)
     embeddings = FakeEmbeddings({"إدارة الفواتير": [0.0, 1.0], "حذف مساحة العمل": [1.0, 0.0]})
     translation = FakeTranslation({("Manage billing", "en", "ar"): "إدارة الفواتير"})
@@ -232,10 +241,30 @@ def test_wrong_arabic_translation_is_a_real_untranslated_finding() -> None:
         say(arabic, "arabic", "حذف مساحة العمل"),
     ], semantics=models)
 
-    assert len(findings) == 1
-    assert findings[0].kind is FindingKind.RENDER_DEFECT
-    assert findings[0].defect is Defect.UNTRANSLATED
-    assert "similarity=0.000" in (findings[0].evidence or "")
+    assert findings == []
+
+
+def test_an_untranslated_page_is_reported_without_a_semantic_verdict() -> None:
+    """Untranslated text is identical text, so no region is ever sent for it.
+
+    The signatures match, the comparison is skipped, and the deterministic
+    defect carries the finding on its own. That is the path the locale axis
+    actually takes for the one defect it exists to catch, so it must not depend
+    on a model call succeeding.
+    """
+    arabic = Context(locale=Locale.AR, varies=Axis.LOCALE)
+    embeddings = FakeEmbeddings({"Manage billing": [1.0, 0.0]})
+    translation = FakeTranslation({("Manage billing", "en", "ar"): "Manage billing"})
+    models = SemanticComparator(embedding_client=embeddings, translation_client=translation)
+
+    findings = compare([
+        say(BASELINE, "english", "Manage billing"),
+        say(arabic, "arabic", "Manage billing", defects=[Defect.UNTRANSLATED]),
+    ], semantics=models)
+
+    assert [finding.defect for finding in findings] == [Defect.UNTRANSLATED]
+    assert "deterministic raw-text fallback" in (findings[0].evidence or "")
+    assert embeddings.calls == []
 
 
 def test_embedding_failure_falls_back_to_hash_with_explicit_evidence() -> None:

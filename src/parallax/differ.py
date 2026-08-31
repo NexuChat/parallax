@@ -459,10 +459,20 @@ def _finding_from_semantics(candidate: _SemanticCandidate, result: SemanticResul
         f"{EMBEDDING_MODEL} similarity={result.similarity:.3f}; "
         f"equivalence threshold={SEMANTIC_EQUIVALENCE_THRESHOLD:.2f}"
     )
+    if candidate.pair.kind is SemanticPairKind.LOCALE:
+        # For a locale pair the deterministic check decides and the score is
+        # corroboration, never the other way round. Both directions matter. An
+        # untranslated page shows the baseline's own text in the variant, so it
+        # scores as *equivalent* — the one verdict that would clear it if the
+        # score were trusted alone. And a correctly translated page is not
+        # byte-comparable, so a middling score is ordinary translation distance
+        # rather than evidence of anything. Calling that "untranslated" on the
+        # score alone reports a page as broken for having been translated well.
+        if Defect.UNTRANSLATED not in variant.defects:
+            return []
+        return [_untranslated_finding(baseline, variant, evidence)]
     if result.equivalent:
         return []
-    if candidate.pair.kind is SemanticPairKind.LOCALE:
-        return [_untranslated_finding(baseline, variant, evidence)]
     return [
         Finding(
             FindingKind.CONTENT_DIVERGENCE,
