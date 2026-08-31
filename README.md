@@ -5,6 +5,22 @@
 The badge is the graded sweep, not just the unit tests: every push runs the
 full demo fleet and fails the build on a single missed plant or false positive.
 
+**You give Parallax a URL. It gives you back failing tests.** Nothing in between
+is yours to do.
+
+From that one argument it decides everything else on its own: it crawls the
+application to find surfaces worth witnessing, decides which comparison axes the
+application actually supports and skips the ones it does not, drives seven
+isolated browser sessions against the same commit simultaneously, decides which
+disagreements between them are defects and which are noise, groups what survives
+by cause, and writes each finding out as a Playwright spec you can run in your
+own suite. It runs asynchronously on Cloud Run, so a sweep outlives the request
+that started it.
+
+The chore it removes is the one nobody automates: opening an app as an owner,
+then a member, then in Arabic, then at 360 pixels, then in dark mode — and
+trying to remember what the page looked like ten minutes ago.
+
 Parallax is a relational browser regression system. It runs seven isolated contexts together, then turns witness disagreement into failing Playwright specs. The published demo target, `https://demo.mlki.app`, currently reports 15 of 15 planted defects found, 0 missed, and 0 false positives on five demo sites, while the clean control stays at zero.
 
 It also reports revocation lag in an open session: the owner revokes one member while the member’s other live session is still open, and the remaining authority window is measured at 2,572ms. In that run the decision plane passes and the effects plane fails; distribution and enforcement are reported as unmeasured, because a browser witness sees what the member's session could still do, not what the server sent or refused. The finding says so in those words rather than counting an unobserved plane as a passing one.
@@ -102,6 +118,23 @@ Demo sites can opt in without suite-specific code: declare a `relational_scenari
 `--propose-scenarios` asks Gemini 3.6 Flash on Vertex AI for up to three relational scenarios after baseline discovery. It receives only routes, visible affordances and their labels and selectors, observed same-origin endpoints, visible text, and the roles supplied to the run. The flag is off by default, so an existing command never gains a model call or a scenario. Run it alongside the role states, for example: `PYTHONPATH=src .venv/bin/python -m parallax https://app.example.com --storage-state owner=.auth/owner.json --storage-state member=.auth/member.json --propose-scenarios --no-vision`.
 
 A proposal is never an instruction. Before the existing data-only scenario validator can accept it, Parallax rejects any proposal that names an unobserved route, selector, endpoint, or role, or that falls outside the restricted relational grammar. Each survivor then passes through the same validator as a JSON declaration; no proposal can supply JavaScript or a new action type. The final `proposal` summary records how many scenarios Gemini proposed and validated, each rejection and its reason, route, call counts, and any error.
+
+A published run shows the whole loop:
+[`console/runs/workspace-proposed`](console/runs/workspace-proposed/feed.jsonl)
+was produced by a sweep given nothing but a URL and two role sessions. Gemini
+proposed two relational scenarios; the guard rejected one because
+`effect.selector 'main.auth > form:nth-of-type(1)' was not observed`; the
+survivor was replayed against two live sessions and produced a `propagation`
+finding. The summary reports `"ran": 1, "declared": 0, "proposed_by_model": 1`,
+so a scenario the model invented is never counted as one a human declared.
+
+The rejection reason is worth reading, because it is the interesting half. The
+model does not get to widen its own input: it may only name routes, selectors,
+endpoints, and roles the baseline crawl actually observed. Early live runs were
+rejected for a different reason — the model kept inventing effect keys like
+`effect.text` — which was a prompt that elided the grammar rather than stating
+it. With both effect shapes spelled out exactly as the validator enforces them,
+format rejections stopped and only evidence-grounding rejections remain.
 
 Open `console/index.html?feed=../runs/first/feed.jsonl` in the repository's console, or use the [live console](https://perallax.mlki.app). The local console reads the newline-delimited feed and its referenced mosaics; serving the repository with a static web server avoids browser `file:` restrictions.
 

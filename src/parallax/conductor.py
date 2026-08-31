@@ -78,6 +78,12 @@ class ConductSummary:
     feed_path: Path
     axis_applicability: list[AxisApplicability]
     proposal_report: ProposalReport
+    # Declared and model-proposed scenarios are replayed by the same code, so the
+    # count has to come from what was exercised rather than from what the caller
+    # passed in. Reporting only the declared ones made a proposed scenario that
+    # produced a finding look like a finding from a scenario that never ran.
+    scenarios_exercised: int = 0
+    scenarios_proposed_exercised: int = 0
 
 
 @dataclass(frozen=True)
@@ -218,7 +224,10 @@ class Conductor:
             {str(role): str(path) for role, path in (self.storage_states or {}).items()},
         )
         return ConductSummary(
-            surfaces, all_testimonies, all_findings, spec_paths, feed_path, axis_applicability, proposal_report
+            surfaces, all_testimonies, all_findings, spec_paths, feed_path, axis_applicability,
+            proposal_report,
+            scenarios_exercised=len(relational_scenarios),
+            scenarios_proposed_exercised=len(proposed_scenarios),
         )
 
     async def _discover(self) -> list[Surface]:

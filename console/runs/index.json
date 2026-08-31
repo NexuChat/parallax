@@ -77,5 +77,20 @@
       "propagation": 1,
       "revocation": 1
     }
+  },
+  "workspace-proposed": {
+    "feed": "runs/workspace-proposed/feed.jsonl",
+    "mosaics": 11,
+    "findings": 14,
+    "by_severity": {
+      "high": 2,
+      "medium": 12
+    },
+    "by_kind": {
+      "escalation": 1,
+      "render": 9,
+      "divergence": 3,
+      "propagation": 1
+    }
   }
 }

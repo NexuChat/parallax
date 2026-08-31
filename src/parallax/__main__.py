@@ -343,7 +343,9 @@ async def _run(args: argparse.Namespace) -> int:
             for decision in summary.axis_applicability
         ],
         "relational_scenarios": {
-            "ran": len(relational_scenarios or []),
+            "ran": summary.scenarios_exercised,
+            "declared": len(relational_scenarios or []),
+            "proposed_by_model": summary.scenarios_proposed_exercised,
             "findings": sum(finding.axis.value == "relational" for finding in summary.findings),
         },
         # Whether the mandatory model was actually reached, not whether a key

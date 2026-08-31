@@ -220,7 +220,15 @@ class ScenarioProposer:
             '{"scenarios":[{"type":"propagation|revocation","surface":"observed route","sender":"observed role",'
             '"receiver":"observed role","action":{"type":"submit_form","form":"observed form selector",'
             '"checks":["observed selector"],"fills":[{"selector":"observed selector","value":"text"}]},'
-            '"effect":{"type":"visible|json_contains",...},"deadline_ms":positive_integer,"max_lag_ms":non_negative_integer}]}. '
+            '"effect":EFFECT,"deadline_ms":positive_integer,"max_lag_ms":non_negative_integer}]}. '
+            # The validator accepts exactly these keys and rejects the scenario on
+            # any other. Spelling both shapes out is not redundant: an elided
+            # "..." here produced effect.text and effect.value on live runs, and
+            # every one of those proposals was thrown away by the guard.
+            'EFFECT is exactly one of two shapes and may contain no other keys: '
+            '{"type":"visible","selector":"observed selector"} '
+            'or {"type":"json_contains","url":"observed endpoint","items":"json array field",'
+            '"field":"item field","equals":"expected value"}. '
             "For json_contains use an observed endpoint URL. A revocation requires max_lag_ms below deadline_ms. "
             "Use only the supplied routes, roles, and selectors; never return JavaScript, markdown, explanations, or extra keys. "
             "Prefer an owner action that removes or revokes a member when the evidence supports it. "
