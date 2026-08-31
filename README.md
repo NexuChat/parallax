@@ -77,7 +77,58 @@ Run a deterministic sweep. `PYTHONPATH=src` runs the checkout's own code rather 
 PYTHONPATH=src .venv/bin/python -m parallax https://app.example.com --out runs/first --no-vision
 ```
 
-To include authenticated contexts, supply Playwright storage-state files for the roles your application uses:
+### Finding the way in by itself
+
+Handing Parallax two storage-state files is a long way from "point it at a URL".
+Give it credentials instead and it finds the sign-in surface, the fields on it,
+and the way in:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m parallax https://app.example.com \
+  --out runs/first --credentials .auth/credentials.json
+```
+
+```json
+{
+  "credentials": {
+    "owner":  {"identifier": "owner@example.com",  "secret": "…"},
+    "member": {"identifier": "member@example.com", "secret": "…"}
+  }
+}
+```
+
+A file rather than an argument, because a secret passed on the command line is
+visible in `ps` to every user on the machine and lands in shell history. The
+secret is read once and never reaches a report, a feed event, or a generated
+spec — `Credential` will not even render it in a traceback.
+
+Nothing about the sign-in is declared. Links the page itself offers are ranked
+ahead of the usual paths, in English and Arabic alike, and the panel is located
+by its password field rather than by a `<form>` element — the first real
+application this met renders a sign-in panel with no form at all, and had three
+plausible buttons beside it, of which `دخول كزائر` and `إنشاء حساب` do not use
+the credentials you supplied. A session is only claimed when the password prompt
+is gone or a way out has appeared; submitting a form and hoping is not a
+sign-in.
+
+The same pass then establishes **how the application changes language**, because
+that is not something to assume either. `?lang=ar` counts only if the document's
+`lang` attribute actually changes; otherwise a real language control is located
+— including inside a signed-in user's settings, which is where most applications
+keep it — actuated, and confirmed. The run reports which mechanism it found:
+
+```
+sign-in owner: succeeded via http://…/login
+sign-in member: succeeded via http://…/login
+locale mechanism: query — the lang attribute changes for ?lang=ar
+```
+
+With credentials alone and nothing else declared, a sweep of the bundled
+workspace demo exercises all four axes; without them the privilege axis reports
+itself as not applicable rather than guessing.
+
+To skip discovery and supply Playwright storage-state files directly, which
+takes precedence over anything discovered:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m parallax https://app.example.com --out runs/first --storage-state owner=.auth/owner.json --storage-state member=.auth/member.json --no-vision

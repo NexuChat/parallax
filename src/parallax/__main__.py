@@ -21,6 +21,7 @@ from .capability import CapabilityScenario
 from .contracts import FeedEvent
 from .delivery import DeliveryReport, PullRequestDelivery
 from .differ import configure_semantics
+from .discovery import Credential, SessionDiscovery, credentials_from_data
 from .proposer import ProposalReport, ScenarioProposer
 from .semantics import SemanticComparator
 from .specialists import LayoutI18nSpecialist, RealtimeSpecialist
@@ -52,6 +53,12 @@ def _parse(argv: list[str] | None = None) -> argparse.Namespace:
         default=[],
         metavar="ROLE=PATH",
         help="Playwright storage state per role, e.g. owner=.auth/owner.json (repeatable)",
+    )
+    parser.add_argument(
+        "--credentials",
+        type=Path,
+        metavar="PATH",
+        help="JSON of role -> {identifier, secret}; Parallax finds the sign-in surface itself",
     )
     parser.add_argument(
         "--open-pr",
@@ -139,6 +146,46 @@ def _append_triage(feed_path: Path, triage: TriageReport) -> None:
     )
     with feed_path.open("a", encoding="utf-8") as feed:
         feed.write(json.dumps(event.to_json(), separators=(",", ":")) + "\n")
+
+
+async def _discover_sessions(
+    args: argparse.Namespace, browser: Any
+) -> tuple[list[dict[str, object]], dict[str, Any], Any]:
+    """Sign in for every supplied role, then learn how the app changes language.
+
+    This is the difference between a tool that is handed its sessions and one
+    that is pointed at a URL. Nothing here is declared: the sign-in surface, the
+    fields on it, and the language control are all found by looking.
+    """
+    from .discovery import LocaleMechanism
+
+    if not args.credentials:
+        return [], {}, LocaleMechanism("none", "no credentials were supplied")
+    try:
+        credentials = credentials_from_data(
+            json.loads(args.credentials.read_text(encoding="utf-8")), source=str(args.credentials)
+        )
+    except (ValueError, OSError, json.JSONDecodeError) as error:
+        raise SystemExit(f"credentials: {error}") from error
+
+    discovery = SessionDiscovery(browser, args.url)
+    reports: list[dict[str, object]] = []
+    states: dict[str, Any] = {}
+    for credential in credentials:
+        report, state = await discovery.sign_in(credential)
+        reports.append(report.report())
+        print(
+            f"sign-in {credential.role}: "
+            + (f"succeeded via {report.route}" if report.succeeded else f"failed — {report.error}"),
+            file=sys.stderr,
+        )
+        if state is not None:
+            states[credential.role] = state
+    # Discovered while signed in, because a language control usually lives in a
+    # signed-in user's settings rather than on the public page.
+    locale = await discovery.locale_mechanism(next(iter(states.values()), None))
+    print(f"locale mechanism: {locale.kind} — {locale.detail}", file=sys.stderr)
+    return reports, states, locale
 
 
 def _deliver(args: argparse.Namespace, summary: Any) -> DeliveryReport:
@@ -406,9 +453,11 @@ async def _run(args: argparse.Namespace) -> int:
             headless=not args.headed, args=["--no-sandbox", "--disable-dev-shm-usage"]
         )
         try:
+            sign_ins, discovered_states, locale = await _discover_sessions(args, browser)
             summary = await _conduct(
                 args, browser, relational_scenarios, specialists, proposer,
                 capability_scenarios=capability_scenarios,
+                discovered_states=discovered_states,
             )
         finally:
             await browser.close()
@@ -438,6 +487,10 @@ async def _run(args: argparse.Namespace) -> int:
             {"axis": decision.axis.value, "applicable": decision.applicable, "reason": decision.reason}
             for decision in summary.axis_applicability
         ],
+        "discovery": {
+            "sign_ins": sign_ins,
+            "locale_mechanism": locale.report(),
+        },
         "capabilities": {
             "ran": len(capability_scenarios),
             "roles_exercised": sum(len(c.roles) for c in capability_scenarios),
@@ -474,12 +527,15 @@ async def _conduct(
     specialists: list[object] | None = None,
     proposer: ScenarioProposer | None = None,
     capability_scenarios: list[CapabilityScenario] | None = None,
+    discovered_states: dict[str, Any] | None = None,
 ) -> object:
     """Make the CLI-to-conductor contract testable without launching Chromium."""
     options: dict[str, object] = {
         "browser": browser,
         "specialists": _specialists(args.no_vision) if specialists is None else specialists,
-        "storage_states": _storage_states(args.storage_state) or None,
+        # Declared states win over discovered ones: an explicit --storage-state
+        # is a caller saying they already know better than the discovery pass.
+        "storage_states": {**(discovered_states or {}), **_storage_states(args.storage_state)} or None,
         "max_surfaces": args.max_surfaces,
         "settle_ms": args.settle_ms,
     }
