@@ -112,6 +112,8 @@ nav a, .footer-links a, .repo-link { min-width:44px; justify-content:center; }
 
 .host-note { max-width:64ch; margin:14px 0 0; color:var(--muted); font-family:system-ui,sans-serif; font-size:12px; line-height:1.6; }
 .host-note code { color:var(--accent); }
-.host-note a { color:var(--accent); }
+/* Inline links in the note are still tap targets; 16px tall failed the same
+   rule this page advertises, on this page. */
+.host-note a { color:var(--accent); display:inline-flex; align-items:center; min-height:44px; }
 
 .hero-note { max-width:62ch; margin:16px 0 0; color:var(--muted); font-family:system-ui,sans-serif; font-size:12.5px; line-height:1.6; }

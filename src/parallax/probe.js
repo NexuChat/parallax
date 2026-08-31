@@ -38,10 +38,18 @@
   };
   const controlMentions = (pattern) => [...document.querySelectorAll(
     'button, input, select, [role="button"], [aria-pressed]'
-  )].some((element) => pattern.test([
-    element.id, element.className, element.getAttribute('name'), element.getAttribute('aria-label'),
-    element.getAttribute('title'), element.textContent,
-  ].filter(Boolean).join(' ')));
+  )].some((element) => {
+    // A control IS a switcher; a control that TALKS ABOUT one is not. A finding
+    // card whose summary says "Dark mode adds a header border" matched this
+    // pattern and convinced the gate a dashboard had a theme toggle — so long
+    // text is disqualified, and the attributes stay unbounded because an id of
+    // "lang-switcher" is structure, not prose.
+    const text = element.textContent || '';
+    return pattern.test([
+      element.id, element.className, element.getAttribute('name'), element.getAttribute('aria-label'),
+      element.getAttribute('title'), text.length <= 32 ? text : '',
+    ].filter(Boolean).join(' '));
+  });
   const visibleText = document.body ? document.body.innerText : '';
   const nonLatinText = [...visibleText].some((character) =>
     /\p{Letter}/u.test(character) && !/\p{Script=Latin}/u.test(character)

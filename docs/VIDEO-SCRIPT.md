@@ -1,6 +1,6 @@
 # The demo video is produced, not performed
 
-`web/demo.mp4` (3:44, 1920×1080, narrated) is generated end to end by two
+`web/demo.mp4` (3:45, 1920×1080, narrated) is generated end to end by two
 commands, and that is deliberate: a hackathon that requires an *unedited, live*
 demo is better served by a recording nobody could have edited than by a screen
 capture taken on trust.

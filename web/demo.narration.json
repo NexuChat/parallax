@@ -4,7 +4,7 @@
     "say": "Every regression tool compares a page against yesterday's copy of itself. That catches what changed. Never what only one kind of user sees."
   },
   {
-    "at": 9.11,
+    "at": 9.12,
     "say": "You hand it a URL and a credentials file. It signs itself in, sweeps, writes the failing tests, and opens the pull request."
   },
   {
@@ -12,39 +12,39 @@
     "say": "This is a sweep of a public practice site built by somebody else. No plants, no configuration. Twenty six findings on the first run. Seven browser contexts looked at the same page at the same instant, and the finding is where they disagreed."
   },
   {
-    "at": 39.26,
+    "at": 39.28,
     "say": "Some promises are not a moment. They are an order."
   },
   {
-    "at": 43.27,
+    "at": 43.31,
     "say": "Nobody is clicking these boards. Parallax opens its own two sessions, plays the protocol, and checks every step from both players before it is allowed to run the next one. Watch the ledger on the right: that is what it observed."
   },
   {
-    "at": 65.67,
+    "at": 64.16,
     "say": "This is a real call. Audio genuinely travels between these three sessions. One route enforces its own mute. The other updates the button, and never touches the outgoing track."
   },
   {
-    "at": 77.77,
+    "at": 76.22,
     "say": "Her control says mic off. Samir still hears her. Omar hears nothing, but Omar turned his own speaker off, and is correctly not reported."
   },
   {
-    "at": 86.78,
+    "at": 85.22,
     "say": "Seven applications declare their own defects, including two clean controls. Seventeen of seventeen, zero false positives."
   },
   {
-    "at": 96.91,
+    "at": 95.29,
     "say": "One Cloud Run instance in us-central1, at its own Google address. Gemini, embeddings and Gemma four all reached through Vertex A I."
   },
   {
-    "at": 108.93,
+    "at": 107.32,
     "say": "Now watch it work. This is the deployed service, and it is about to sweep a site it has never been configured for."
   },
   {
-    "at": 182.4,
+    "at": 187.44,
     "say": "Every finding it can express ships as a failing Playwright spec. Eighteen of eighteen fail as assertions \u2014 none skipped, none passing."
   },
   {
-    "at": 191.47,
+    "at": 196.56,
     "say": "And the workflow does not stop at a report. These are real pull requests, opened by Parallax, one commit per finding."
   }
 ]

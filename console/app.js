@@ -289,6 +289,10 @@
   function openInspector(context) {
     const mosaic = state.shownMosaic;
     if (!mosaic || !Array.isArray(mosaic.tiles) || !mosaic.tiles.length) return;
+    // Inspecting is a look at one moment; the replay keeps running underneath
+    // and re-invokes this on every frame, which made the inspected witness
+    // change under the reader's eyes.
+    stopPlaying();
     const tile = mosaic.tiles.find((item) => item.context === context) || mosaic.tiles[0];
     state.inspecting = tile.context;
     el.inspector.hidden = false;

@@ -781,7 +781,7 @@ PYTHONPATH=src .venv/bin/python -m parallax \
   https://the-internet.herokuapp.com --out runs/the-internet --max-surfaces 12
 ```
 
-That run reports 26 findings over 13 surfaces. Because no role states were
+That run reports 26 findings over 12 surfaces. Because no role states were
 supplied, the privilege axis is not applicable and the applicability gate
 records it as such rather than judging it; the findings come from the viewport,
 theme, and baseline axes. The highest-severity one is a witness disagreement

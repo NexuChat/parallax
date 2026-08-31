@@ -37,8 +37,11 @@
          left, what Parallax observed about them on the right. A viewer who only
          ever sees the pages being driven has watched a manual walkthrough and
          has to take the verdict on trust. */
-      .split { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(0,1fr); gap:12px;
+      .split { display:grid; grid-template-columns:1fr; gap:12px;
         padding:14px 26px; min-height:0; }
+      /* Two columns only while the ledger is actually open. A hidden grid child
+         still reserves its track, and every beat of one recording played out in
+         61% of the stage before anyone noticed. */
       .split .frames { padding:0; }
       .frames { display:grid; gap:12px; padding:14px 26px; min-height:0; }
 
