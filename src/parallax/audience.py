@@ -70,6 +70,14 @@ class ObserverResult:
 
     @property
     def correct(self) -> bool:
+        """An observer that could not be read proves nothing, in either direction.
+
+        Without the error check, a crashed containment observer scored
+        `False == False` and was counted as proof that the event was contained —
+        so the half that leaks was silently the half that passed.
+        """
+        if self.error is not None:
+            return False
         return self.perceived == self.expect_visible
 
 

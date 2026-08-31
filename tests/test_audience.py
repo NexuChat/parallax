@@ -185,3 +185,31 @@ def test_every_observer_watches_before_the_event_happens() -> None:
 
     assert order.index("acted") > order.index("placed:a")
     assert order.index("acted") > order.index("placed:b")
+
+
+def test_an_observer_that_could_not_be_read_is_never_counted_as_containment() -> None:
+    """The half that leaks was silently the half that passed.
+
+    A containment observer expects to perceive nothing. When its page threw,
+    `perceived` was False and `expect_visible` was False, so the comparison
+    said "correct" and the run reported the event as properly contained — on
+    the strength of an observer that was never readable.
+    """
+    spec = scenario(observer("member in another room", False))
+    result = ChoreographyLikeResult = ObserverResult(
+        "member in another room", False, False, spec.observers[0].context,
+        error="TargetClosedError: page closed",
+    )
+    outcome_with_error = AudienceOutcome(spec)
+    outcome_with_error.results = [result]
+
+    assert result.correct is False
+    findings = judge(outcome_with_error)
+    assert len(findings) == 1
+    assert "never perceived it" in findings[0].summary
+
+
+def test_a_readable_observer_that_perceives_nothing_still_confirms_containment() -> None:
+    spec = scenario(observer("visitor in another room", False))
+
+    assert judge(outcome(spec, **{"visitor in another room": False})) == []

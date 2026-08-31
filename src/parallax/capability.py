@@ -79,6 +79,14 @@ class CapabilityRun:
     def _state_for(self, role: Privilege) -> StorageState:
         return self._states.get(role) or self._states.get(role.value)
 
+    def _pair(self, context: Context, role: Privilege) -> Any:
+        """One seam for the session pair, matching the audience and choreography runs."""
+        state = self._state_for(role)
+        return RelationalPair(
+            context, context, self._browser,
+            sender_storage_state=state, receiver_storage_state=state,
+        )
+
     async def attempt(self, scenario: CapabilityScenario, role: Privilege) -> RoleAttempt:
         """Perform the action as one role and measure the state it produced.
 
@@ -89,14 +97,32 @@ class CapabilityRun:
         get wrong.
         """
         context = Context(privilege=role, varies=Axis.PRIVILEGE)
-        state = self._state_for(role)
-        pair = RelationalPair(
-            context, context, self._browser,
-            sender_storage_state=state, receiver_storage_state=state,
-        )
+        pair = self._pair(context, role)
+        measured: Testimony | None = None
+
+        async def measure_produced_state() -> None:
+            """Measure the state the action produced, while it still exists.
+
+            This has to happen inside `observe`, not after it: `observe` closes
+            both witnesses in its own `finally`, so a measurement taken on the
+            way out reads a page that is already gone. It was written after the
+            call and the guard `pair.sender.page is not None` was therefore
+            never true — the dialog, drawer or panel this feature exists to
+            measure was silently never measured at all.
+            """
+            nonlocal measured
+            page = pair.sender.page
+            if page is None:
+                return
+            try:
+                measured = await pair.sender.measure(scenario.surface)
+            except Exception:  # noqa: BLE001 - the attempt's own result still stands
+                measured = None
+
         try:
             result = await pair.observe(
-                scenario.action, scenario.effect, scenario.deadline_ms, surface=scenario.surface
+                scenario.action, scenario.effect, scenario.deadline_ms,
+                surface=scenario.surface, on_effect=measure_produced_state,
             )
             completed = not isinstance(result, Finding)
             testimony = (
@@ -105,12 +131,9 @@ class CapabilityRun:
                 else Testimony(scenario.surface, context, Outcome.BLOCKED)
             )
             observations: tuple[DefectObservation, ...] = ()
-            if completed and pair.sender.page is not None:
-                # The action succeeded, so something is on screen that was not
-                # there at page load. Measure that, not the page it replaced.
-                after = await pair.sender.measure(scenario.surface)
-                observations = tuple(after.observations)
-                testimony = after
+            if completed and measured is not None:
+                observations = tuple(measured.observations)
+                testimony = measured
             return RoleAttempt(role, completed, testimony, observations)
         except Exception as error:  # noqa: BLE001 - a failed attempt is evidence, not a crash
             return RoleAttempt(

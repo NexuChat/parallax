@@ -27,6 +27,10 @@ from .types import Axis, AxisApplicability, Context, DefectObservation, Finding,
 from .witness import StorageState, Witness
 
 
+# What a caller means by omitting max_lag_ms: some propagation delay is
+# ordinary, and a browser round trip alone costs more than nothing.
+DEFAULT_REVOCATION_TOLERANCE_MS = 1_000
+
 _DISCOVERY_SCRIPT = r"""/* PARALLAX_DISCOVERY */
 () => {
   const visible = (element) => {
@@ -539,7 +543,16 @@ class Conductor:
                 if scenario.kind == "revocation":
                     observed = await pair.measure_revocation_lag(
                         scenario.action, scenario.effect, scenario.deadline_ms,
-                        max_lag_ms=scenario.max_lag_ms or 0,
+                        # A declared scenario that names no tolerance means
+                        # "unspecified", not "zero". Passing 0 scored the effects
+                        # plane as lag_ms <= 0, which no real measurement can
+                        # satisfy, so every revocation without an explicit
+                        # max_lag_ms failed the plane it exists to measure.
+                        max_lag_ms=(
+                            scenario.max_lag_ms
+                            if scenario.max_lag_ms is not None
+                            else DEFAULT_REVOCATION_TOLERANCE_MS
+                        ),
                         surface=scenario.surface,
                         distribution=scenario.distribution,
                         enforcement=scenario.enforcement,
@@ -758,10 +771,12 @@ def _support_reason(support: set[str], options: tuple[tuple[str, str], ...], abs
 def _privilege_reason(storage_states: Mapping[Privilege | str, StorageState] | None) -> str | None:
     if storage_states is None:
         return None
-    supplied = [
-        state for privilege in Privilege
-        if (state := storage_states.get(privilege, storage_states.get(privilege.value))) is not None
-    ]
+    # Every supplied session counts, not only the three built-in names. A run
+    # given {"support": …, "superadmin": …} opened both witnesses, visited every
+    # surface as both, and then reported "no distinct role storage states were
+    # supplied" — discarding all of it, which is precisely the comparison
+    # declared roles were added to make possible.
+    supplied = [state for state in storage_states.values() if state is not None]
     distinct = {key for state in supplied if (key := _storage_state_key(state)) is not None}
     return "distinct role storage states were supplied" if len(distinct) >= 2 else None
 

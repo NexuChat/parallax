@@ -914,3 +914,38 @@ def test_a_mechanism_discovery_could_not_find_does_not_open_the_axis() -> None:
     decisions = {d.axis: d for d in assess_axis_applicability([baseline], None, locale_mechanism="none")}
 
     assert decisions[Axis.LOCALE].applicable is False
+
+
+def test_a_revocation_without_a_declared_tolerance_is_not_scored_against_zero() -> None:
+    """`max_lag_ms or 0` made every unspecified revocation fail its own plane.
+
+    Omitting a tolerance means unspecified, not zero: the effects plane was
+    scored `lag_ms <= 0`, which no measurement across a real round trip can
+    satisfy, so an application revoking in 40ms was reported as HIGH.
+    """
+    from parallax.conductor import DEFAULT_REVOCATION_TOLERANCE_MS
+
+    assert DEFAULT_REVOCATION_TOLERANCE_MS > 0
+    source = (Path(__file__).resolve().parents[1] / "src" / "parallax" / "conductor.py").read_text(encoding="utf-8")
+    assert "max_lag_ms=scenario.max_lag_ms or 0" not in source
+    assert "DEFAULT_REVOCATION_TOLERANCE_MS" in source
+
+
+def test_declared_roles_count_toward_the_privilege_axis() -> None:
+    """A run given two custom roles opened both, then threw the evidence away.
+
+    _privilege_reason iterated only the built-in three, so sessions named
+    support and superadmin never reached the distinctness check and the axis
+    was reported as not applicable — discarding every privilege witness.
+    """
+    surface = Surface(SurfaceKind.ROUTE, f"{SITE}/")
+    testimony = WitnessTestimony(surface, Context(), Outcome.REACHED)
+
+    decisions = {d.axis: d for d in assess_axis_applicability(
+        [testimony],
+        {"support": {"cookies": [{"name": "s", "value": "one"}]},
+         "superadmin": {"cookies": [{"name": "s", "value": "two"}]}},
+    )}
+
+    assert decisions[Axis.PRIVILEGE].applicable is True
+    assert "distinct role storage states" in decisions[Axis.PRIVILEGE].reason

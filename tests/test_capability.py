@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from parallax.capability import CapabilityScenario, RoleAttempt, judge
+from parallax.capability import CapabilityRun, CapabilityScenario, RoleAttempt, judge
 from parallax.types import (
     Axis,
     Context,
@@ -140,3 +140,52 @@ def test_an_action_nobody_is_allowed_to_perform_names_that_plainly() -> None:
     findings = judge(scenario(allowed=set()), [attempt(Privilege.ANON, True)])
 
     assert "offered only to no role" in findings[0].summary
+
+
+def test_the_produced_state_is_measured_before_the_session_closes() -> None:
+    """`observe` closes both witnesses in its own finally.
+
+    The measurement was written after that call and guarded by
+    `pair.sender.page is not None`, which is never true once observe returns —
+    so the dialog this feature exists to measure was silently never measured.
+    It now runs on the effect, while the page still exists.
+    """
+    import asyncio
+
+    order: list[str] = []
+
+    class FakeWitness:
+        def __init__(self) -> None:
+            self.page = object()
+
+        async def measure(self, _surface):
+            order.append("measured")
+            return WitnessTestimony(
+                SURFACE, Context(privilege=Privilege.OWNER, varies=Axis.PRIVILEGE), Outcome.REACHED,
+                observations=[DefectObservation(defect=Defect.HORIZONTAL_OVERFLOW,
+                                                selector="dialog", detail="measured")],
+            )
+
+    class FakePair:
+        def __init__(self) -> None:
+            self.sender = FakeWitness()
+
+        async def observe(self, _action, _effect, _deadline, *, surface=None, on_effect=None):
+            if on_effect is not None:
+                await on_effect()
+            order.append("closed")
+            self.sender.page = None
+            return [WitnessTestimony(surface, Context(privilege=Privilege.OWNER,
+                                                      varies=Axis.PRIVILEGE), Outcome.REACHED)]
+
+        async def close(self) -> None:
+            return None
+
+    class Runner(CapabilityRun):
+        def _pair(self, _context, _role):
+            return FakePair()
+
+    attempt = asyncio.run(Runner(browser=None).attempt(scenario(), Privilege.OWNER))
+
+    assert order == ["measured", "closed"]
+    assert [o.defect for o in attempt.observations] == [Defect.HORIZONTAL_OVERFLOW]

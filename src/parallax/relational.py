@@ -67,11 +67,18 @@ class RelationalPair:
         deadline_ms: int,
         *,
         surface: Surface | None = None,
+        on_effect: Callable[[], Awaitable[None]] | None = None,
     ) -> list[Testimony] | Finding:
         """Act as one witness while the other polls for the resulting effect.
 
         The action runs in its own task, so an awaiting sender can never stop
         the receiver from observing within the supplied deadline.
+
+        `on_effect` runs the moment the effect is first seen and before either
+        session is closed. A caller that wants to measure the state the action
+        produced has no other opportunity: this method closes both witnesses in
+        its own `finally`, so anything it inspects afterwards is a page that no
+        longer exists.
         """
         action_name = self._describe(action, "sender action")
         expectation_name = self._describe(expectation, "receiver effect")
@@ -112,6 +119,11 @@ class RelationalPair:
                         receiver_error = error
                         break
                     if received:
+                        if on_effect is not None:
+                            try:
+                                await on_effect()
+                            except Exception:  # noqa: BLE001 - the observation still stands
+                                pass
                         break
                     remaining = deadline - self._clock()
                     if remaining <= 0:
