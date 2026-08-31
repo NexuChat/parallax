@@ -25,6 +25,13 @@ from dataclasses import dataclass
 from .types import Finding
 
 
+VERTEX_MODEL = "gemma-4-26b-a4b-it-maas"
+
+
+def _vertex_project() -> str:
+    return os.environ.get("GOOGLE_CLOUD_PROJECT", "")
+
+
 DEFAULT_MODEL = "gemma3:4b"
 _PROMPT = (
     "You are grouping automated browser-test findings by shared root cause, so a "
@@ -59,7 +66,10 @@ class TriageReport:
     @property
     def summary(self) -> str:
         if not self.attempted:
-            return "triage disabled: no PARALLAX_GEMMA_URL configured"
+            return (
+                "triage disabled: set PARALLAX_GEMMA_URL for an Ollama-compatible "
+                "endpoint, or GOOGLE_CLOUD_PROJECT to use Gemma 4 on Vertex"
+            )
         if self.error:
             return f"triage unavailable: {self.error}"
         grouped = sum(len(group.finding_ids) for group in self.groups)
@@ -77,13 +87,20 @@ class GemmaTriage:
         max_findings: int = 120,
         transport: object | None = None,
     ) -> None:
-        self.endpoint = endpoint if endpoint is not None else os.environ.get("PARALLAX_GEMMA_URL", "")
-        self.model = model or os.environ.get("PARALLAX_GEMMA_MODEL", DEFAULT_MODEL)
         self._max = max(1, max_findings)
         self._transport = transport
+        # An explicit Ollama endpoint wins, because someone who set one meant it.
+        # Otherwise Gemma 4 on Vertex, which needs no local model and lets anyone
+        # with the project's credentials reproduce the grouping. The MaaS model
+        # is served only from the global endpoint; asking us-central1 for it
+        # answers "only available via global endpoint" rather than 404.
+        self.endpoint = endpoint if endpoint is not None else os.environ.get("PARALLAX_GEMMA_URL", "")
+        self.route = "ollama" if self.endpoint else ("vertex" if _vertex_project() else "disabled")
+        default = DEFAULT_MODEL if self.route != "vertex" else VERTEX_MODEL
+        self.model = model or os.environ.get("PARALLAX_GEMMA_MODEL", default)
 
     def group(self, findings: Sequence[Finding]) -> TriageReport:
-        if not self.endpoint or not findings:
+        if self.route == "disabled" or not findings:
             return TriageReport(self.model, self.endpoint, attempted=False)
 
         numbered = list(enumerate(findings[: self._max], start=1))
@@ -101,6 +118,8 @@ class GemmaTriage:
     def _ask(self, prompt: str) -> str:
         if self._transport is not None:
             return str(self._transport(prompt))  # type: ignore[operator]
+        if self.route == "vertex":
+            return self._ask_vertex(prompt)
         body = json.dumps({
             "model": self.model,
             "prompt": prompt,
@@ -114,6 +133,25 @@ class GemmaTriage:
         )
         with urllib.request.urlopen(request, timeout=120) as response:
             return json.loads(response.read().decode()).get("response", "")
+
+    def _ask_vertex(self, prompt: str) -> str:
+        """Gemma 4 through the same project and credentials as everything else."""
+        from .semantics import GoogleCloudTransport
+
+        transport = GoogleCloudTransport()
+        url = (
+            "https://aiplatform.googleapis.com/v1/projects/"
+            f"{transport.project}/locations/global/publishers/google/models/{self.model}:generateContent"
+        )
+        body = transport.post(url, {
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0},
+        })
+        candidates = body.get("candidates") or []
+        if not candidates:
+            raise RuntimeError("Gemma returned no candidates")
+        parts = candidates[0].get("content", {}).get("parts") or []
+        return "".join(str(part.get("text", "")) for part in parts)
 
     @staticmethod
     def _parse(raw: str, numbered: dict[int, Finding]) -> list[TriageGroup]:

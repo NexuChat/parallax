@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from parallax.triage import GemmaTriage
+from parallax.triage import GemmaTriage, VERTEX_MODEL
 from parallax.types import Axis, Finding, FindingKind, Severity, Surface, SurfaceKind
 
 
@@ -17,12 +17,37 @@ def finding(summary: str, kind: FindingKind = FindingKind.RENDER_DEFECT) -> Find
     )
 
 
-def test_disabled_without_an_endpoint_and_says_so() -> None:
+def test_disabled_with_neither_route_and_says_which_two(monkeypatch) -> None:
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+
     report = GemmaTriage(endpoint="").group([finding("overflow on the cart grid")])
 
     assert report.attempted is False
     assert report.groups == ()
-    assert "no PARALLAX_GEMMA_URL" in report.summary
+    assert "PARALLAX_GEMMA_URL" in report.summary
+    assert "GOOGLE_CLOUD_PROJECT" in report.summary
+
+
+def test_vertex_is_used_when_no_local_endpoint_is_configured(monkeypatch) -> None:
+    """Gemma 4 on Vertex needs no local model, so a reader can reproduce the grouping."""
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "a-project")
+    monkeypatch.delenv("PARALLAX_GEMMA_MODEL", raising=False)
+
+    triage = GemmaTriage(endpoint="")
+
+    assert triage.route == "vertex"
+    assert triage.model == VERTEX_MODEL
+
+
+def test_an_explicit_local_endpoint_wins_over_vertex(monkeypatch) -> None:
+    """Someone who set one meant it — and it keeps the summaries off the network."""
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "a-project")
+    monkeypatch.delenv("PARALLAX_GEMMA_MODEL", raising=False)
+
+    triage = GemmaTriage(endpoint="http://127.0.0.1:11434")
+
+    assert triage.route == "ollama"
+    assert triage.model == "gemma3:4b"
 
 
 def test_groups_findings_by_the_ids_the_model_returns() -> None:

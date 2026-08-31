@@ -508,15 +508,12 @@ the run says the grouping was disabled rather than silently skipping it, and an
 unreachable grouper is reported as unreachable rather than as a run that found
 nothing to group.
 
-Gemma is the one model here that does not run on Google Cloud, which is a choice
-rather than an omission. Vertex AI offers Gemma for self-deployment to a
-dedicated GPU endpoint, not as a serverless publisher model — this project's
-Vertex account answers `gemma-3-27b-it` with `NOT_FOUND`. Renting a GPU that
-bills by the hour to relabel text that the deterministic layers already wrote
-would be the most expensive component of the system serving its least critical
-job. Keeping it self-hosted also means the finding summaries, which describe
-defects in someone's application, never leave the machine that ran the sweep.
-The measurements go to Google Cloud; the opinion about wording stays home.
+Self-hosting remains worth keeping as an option rather than a fallback. The
+finding summaries describe defects in someone's application, and an operator who
+would rather they never left the machine can point `PARALLAX_GEMMA_URL` at a
+local Gemma and get the same grouping with the same guards. The measurements go
+to Google Cloud either way; where the opinion about wording is formed is the
+operator's decision, and both answers are one environment variable apart.
 
 ## Reproducing the published figures
 
