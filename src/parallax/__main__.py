@@ -51,6 +51,14 @@ def _parse(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="ask Gemini to propose observed-data relational scenarios",
     )
+    parser.add_argument(
+        "--deny",
+        action="append",
+        default=[],
+        metavar="PATTERN",
+        help="never visit a route or press a control matching PATTERN (repeatable); "
+             "plain text matches anywhere, glob characters match the whole value",
+    )
     parser.add_argument("--headed", action="store_true", help="show the browsers (a demo, not a run)")
     parser.add_argument(
         "--storage-state",
@@ -828,6 +836,7 @@ async def _conduct(
         "storage_states": {**(discovered_states or {}), **_storage_states(args.storage_state)} or None,
         "max_surfaces": args.max_surfaces,
         "settle_ms": args.settle_ms,
+        "deny": args.deny,
     }
     if relational_scenarios is not None:
         options["relational_scenarios"] = relational_scenarios

@@ -665,6 +665,39 @@ local Gemma and get the same grouping with the same guards. The measurements go
 to Google Cloud either way; where the opinion about wording is formed is the
 operator's decision, and both answers are one environment variable apart.
 
+## The declaration surface
+
+Everything a user tells Parallax lives in one reviewable place: `parallax.toml`
+beside the project, plus the data-only scenario file it points at. The design
+rule is **default-everything, declare-to-override** — with no file at all, a
+sweep discovers the routes, signs in if given credentials, and the axis gate
+decides which comparisons the application even supports. Declarations narrow or
+extend that; they never have to exist for the first sweep to say something.
+
+What is declarable today:
+
+| Concern | Where | What it does |
+|---|---|---|
+| Target, output, crawl budget | `[target]` | which app, where evidence goes, how far to look |
+| Roles and their credentials | `[auth]` | Parallax finds the sign-in surface itself |
+| Models on and off | `[models]` | vision lens, proposer, triage — each reports itself disabled rather than silently missing |
+| Application promises | `[scenarios] file` | relational, capability, audience and choreography declarations — a message that must arrive, a role that must be refused, a call that must go quiet, a game that must end for both players |
+| Hard limits | `[constraints] deny` | routes and controls the agent must never visit or press — `"delete"` covers every delete button, `/admin/*` covers a subtree; every exclusion is recorded in the feed as `denied`, so an audit sees what was not swept and why |
+| Delivery | `[delivery]` | open the pull request, and against which branch |
+
+What is deliberately **not** declarable: cross-product combinations. The seven
+witnesses each differ from the baseline by exactly one property, so a
+disagreement has exactly one candidate cause. A configuration that produced
+`arabic × dark × mobile` witnesses would destroy that diagnosis, and no schema
+option will be added that quietly does so — widening an axis means more
+one-axis witnesses, never deeper ones.
+
+Two extensions are designed and not yet built, and are listed here rather than
+implied: per-axis value lists (which locales, which viewports, which browser
+engines — each still varied alone), and declared brand tokens (the project's own
+fonts and colours as measurable expectations, which is the honest version of a
+"design standard" — a declared rule, not a model's taste).
+
 ## Reproducing the published figures
 
 The figures on the front page come from a graded sweep of five bundled demo

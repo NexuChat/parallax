@@ -103,6 +103,58 @@ class Recording:
     def pane(self, index: int) -> object:
         return self.page.frame_locator(f"#pane-{index}")
 
+    async def ledger(self, title: str) -> None:
+        await self.page.evaluate("(t) => window.stage.ledger(t, true)", title)
+
+    async def close_ledger(self) -> None:
+        await self.page.evaluate("() => window.stage.ledger('', false)")
+
+    async def entry(self, state: str, label: str, observations: list[str], count: str = "") -> None:
+        await self.page.evaluate(
+            "([s, l, o, c]) => window.stage.entry(s, l, o, c)", [state, label, observations, count]
+        )
+
+    async def play_protocol(self) -> None:
+        """Ask the deployed service to play the protocol, and show what it saw.
+
+        The engine runs on the server with its own two sessions. This reads its
+        per-step results as they land and writes them into the ledger, so what
+        appears beside the boards is the verification itself rather than a
+        script's account of it.
+        """
+        started = await self.page.request.post(f"{CONSOLE}/protocol")
+        run_id = (await started.json())["id"]
+        shown = 0
+        for _ in range(150):
+            await self.page.wait_for_timeout(1500)
+            state = await (await self.page.request.get(f"{CONSOLE}/protocol/{run_id}")).json()
+            steps = state.get("steps") or []
+            for step in steps[shown:]:
+                observations = [
+                    f"<b>{want['participant']}</b> {want['wanted']} — "
+                    + (f"<span class='yes'>{want['observed']}</span>" if want["held"]
+                       else f"<span class='no'>{want['observed']}</span>")
+                    for want in step["expectations"]
+                ]
+                if step.get("error"):
+                    observations.append(f"<span class='no'>{step['error']}</span>")
+                await self.entry(
+                    "ok" if step["passed"] else "bad",
+                    f"{step['actor']} — {step['label']}",
+                    observations,
+                    f"STEP {steps.index(step) + 1} OF 7",
+                )
+            shown = len(steps)
+            if state.get("status") in {"complete", "failed"}:
+                if state.get("verdict"):
+                    await self.verdict(state["verdict"])
+                elif state.get("error"):
+                    await self.verdict(state["error"])
+                else:
+                    await self.verdict("every promise held, seven of seven", good=True)
+                return
+        await self.verdict("the protocol did not finish inside the recording window")
+
     async def beat(self, seconds: float) -> None:
         """Time for a viewer to read what just changed."""
         await self.page.wait_for_timeout(int(seconds * 1000))
@@ -110,7 +162,7 @@ class Recording:
 
 async def act_one_thesis(rec: Recording) -> None:
     await rec.say("One eye sees no depth. Two do.", "01 / THE IDEA",
-              voice="Every regression tool I have used compares a page against yesterday's copy of itself. That catches what changed. It never catches what only one kind of user sees.")
+              voice="Every regression tool compares a page against yesterday's copy of itself. That catches what changed. Never what only one kind of user sees.")
     await rec.show([{"label": "perallax.mlki.app", "url": f"{CONSOLE}/", "hint": "the thesis"}])
     await rec.note(
         "A single browsing session cannot know what it is missing. "
@@ -125,7 +177,7 @@ async def act_one_thesis(rec: Recording) -> None:
 async def act_one_b_value(rec: Recording) -> None:
     """What you hand it, and what it hands back."""
     await rec.say("Point it at a URL. Get back failing tests.", "02 / WHAT IT DOES",
-              voice="You hand Parallax a URL and a credentials file. It finds the sign-in surface itself, signs in as each role, sweeps, decides which axes the application even supports, writes the failing tests, and opens the pull request. Nobody writes a selector or records a baseline.")
+              voice="You hand it a URL and a credentials file. It signs itself in, sweeps, writes the failing tests, and opens the pull request.")
     # The architecture diagram, which is also a required deliverable and had
     # existed only as a file in the repository nobody would open.
     await rec.show([{"label": "one command, end to end", "url": f"{CONSOLE}/architecture.html", "hint": "the architecture"}])
@@ -186,11 +238,12 @@ async def act_three_protocol(rec: Recording) -> None:
     per-step result, not a script's narration of it.
     """
     await rec.say("A promise that is an order, not a moment", "03 / TWO LIVE PLAYERS",
-              voice="Some promises are not a moment. They are an order. Here is the same game at two routes. One plays correctly. On the other, when somebody wins, only the winner is told.")
+              voice="Some promises are not a moment. They are an order.")
     await rec.show([
         {"label": "amira · game-legacy", "url": f"{DEMO}/arena/game-legacy?me=amira&vs=samir", "hint": "player one"},
         {"label": "samir · game-legacy", "url": f"{DEMO}/arena/game-legacy?me=samir&vs=amira", "hint": "player two"},
     ])
+    await rec.beat(4)
     await rec.ledger("PARALLAX · PLAYING THE PROTOCOL")
     await rec.note(
         "Nobody is clicking these boards. Parallax opens its own two sessions and plays the protocol, "
@@ -203,7 +256,8 @@ async def act_three_protocol(rec: Recording) -> None:
     await rec.play_protocol()
     await rec.tone(0, "good")
     await rec.tone(1, "hot")
-    await rec.beat(4)
+    await rec.beat(5)
+    await rec.close_ledger()
 
 
 async def act_four_audio(rec: Recording) -> None:
@@ -228,8 +282,7 @@ async def act_four_audio(rec: Recording) -> None:
         "Her control says <b>mic-off</b>. samir still hears her. "
         "omar hears nothing — but he turned his own speaker off, and is <b>not</b> reported.",
         voice="Her control says mic off. Samir still hears her. Omar hears nothing, but Omar turned his own "
-              "speaker off, and is correctly not reported. That is why the sensor measures audio energy "
-              "rather than asking whether a track exists.",
+              "speaker off, and is correctly not reported.",
     )
     await rec.beat(4)
     await rec.verdict(
@@ -276,7 +329,7 @@ async def act_four_b_production(rec: Recording) -> None:
 
 async def act_five_graded(rec: Recording) -> None:
     await rec.say("A detection rate is meaningless without an error rate", "05 / GRADED",
-              voice="Findings are worth nothing without a false positive count. Seven applications declare their own deliberate defects, including two clean controls with nothing planted. Seventeen of seventeen found, zero missed, zero false positives.")
+              voice="Seven applications declare their own defects, including two clean controls. Seventeen of seventeen, zero false positives.")
     await rec.show([{"label": "perallax.mlki.app — read live from graded-summary.json", "url": f"{CONSOLE}/#scoreboard"}])
     await rec.note(
         "Seven applications declare their own deliberate defects in code, including "
@@ -289,7 +342,7 @@ async def act_five_graded(rec: Recording) -> None:
 
 async def act_six_cloud(rec: Recording) -> None:
     await rec.say("Running on Google Cloud", "06 / CLOUD RUN + VERTEX AI",
-              voice="The service is one Cloud Run instance in us-central1, shown here at its own Google address. Gemini three point seven Flash, Gemini embeddings, and Gemma four are all reached through Vertex A I on the same project.")
+              voice="One Cloud Run instance in us-central1, at its own Google address. Gemini, embeddings and Gemma four all reached through Vertex A I.")
     await rec.show([
         {"label": "parallax-x6nwdmf3oa-uc.a.run.app — Cloud Run, us-central1",
          "url": f"{CLOUD_RUN}/console?feed=%2Fconsole%2Fruns%2Farena%2Ffeed.jsonl",
@@ -371,7 +424,7 @@ async def act_six_b_live(rec: Recording) -> None:
 
 async def act_seven_close(rec: Recording) -> None:
     await rec.say("The output is a test, not a report", "07 / WHAT YOU GET",
-              voice="Every finding it can express ships as a failing Playwright spec for your own suite. Eighteen of eighteen fail as assertions. None skipped, none passing. The two it cannot express yet, it declines.")
+              voice="Every finding it can express ships as a failing Playwright spec. Eighteen of eighteen fail as assertions — none skipped, none passing.")
     await rec.show([{"label": "a generated Playwright spec", "url": f"{CONSOLE}/#output"}])
     await rec.note(
         "Every finding it can express ships as a failing Playwright spec for your own suite. "

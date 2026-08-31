@@ -12,6 +12,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
+from fnmatch import fnmatch
 from urllib.parse import parse_qsl, urlencode, urldefrag, urljoin, urlsplit, urlunsplit
 
 from .compositor import Compositor
@@ -142,6 +143,7 @@ class Conductor:
         capability_scenarios: Sequence[CapabilityScenario] | None = None,
         choreographies: Sequence[Choreography] | None = None,
         audiences: Sequence[AudienceScenario] | None = None,
+        deny: Sequence[str] | None = None,
         scenario_proposer: ScenarioProposer | None = None,
         proposal_validator: Callable[..., list[RelationalScenario]] | None = None,
         capability_validator: Callable[..., list[CapabilityScenario]] | None = None,
@@ -161,6 +163,7 @@ class Conductor:
         self.capability_scenarios = list(capability_scenarios or [])
         self.choreographies = list(choreographies or [])
         self.audiences = list(audiences or [])
+        self.deny = [pattern for pattern in (deny or []) if pattern.strip()]
         self.scenario_proposer = scenario_proposer
         self.proposal_validator = proposal_validator
         self.capability_validator = capability_validator
@@ -168,6 +171,7 @@ class Conductor:
         # changes language is established once per run rather than per page.
         self.locale_mechanism: str | None = None
         self._observed_routes: set[str] = set()
+        self._denied_targets: set[str] = set()
         self._observed_affordances: set[ObservedAffordance] = set()
         self._observed_endpoints: set[str] = set()
         self._observed_text: list[str] = []
@@ -179,6 +183,8 @@ class Conductor:
         feed_path = self.out_dir / "feed.jsonl"
         feed_path.write_text("", encoding="utf-8")
         surfaces = await self._discover()
+        for target in sorted(self._denied_targets):
+            self._write(feed_path, "status", {"state": "denied", "target": target})
         proposal_report, proposed_scenarios, proposed_capabilities = self._proposed_scenarios()
         relational_scenarios = [*self.relational_scenarios, *proposed_scenarios]
         capability_scenarios = [*self.capability_scenarios, *proposed_capabilities]
@@ -381,6 +387,10 @@ class Conductor:
                 for action in data.get("affordances", []):
                     if not isinstance(action, dict) or not isinstance(action.get("selector"), str):
                         continue
+                    label = action.get("label")
+                    if self._denied(action["selector"]) or (isinstance(label, str) and self._denied(label)):
+                        self._denied_targets.add(f"{route} :: {label or action['selector']}")
+                        continue
                     affordance_key = (route, action["selector"])
                     if affordance_key in queued_affordances:
                         continue
@@ -391,6 +401,14 @@ class Conductor:
                     if not isinstance(href, str):
                         continue
                     target = _normal_url(urljoin(route, href))
+                    if self._denied(urlsplit(target).path):
+                        # An agent that presses things on a live application
+                        # needs a way to be told "never this". The route is
+                        # excluded before it can be visited, and the exclusion
+                        # is recorded so an audit can see what was not swept
+                        # and why, rather than wondering.
+                        self._denied_targets.add(target)
+                        continue
                     if (
                         _origin(target) == origin
                         and _is_at_or_below_start_path(target, self.start_url)
@@ -403,6 +421,24 @@ class Conductor:
         finally:
             await witness.close()
         return surfaces
+
+    def _denied(self, value: str) -> bool:
+        """Whether a route path, selector, or control label is off limits.
+
+        A pattern with glob characters matches the whole value; a plain pattern
+        matches anywhere inside it, case-insensitively. Substring is the default
+        because the person writing "delete" means every delete button, not an
+        exact path.
+        """
+        candidate = value.lower()
+        for pattern in self.deny:
+            lowered = pattern.lower()
+            if any(mark in lowered for mark in "*?["):
+                if fnmatch(candidate, lowered):
+                    return True
+            elif lowered in candidate:
+                return True
+        return False
 
     def _proposed_scenarios(
         self,

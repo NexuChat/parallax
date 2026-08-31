@@ -76,6 +76,12 @@ base = ""
 [scenarios]
 # Relational and capability scenarios, in the data-only grammar.
 file = ""
+
+[constraints]
+# Routes and controls the sweep must never touch. Plain text matches anywhere
+# (so "delete" covers every delete button); glob patterns match the whole path.
+# An agent pressing things on a live application needs a written "never this".
+deny = []
 '''
 
 
@@ -94,6 +100,7 @@ class Settings:
     open_pr: str | None = None
     pr_base: str | None = None
     scenarios: Path | None = None
+    deny: list[str] = field(default_factory=list)
     source: Path | None = field(default=None, compare=False)
 
     def describe(self) -> str:
@@ -128,6 +135,7 @@ def _settings_from(data: dict[str, Any], source: Path) -> Settings:
     models = _table(data, "models")
     delivery = _table(data, "delivery")
     scenarios = _table(data, "scenarios")
+    constraints = _table(data, "constraints")
     base = source.parent
 
     def resolved(value: Any) -> Path | None:
@@ -151,6 +159,7 @@ def _settings_from(data: dict[str, Any], source: Path) -> Settings:
         open_pr=_text(delivery.get("open_pr")),
         pr_base=_text(delivery.get("base")),
         scenarios=resolved(scenarios.get("file")),
+        deny=_texts(constraints.get("deny")),
         source=source,
     )
 
@@ -158,6 +167,12 @@ def _settings_from(data: dict[str, Any], source: Path) -> Settings:
 def _table(data: dict[str, Any], name: str) -> dict[str, Any]:
     value = data.get(name)
     return value if isinstance(value, dict) else {}
+
+
+def _texts(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item.strip() for item in value if isinstance(item, str) and item.strip()]
 
 
 def _text(value: Any) -> str | None:

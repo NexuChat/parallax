@@ -46,6 +46,9 @@ def _sweep(args: argparse.Namespace, extra: list[str]) -> int:
     unless_given("--max-surfaces", settings.max_surfaces)
     unless_given("--credentials", settings.credentials)
     unless_given("--relational-scenarios", settings.scenarios)
+    if "--deny" not in extra:
+        for pattern in settings.deny:
+            argv.extend(["--deny", pattern])
     unless_given("--open-pr", settings.open_pr)
     unless_given("--pr-base", settings.pr_base)
     if settings.propose_scenarios and "--propose-scenarios" not in extra:

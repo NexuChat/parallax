@@ -114,7 +114,7 @@ def build(video: Path, manifest: Path, out: Path, *, rate: float) -> dict[str, o
     subprocess.run(
         ["ffmpeg", "-v", "error", *inputs, "-filter_complex", graph,
          "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
-         "-shortest", "-movflags", "+faststart", str(out), "-y"],
+         "-movflags", "+faststart", str(out), "-y"],
         check=True,
     )
     shutil.rmtree(work, ignore_errors=True)
