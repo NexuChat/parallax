@@ -20,9 +20,10 @@ def test_audio_is_judged_on_energy_and_never_on_a_volume_setting() -> None:
     cannot separate the two — a muted participant negotiates and receives
     exactly like a listening one — so energy is the only reading that decides.
     """
-    # The element's volume is never read as a level: it is what a page is told
-    # to play at, not what it received.
-    assert "el.volume" not in AUDIO_RECEIVED
+    # Volume is a legitimate *gate* — it decides whether an element would play
+    # at all — and never a *level*. The level always comes from the signal.
+    assert "Math.max(result.level, el.volume)" not in AUDIO_RECEIVED
+    assert "el.volume > 0) audible.push" in AUDIO_RECEIVED
     assert "getFloatTimeDomainData" in AUDIO_RECEIVED
     assert "result.level >= minLevel && result.packets >= minPackets" in AUDIO_RECEIVED
 
@@ -85,3 +86,32 @@ def test_a_supplied_recording_is_played_into_the_fake_microphone() -> None:
     args = speaking_args("/tmp/speech.wav")
 
     assert any(arg.startswith("--use-file-for-fake-audio-capture=/tmp/speech.wav") for arg in args)
+
+
+def test_arriving_and_being_heard_are_different_questions() -> None:
+    """A listener who mutes their speaker still receives everything.
+
+    Measured on a live two-peer call with the listener's speaker muted: the
+    received signal carried a peak of 1.0282 while the audible peak was 0.0000.
+    Muting a speaker is a decision about playback, so a check that conflated the
+    two would report a working mute as a propagation failure.
+    """
+    measurement = {"heard": True, "audible": False, "level": 1.0282, "audibleLevel": 0.0}
+
+    assert perceived(MediaExpectation("audio_received"), measurement) is True
+    assert perceived(MediaExpectation("audio_audible"), measurement) is False
+
+
+def test_a_muted_microphone_stops_both_of_them() -> None:
+    """Nothing arrives, so nothing can be played — packets keep climbing anyway."""
+    measurement = {"heard": False, "audible": False, "level": 0.0, "packets": 567}
+
+    assert perceived(MediaExpectation("audio_received"), measurement) is False
+    assert perceived(MediaExpectation("audio_audible"), measurement) is False
+
+
+def test_both_audio_kinds_share_one_page_measurement() -> None:
+    received, _ = media_probe(MediaExpectation("audio_received"))
+    audible, _ = media_probe(MediaExpectation("audio_audible"))
+
+    assert received is audible is AUDIO_RECEIVED

@@ -94,7 +94,15 @@ async ({ minLevel, minPackets, windowMs }) => {
     }
   };
 
+  // Two different questions, and a call test needs both. "Received" asks
+  // whether the signal arrived — transport, negotiation, the sender's
+  // microphone. "Audible" asks whether this participant would actually hear it,
+  // which a receiver can refuse by muting its own playback without anything
+  // upstream changing. Measured live: with the listener's speaker muted the
+  // signal still carried energy of 1.0055, because muting a speaker is a
+  // decision about playback and not about the stream.
   const streams = [];
+  const audible = [];
   if (state) {
     result.connections = state.connections.length;
     for (const stream of state.streams) {
@@ -114,18 +122,29 @@ async ({ minLevel, minPackets, windowMs }) => {
     }
   }
   for (const el of document.querySelectorAll('audio, video')) {
-    if (el.paused || el.muted || !(el.currentTime > 0)) continue;
-    if (el.srcObject && el.srcObject.getAudioTracks && el.srcObject.getAudioTracks().length) {
-      streams.push(el.srcObject);
-    }
+    if (!el.srcObject || !el.srcObject.getAudioTracks || !el.srcObject.getAudioTracks().length) continue;
+    streams.push(el.srcObject);
+    const playing = !el.paused && el.currentTime > 0;
+    if (playing && !el.muted && el.volume > 0) audible.push(el.srcObject);
   }
   result.streams = streams.length;
-  for (const stream of streams.slice(0, 3)) {
-    const peak = await peakOf(stream);
-    if (peak > result.level) { result.level = peak; result.source = 'analyser'; }
-  }
+  result.audibleStreams = audible.length;
+
+  const peakAcross = async (list) => {
+    let peak = 0;
+    for (const stream of list.slice(0, 4)) {
+      const measured = await peakOf(stream);
+      if (measured > peak) peak = measured;
+    }
+    return peak;
+  };
+
+  const receivedPeak = await peakAcross(streams);
+  if (receivedPeak > result.level) { result.level = receivedPeak; result.source = 'analyser'; }
+  result.audibleLevel = await peakAcross(audible);
 
   result.heard = result.level >= minLevel && result.packets >= minPackets;
+  result.audible = result.audibleLevel >= minLevel && result.packets >= minPackets;
   return result;
 }
 """
@@ -163,7 +182,10 @@ async ({ minFrames }) => {
 class MediaExpectation:
     """A declared media effect, kept in the same data-only shape as the rest."""
 
-    kind: str  # "audio_received" | "video_received"
+    # "audio_received" — the signal arrived at this session.
+    # "audio_audible"  — and this session would actually play it.
+    # "video_received" — frames are being decoded.
+    kind: str
     min_level: float = 0.01
     min_packets: int = 5
     min_frames: int = 5
@@ -173,13 +195,15 @@ class MediaExpectation:
 
     def describe(self) -> str:
         if self.kind == "audio_received":
-            return f"audio at level ≥ {self.min_level}"
+            return f"audio arriving at level ≥ {self.min_level}"
+        if self.kind == "audio_audible":
+            return f"audio this session would play, at level ≥ {self.min_level}"
         return f"video with ≥ {self.min_frames} decoded frames"
 
 
 def media_probe(expectation: MediaExpectation) -> tuple[str, dict[str, Any]]:
     """The page-side measurement and its arguments for one declared expectation."""
-    if expectation.kind == "audio_received":
+    if expectation.kind in {"audio_received", "audio_audible"}:
         return AUDIO_RECEIVED, {
             "minLevel": expectation.min_level,
             "minPackets": expectation.min_packets,
@@ -192,7 +216,8 @@ def perceived(expectation: MediaExpectation, measurement: Any) -> bool:
     """Read one measurement, treating an unreadable page as silence."""
     if not isinstance(measurement, dict):
         return False
-    return bool(measurement.get("heard" if expectation.kind == "audio_received" else "seen"))
+    key = {"audio_received": "heard", "audio_audible": "audible"}.get(expectation.kind, "seen")
+    return bool(measurement.get(key))
 
 
 # Chromium needs telling that it may use a synthetic microphone and play without

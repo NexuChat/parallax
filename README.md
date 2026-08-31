@@ -307,8 +307,16 @@ Two effect kinds close that gap, declarable anywhere the others are:
 
 ```json
 {"type": "audio_received", "min_level": 0.01, "min_packets": 5}
+{"type": "audio_audible",  "min_level": 0.01}
 {"type": "video_received", "min_frames": 5}
 ```
+
+`audio_received` and `audio_audible` are deliberately separate, because they are
+different questions and a call needs both. The first asks whether the signal
+arrived — transport, negotiation, the sender's microphone. The second asks
+whether this participant would actually hear it, which a receiver can refuse by
+muting its own playback while everything upstream keeps working. Conflating them
+would report a mute that works correctly as a propagation failure.
 
 A page's `RTCPeerConnection` objects are not reachable from outside unless the
 application chose to expose them, and none does, so the constructor is wrapped
@@ -328,8 +336,29 @@ A session that is supposed to speak needs a microphone that produces sound, or
 it is indistinguishable from a muted one; `speaking_args()` supplies Chromium's
 synthetic device and, optionally, a recording to play into it.
 
+The bundled [`call`](demo/sites/callroom.py) demo is a real WebRTC mesh rather
+than a simulation, because a fixture that faked the audio would prove only that
+the fake worked. Eight simultaneous sessions, twenty-eight peer connections, and
+every state the question turns on:
+
+| participant | signal arrived | would hear it |
+| --- | --- | --- |
+| three speakers | yes | yes |
+| microphone off | yes | yes — muting your own microphone does not deafen you |
+| in the call, listening | yes | yes |
+| in the room, not in the call | yes | yes — listening in is what a room is for |
+| in the room, speaker off | **yes** | **no** — by choice, and not a defect |
+| joined late | yes | yes |
+
+Two measurements from that run are the whole argument. With the sender's
+microphone off, the listener measured level `0.0000` while `packetsReceived`
+climbed to `567` — packet counting cannot tell a muted participant from a
+speaking one. With the listener's speaker off, the received signal measured
+`1.0282` and the audible signal `0.0000` — the audio arrived perfectly and the
+participant still heard nothing.
+
 So a group call is expressible as an audience scenario without any new
-machinery: the speaker is the actor, participants expect `audio_received`, and
+machinery: the speaker is the actor, participants expect `audio_audible`, and
 whoever muted or is outside the room carries the same expectation negated.
 
 ## Limits

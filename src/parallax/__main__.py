@@ -298,7 +298,7 @@ def _effect(spec: Any, name: str, source: str) -> tuple[object, EffectExpectatio
             return bool(await page.locator(selector).is_visible())
 
         return visible, EffectExpectation("visible", selector=selector)
-    if effect_type in {"audio_received", "video_received"}:
+    if effect_type in {"audio_received", "audio_audible", "video_received"}:
         # Presence is not perception. A muted participant negotiates the call and
         # receives packets exactly like a listening one, so the threshold is on
         # energy and decoded frames rather than on a track existing.
