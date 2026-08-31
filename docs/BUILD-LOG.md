@@ -92,6 +92,57 @@ Anything measurable is measured. Overflow is `scrollWidth > clientWidth`. Contra
 
 And a model I did **not** use: neither Veo nor Lyria appears anywhere in the engine, because generating video or audio inside a tool whose entire pitch is evidence integrity would be decoration at best and fabricated evidence at worst.
 
+## The model that could not do the job I had given it
+
+The locale axis was supposed to be the clever one. Translate the baseline text
+with Cloud Translation, embed both sides, and a low score means the Arabic page
+says something unrelated to the English one. I wrote that in the README as a
+capability.
+
+Then I fixed an unrelated credentials bug, the embedding path started actually
+running instead of silently failing, and the graded sweep got *worse*. It
+accused a correctly translated page and missed the untranslated one it was
+supposed to catch.
+
+So I measured the thing I had been asserting. Through this exact pipeline,
+`text-embedding-005` scores a correct Arabic translation **0.702**, an unrelated
+Arabic paragraph **0.689**, and untranslated English **0.657**. That is a band
+0.045 wide. There is no threshold inside it, and mine sat above all three.
+
+The failure was mine twice over. The unit test that "proved" the capability
+passed only because its fake embeddings were orthogonal by construction — I had
+tested my own assumption instead of the model. And untranslated text is
+*identical* text, which any embedding calls equivalent; deferring to the score
+would clear the one defect the axis exists to catch.
+
+The deterministic check now decides the locale axis and the score is recorded as
+evidence beside it. `gemini-embedding-001` does separate those cases — 0.978
+against 0.714 on the same pair — so the capability is reachable. It is not
+claimed until it ships and is graded.
+
+## CI disagreed with my laptop, and CI was right
+
+The last thing I did was make the graded sweep run on every push. It failed
+immediately: two render findings nobody had planted, on a GitHub runner, from
+the commit that graded a clean 15/15/0 on my machine.
+
+The cause was fonts. The demo sites asked for `Georgia`, `system-ui` and
+`ui-monospace` — none of which is installed everywhere — so each host resolved a
+different fallback with different text metrics, and horizontal overflow and
+tap-target size are exactly the measurements that cross a threshold when metrics
+move. Under a Liberation-only font set the same commit produced *twenty* false
+positives.
+
+A number that depends on which fonts the operator happens to have is not
+reproducible, and reproducibility was the only reason the number was worth
+quoting. The fleet now serves its own subset faces, and the figure is identical
+with the host's fonts and with almost all of them removed. Making the rendering
+deterministic also exposed a real fixture bug the noise had been hiding: an
+unbreakable API path that genuinely overflowed a 360px viewport.
+
+I would not have found either of these by testing more carefully on my own
+machine. I found them by running the same thing somewhere I did not control.
+
 ## The bug that would have cost me the whole argument
 
 Parallax's headline is "the output is a test, not a report" — every finding becomes a failing Playwright spec you merge into CI.
