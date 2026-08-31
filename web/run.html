@@ -118,6 +118,24 @@
         paint('failed', url, {}, 'Stopped polling after eight minutes.');
       }
 
+      (async () => {
+        let last = null;
+        try { last = JSON.parse(localStorage.getItem('parallax-last-run')); } catch (_) {}
+        if (!last || !last.id) return;
+        let run;
+        try { run = await (await fetch(`/runs/${last.id}`, { cache: 'no-store' })).json(); } catch (_) { return; }
+        if (!run.status || run.error === 'unknown run') return;
+        el('url').value = last.url || el('url').value;
+        if (run.status === 'complete') {
+          const feed = encodeURIComponent(`/runs/${last.id}/feed.jsonl`);
+          paint('complete', last.url, run.counts || {},
+            `Done. <a href="/console?feed=${feed}">Open this run in the console</a> — every finding carries the witnesses behind it.`);
+        } else if (run.status === 'running' || run.status === 'queued') {
+          paint('running', last.url, run.counts || {}, 'Re-attached to the sweep this page started.');
+          poll(last.id, last.url);
+        }
+      })();
+
       el('launch').addEventListener('submit', async (event) => {
         event.preventDefault();
         const url = el('url').value.trim();
@@ -131,6 +149,10 @@
           });
           const started = await response.json();
           if (!response.ok || !started.id) throw new Error(started.error || `HTTP ${response.status}`);
+          // The page survives its own reload: a visitor who navigates away and
+          // comes back is re-attached to the sweep they started instead of
+          // finding an idle form and wondering whether anything happened.
+          try { localStorage.setItem('parallax-last-run', JSON.stringify({ id: started.id, url })); } catch (_) {}
           await poll(started.id, url);
         } catch (error) {
           paint('failed', url, {}, `Could not start: ${error.message}`);

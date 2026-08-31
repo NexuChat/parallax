@@ -1,50 +1,50 @@
 [
   {
     "at": 0.0,
-    "say": "Every regression tool compares a page against yesterday's copy of itself. That catches what changed. Never what only one kind of user sees."
+    "say": "Every regression tool compares a page against yesterday's copy of itself \u2014 it catches what changed, never what only one kind of user sees."
   },
   {
-    "at": 9.12,
-    "say": "You hand it a URL and a credentials file. It signs itself in, sweeps, writes the failing tests, and opens the pull request."
+    "at": 15.62,
+    "say": "While it works: seven contexts on the same commit, each changing one property \u2014 role, language, theme, viewport. One disagreement, one cause. No stored screenshots."
   },
   {
-    "at": 21.13,
-    "say": "This is a sweep of a public practice site built by somebody else. No plants, no configuration. Twenty six findings on the first run. Seven browser contexts looked at the same page at the same instant, and the finding is where they disagreed."
+    "at": 28.63,
+    "say": "Back on the service \u2014 it remembers the run this page started, and the counters are the sweep itself: mosaics as surfaces settle, findings as witnesses disagree."
   },
   {
-    "at": 39.28,
-    "say": "Some promises are not a moment. They are an order."
+    "at": 89.86,
+    "say": "6 findings, produced while you watched. Now the evidence behind them."
   },
   {
-    "at": 43.31,
-    "say": "Nobody is clicking these boards. Parallax opens its own two sessions, plays the protocol, and checks every step from both players before it is allowed to run the next one. Watch the ledger on the right: that is what it observed."
+    "at": 104.46,
+    "say": "Seven contexts side by side are too small to read, so any witness opens across the whole screen."
   },
   {
-    "at": 64.16,
-    "say": "This is a real call. Audio genuinely travels between these three sessions. One route enforces its own mute. The other updates the button, and never touches the outgoing track."
+    "at": 115.54,
+    "say": "Now the part no screenshot tool can do: the same game at two routes, pixel identical \u2014 one tells only the winner. Nobody is clicking these boards; Parallax plays them itself, and the ledger is what it observed."
   },
   {
-    "at": 76.22,
-    "say": "Her control says mic off. Samir still hears her. Omar hears nothing, but Omar turned his own speaker off, and is correctly not reported."
+    "at": 131.92,
+    "say": "Step seven. Identical winning line \u2014 amira is told she won; samir, that it is his turn."
   },
   {
-    "at": 85.22,
-    "say": "Seven applications declare their own defects, including two clean controls. Seventeen of seventeen, zero false positives."
+    "at": 139.93,
+    "say": "And a real call \u2014 audio truly travels here. One route mutes; the other only repaints the button."
   },
   {
-    "at": 95.29,
-    "say": "One Cloud Run instance in us-central1, at its own Google address. Gemini, embeddings and Gemma four all reached through Vertex A I."
+    "at": 147.0,
+    "say": "Amira presses mute. Her control says mic off \u2014 and Samir still hears her. Omar hears nothing, but he chose silence, and is correctly not reported."
   },
   {
-    "at": 107.32,
-    "say": "Now watch it work. This is the deployed service, and it is about to sweep a site it has never been configured for."
+    "at": 158.01,
+    "say": "The workflow ends where a developer's day starts. A real pull request, opened by the sweep \u2014 one failing Playwright spec per finding, one commit each. Eighteen of eighteen generated specs fail as assertions. None skipped, none passing."
   },
   {
-    "at": 187.44,
-    "say": "Every finding it can express ships as a failing Playwright spec. Eighteen of eighteen fail as assertions \u2014 none skipped, none passing."
+    "at": 175.04,
+    "say": "All of it ran on one Cloud Run service, at its own Google address. Gemini, embeddings, Translation, Gemma \u2014 and this narration \u2014 one project."
   },
   {
-    "at": 196.56,
-    "say": "And the workflow does not stop at a report. These are real pull requests, opened by Parallax, one commit per finding."
+    "at": 187.05,
+    "say": "Seven applications declare their own defects, two clean controls among them. Seventeen of seventeen, zero false positives \u2014 graded in C I on every push. Parallax."
   }
 ]
