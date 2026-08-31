@@ -10,6 +10,8 @@ from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from .types import (
+    BASELINE,
+    Outcome,
     Axis,
     Context,
     Defect,
@@ -87,7 +89,15 @@ def _context_for(finding: Finding) -> Testimony:
         candidates = list(finding.testimonies)
     else:
         candidates = [t for t in finding.testimonies if t.context.varies is finding.axis]
-    return sorted(candidates or finding.testimonies, key=lambda t: t.context.name)[0]
+    ordered = sorted(candidates or finding.testimonies, key=lambda t: t.context.name)
+    if ordered:
+        return ordered[0]
+    # A finding always carries the evidence it rests on, so an empty list is a
+    # contradiction rather than a case to handle. It is handled anyway: raising
+    # here would abort spec emission for the whole run — every other finding
+    # included — over one malformed record. The baseline is the honest stand-in,
+    # and the emitted spec says which witness it belongs to either way.
+    return Testimony(finding.surface, BASELINE, Outcome.REACHED)
 
 
 def _target(finding: Finding, selector: str | None = None) -> str:

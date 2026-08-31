@@ -571,6 +571,27 @@ including anything that would otherwise inherit the user agent's default, asks
 for those by name. The suite now reports 15/15/0 identically with the host's
 fonts and with everything but Liberation removed.
 
+### A production application, signed in to
+
+[`console/runs/arbchat`](console/runs/arbchat/feed.jsonl) is a sweep of
+[arbchat.org](https://arbchat.org), a live Arabic chat product, run with nothing
+but a URL and a credentials file. Parallax found the sign-in surface itself —
+the panel has no `<form>` element and renders after hydration, and three buttons
+sit beside the password field of which `دخول كزائر` and `إنشاء حساب` do not use
+supplied credentials. Both roles signed in, the privilege axis became applicable
+because two distinct sessions existed, and the run reported 52 findings across
+six surfaces, which `gemma-4-26b-a4b-it-maas` grouped into eight causes.
+
+The locale axis reports itself as **not applicable** on that run, and that is
+the interesting part rather than a gap. The application is monolingual Arabic on
+every page an anonymous or signed-in crawl reaches, so there is no second
+rendering to compare against — and saying so is the correct answer. An earlier
+version treated non-Latin text as evidence of a locale mechanism and duly
+reported a mirroring defect on every single surface.
+
+No credential appears anywhere in that published evidence: not in the feed, not
+in a mosaic, not in a generated spec.
+
 ### A site nobody built for Parallax
 
 The graded figures use planted defects because grading needs a known answer. To

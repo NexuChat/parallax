@@ -14,6 +14,19 @@
       "dead": 1
     }
   },
+  "arbchat": {
+    "feed": "runs/arbchat/feed.jsonl",
+    "mosaics": 31,
+    "findings": 52,
+    "by_severity": {
+      "medium": 44,
+      "low": 8
+    },
+    "by_kind": {
+      "render": 32,
+      "divergence": 20
+    }
+  },
   "control": {
     "feed": "runs/control/feed.jsonl",
     "mosaics": 4,

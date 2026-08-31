@@ -646,3 +646,25 @@ def test_every_emitted_spec_asserts_something_about_the_page(tmp_path) -> None:
         body = path.read_text(encoding="utf-8")
         assert "expect" in body, path.name
         assert "throw new Error(\"Parallax render finding" not in body, path.name
+
+
+def test_a_finding_with_no_testimony_does_not_abort_the_whole_emission(tmp_path) -> None:
+    """One malformed record must not cost every other finding its spec.
+
+    `_context_for` indexed [0] into a list that a finding without testimony
+    leaves empty, and the IndexError left emit_all — so a single contradictory
+    record aborted spec generation for the entire run.
+    """
+    from parallax.emitter import emit_all
+
+    orphan = Finding(
+        kind=FindingKind.RENDER_DEFECT, severity=Severity.LOW, surface=SURFACE,
+        axis=Axis.VIEWPORT, summary="no witnesses at all", testimonies=[],
+        defect=Defect.HORIZONTAL_OVERFLOW,
+    )
+    healthy = replace(finding(FindingKind.RENDER_DEFECT, axis=Axis.VIEWPORT),
+                      defect=Defect.LOW_CONTRAST)
+
+    written = emit_all([orphan, healthy], tmp_path)
+
+    assert len(written) == 2
