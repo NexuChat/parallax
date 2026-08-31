@@ -39,6 +39,9 @@ class ProposalCandidate:
 
     index: int
     data: object
+    # Which validator this proposal belongs to. Kept beside the payload rather
+    # than inside it, so the payload stays exactly what the grammar allows.
+    kind: str = "relational"
 
 
 @dataclass(frozen=True)
@@ -125,14 +128,14 @@ class ScenarioProposer:
 
         candidates: list[ProposalCandidate] = []
         rejections: list[ProposalRejection] = []
-        for index, scenario in enumerate(scenarios, start=1):
+        for index, (kind, scenario) in enumerate(scenarios, start=1):
             if index > self._max_scenarios:
                 rejections.append(ProposalRejection(index, f"proposal limit is {self._max_scenarios}"))
                 continue
-            if reason := self._invented_reference(scenario, observation):
+            if reason := self._invented_reference(scenario, observation, kind=kind):
                 rejections.append(ProposalRejection(index, reason))
                 continue
-            candidates.append(ProposalCandidate(index, scenario))
+            candidates.append(ProposalCandidate(index, scenario, kind))
         note = "Gemini proposed no scenarios" if not scenarios else None
         return ProposalBatch(len(scenarios), tuple(candidates), tuple(rejections), note)
 
@@ -216,11 +219,22 @@ class ScenarioProposer:
             "visible_text": observation.text,
         }
         return (
-            "You plan up to three relational browser tests. Return strict JSON only, with this exact envelope: "
-            '{"scenarios":[{"type":"propagation|revocation","surface":"observed route","sender":"observed role",'
-            '"receiver":"observed role","action":{"type":"submit_form","form":"observed form selector",'
-            '"checks":["observed selector"],"fills":[{"selector":"observed selector","value":"text"}]},'
-            '"effect":EFFECT,"deadline_ms":positive_integer,"max_lag_ms":non_negative_integer}]}. '
+            "You plan up to three browser tests of two kinds. Return strict JSON only, with this "
+            "exact envelope: {\"scenarios\":[RELATIONAL],\"capabilities\":[CAPABILITY]}. Either list "
+            "may be empty. "
+            "A CAPABILITY asks whether each role can actually perform an action, which is a different "
+            "question from whether the role can see the control: "
+            "{\"label\":\"short description\",\"surface\":\"observed route\","
+            "\"roles\":[\"observed role\"],\"allowed\":[\"subset of roles that should succeed\"],"
+            "\"action\":ACTION,\"effect\":EFFECT,\"deadline_ms\":positive_integer}. "
+            "Propose a capability when the evidence shows a control that only some roles should be "
+            "able to use. Put every role in `roles` and only the entitled ones in `allowed`. "
+            "A RELATIONAL scenario is "
+            '{"type":"propagation|revocation","surface":"observed route","sender":"observed role",'
+            '"receiver":"observed role","action":ACTION,'
+            '"effect":EFFECT,"deadline_ms":positive_integer,"max_lag_ms":non_negative_integer}. '
+            'ACTION is exactly {"type":"submit_form","form":"observed form selector",'
+            '"checks":["observed selector"],"fills":[{"selector":"observed selector","value":"text"}]}. '
             # The validator accepts exactly these keys and rejects the scenario on
             # any other. Spelling both shapes out is not redundant: an elided
             # "..." here produced effect.text and effect.value on live runs, and
@@ -247,15 +261,50 @@ class ScenarioProposer:
                 if text.endswith("```"):
                     text = text[:-3]
             parsed = json.loads(text)
-            scenarios = parsed.get("scenarios") if isinstance(parsed, Mapping) else None
-            return scenarios if isinstance(scenarios, list) else None
+            if not isinstance(parsed, Mapping):
+                return None
+            found: list[tuple[str, object]] = []
+            # Two shapes come back from one call. A relational scenario asks
+            # whether an event reaches another session; a capability asks whether
+            # a role can perform the action at all. Both are proposals about the
+            # same observed evidence, so one request covers both rather than two.
+            for key, kind in (("scenarios", "relational"), ("capabilities", "capability")):
+                entries = parsed.get(key)
+                if isinstance(entries, list):
+                    found.extend((kind, entry) for entry in entries)
+            return found or None
         except Exception:
             return None
 
-    def _invented_reference(self, scenario: object, observation: BaselineObservation) -> str | None:
+    def _invented_capability_reference(
+        self, scenario: Mapping[str, Any], observation: BaselineObservation, route: str | None
+    ) -> str | None:
+        """A capability may only name roles the run holds and controls it saw.
+
+        The model is being asked who is allowed to do something, which is the
+        one question where a hallucinated answer is actively dangerous: an
+        invented `allowed` list would turn a correct authorisation rule into a
+        reported escalation.
+        """
+        roles = scenario.get("roles")
+        allowed = scenario.get("allowed", [])
+        if not isinstance(roles, list) or not roles:
+            return "capability.roles must be a non-empty list of observed roles"
+        if not isinstance(allowed, list):
+            return "capability.allowed must be a list of observed roles"
+        for name in [*roles, *allowed]:
+            if not isinstance(name, str) or name not in observation.roles:
+                return f"role {name!r} was not supplied to the run"
+        if unknown := [name for name in allowed if name not in roles]:
+            return f"capability.allowed names {unknown[0]!r}, which is not in capability.roles"
+        return None
+
+    def _invented_reference(
+        self, scenario: object, observation: BaselineObservation, *, kind: str = "relational"
+    ) -> str | None:
         if not isinstance(scenario, Mapping):
             return None
-        if reason := _grammar_rejection(scenario):
+        if reason := _grammar_rejection(scenario, kind=kind):
             return reason
         surface = scenario.get("surface")
         if isinstance(surface, str):
@@ -264,6 +313,8 @@ class ScenarioProposer:
                 return f"surface {surface!r} was not observed"
         else:
             route = None
+        if kind == "capability":
+            return self._invented_capability_reference(scenario, observation, route)
         for field in ("sender", "receiver"):
             if isinstance(value := scenario.get(field), str) and value not in observation.roles:
                 return f"{field} role {value!r} was not supplied to the run"
@@ -314,12 +365,21 @@ def _endpoint_path(value: str) -> str:
     return urlunsplit(parts._replace(query="", fragment=""))
 
 
-def _grammar_rejection(scenario: Mapping[str, object]) -> str | None:
+_RELATIONAL_KEYS = frozenset({
+    "type", "surface", "sender", "receiver", "action", "effect",
+    "deadline_ms", "max_lag_ms", "distribution", "enforcement",
+})
+_CAPABILITY_KEYS = frozenset({
+    "label", "surface", "roles", "allowed", "action", "effect", "deadline_ms",
+})
+
+
+def _grammar_rejection(scenario: Mapping[str, object], *, kind: str = "relational") -> str | None:
     """Reject model-only fields the data validator has no reason to execute."""
-    if unexpected := set(scenario) - {
-        "type", "surface", "sender", "receiver", "action", "effect", "deadline_ms", "max_lag_ms", "distribution", "enforcement",
-    }:
-        return f"{sorted(unexpected)[0]} is outside the relational scenario grammar"
+    allowed_keys = _CAPABILITY_KEYS if kind == "capability" else _RELATIONAL_KEYS
+    grammar = "capability" if kind == "capability" else "relational scenario"
+    if unexpected := set(scenario) - allowed_keys:
+        return f"{sorted(unexpected)[0]} is outside the {grammar} grammar"
     if isinstance(action := scenario.get("action"), Mapping):
         if unexpected := set(action) - {"type", "form", "checks", "fills"}:
             return f"action.{sorted(unexpected)[0]} is outside the relational scenario grammar"

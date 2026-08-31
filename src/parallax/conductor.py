@@ -86,6 +86,9 @@ class ConductSummary:
     # produced a finding look like a finding from a scenario that never ran.
     scenarios_exercised: int = 0
     scenarios_proposed_exercised: int = 0
+    capabilities_exercised: int = 0
+    capabilities_proposed_exercised: int = 0
+    capability_roles_exercised: int = 0
 
 
 @dataclass(frozen=True)
@@ -127,6 +130,7 @@ class Conductor:
         capability_scenarios: Sequence[CapabilityScenario] | None = None,
         scenario_proposer: ScenarioProposer | None = None,
         proposal_validator: Callable[..., list[RelationalScenario]] | None = None,
+        capability_validator: Callable[..., list[CapabilityScenario]] | None = None,
     ) -> None:
         if max_surfaces < 1:
             raise ValueError("max_surfaces must be at least 1")
@@ -143,6 +147,7 @@ class Conductor:
         self.capability_scenarios = list(capability_scenarios or [])
         self.scenario_proposer = scenario_proposer
         self.proposal_validator = proposal_validator
+        self.capability_validator = capability_validator
         self._observed_routes: set[str] = set()
         self._observed_affordances: set[ObservedAffordance] = set()
         self._observed_endpoints: set[str] = set()
@@ -155,8 +160,9 @@ class Conductor:
         feed_path = self.out_dir / "feed.jsonl"
         feed_path.write_text("", encoding="utf-8")
         surfaces = await self._discover()
-        proposal_report, proposed_scenarios = self._proposed_scenarios()
+        proposal_report, proposed_scenarios, proposed_capabilities = self._proposed_scenarios()
         relational_scenarios = [*self.relational_scenarios, *proposed_scenarios]
+        capability_scenarios = [*self.capability_scenarios, *proposed_capabilities]
         compositor = Compositor(
             [context.name for context in self.contexts],
             settle_ms=self.settle_ms,
@@ -221,7 +227,7 @@ class Conductor:
             for finding in findings:
                 self._write(feed_path, "finding", finding_payload(finding, mosaic=scenario_mosaic))
 
-        for capability in self.capability_scenarios:
+        for capability in capability_scenarios:
             self._write(feed_path, "status", {
                 "surface": capability.surface.describe(),
                 "surface_id": capability.surface.id,
@@ -252,6 +258,9 @@ class Conductor:
             proposal_report,
             scenarios_exercised=len(relational_scenarios),
             scenarios_proposed_exercised=len(proposed_scenarios),
+            capabilities_exercised=len(capability_scenarios),
+            capabilities_proposed_exercised=len(proposed_capabilities),
+            capability_roles_exercised=sum(len(c.roles) for c in capability_scenarios),
         )
 
     async def _discover(self) -> list[Surface]:
@@ -325,11 +334,13 @@ class Conductor:
             await witness.close()
         return surfaces
 
-    def _proposed_scenarios(self) -> tuple[ProposalReport, list[RelationalScenario]]:
+    def _proposed_scenarios(
+        self,
+    ) -> tuple[ProposalReport, list[RelationalScenario], list[CapabilityScenario]]:
         """Pass model proposals through the declared-scenario validator one at a time."""
         proposer = self.scenario_proposer
         if proposer is None:
-            return ProposalReport.disabled(), []
+            return ProposalReport.disabled(), [], []
         try:
             batch = proposer.propose(self._baseline_observation())
         except Exception as error:
@@ -338,29 +349,35 @@ class Conductor:
                 True, 0, 0, calls_attempted=getattr(proposer, "calls_attempted", 0),
                 calls_succeeded=getattr(proposer, "calls_succeeded", 0), route=getattr(proposer, "route", "unknown"),
                 last_error=message, note="scenario proposer failed before it returned a proposal",
-            ), []
+            ), [], []
 
         rejections = list(batch.rejections)
         scenarios: list[RelationalScenario] = []
-        if self.proposal_validator is None:
-            rejections.extend(
-                ProposalRejection(candidate.index, "proposal validator was not configured")
-                for candidate in batch.candidates
+        capabilities: list[CapabilityScenario] = []
+        for candidate in batch.candidates:
+            # A proposal is validated by exactly the validator its declared
+            # counterpart uses. The model gets no shorter path into execution
+            # than a human writing the same JSON by hand.
+            validator = (
+                self.capability_validator if candidate.kind == "capability" else self.proposal_validator
             )
-        else:
-            for candidate in batch.candidates:
-                try:
-                    scenarios.extend(self.proposal_validator([candidate.data], self.start_url, source=f"proposal {candidate.index}"))
-                except SystemExit as error:
-                    rejections.append(ProposalRejection(candidate.index, str(error)))
+            if validator is None:
+                rejections.append(ProposalRejection(candidate.index, "proposal validator was not configured"))
+                continue
+            try:
+                produced = validator([candidate.data], self.start_url, source=f"proposal {candidate.index}")
+            except SystemExit as error:
+                rejections.append(ProposalRejection(candidate.index, str(error)))
+                continue
+            (capabilities if candidate.kind == "capability" else scenarios).extend(produced)
         note = batch.note
         if batch.proposed == 0 and note is None:
             note = "Gemini proposed no scenarios"
         return ProposalReport(
-            True, batch.proposed, len(scenarios), tuple(rejections),
+            True, batch.proposed, len(scenarios) + len(capabilities), tuple(rejections),
             getattr(proposer, "calls_attempted", 0), getattr(proposer, "calls_succeeded", 0),
             getattr(proposer, "route", "unknown"), getattr(proposer, "last_error", None), note,
-        ), scenarios
+        ), scenarios, capabilities
 
     def _baseline_observation(self) -> BaselineObservation:
         """Keep the model's input to what this baseline actually encountered."""

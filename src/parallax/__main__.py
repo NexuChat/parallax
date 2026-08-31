@@ -492,8 +492,10 @@ async def _run(args: argparse.Namespace) -> int:
             "locale_mechanism": locale.report(),
         },
         "capabilities": {
-            "ran": len(capability_scenarios),
-            "roles_exercised": sum(len(c.roles) for c in capability_scenarios),
+            "ran": summary.capabilities_exercised,
+            "declared": len(capability_scenarios),
+            "proposed_by_model": summary.capabilities_proposed_exercised,
+            "roles_exercised": summary.capability_roles_exercised,
         },
         "relational_scenarios": {
             "ran": summary.scenarios_exercised,
@@ -546,6 +548,7 @@ async def _conduct(
     if args.propose_scenarios:
         options["scenario_proposer"] = proposer or ScenarioProposer()
         options["proposal_validator"] = relational_scenarios_from_data
+        options["capability_validator"] = capability_scenarios_from_data
     return await Conductor(args.url, args.out, **options).conduct()
 
 
