@@ -14,6 +14,7 @@ from .types import derive_witnesses
 
 _COLUMNS = 4
 _ROWS = 2
+_MOTION_HISTORY = 24
 _THUMBNAIL_SIZE = (32, 32)
 _PLACEHOLDER = (36, 36, 36)
 _NO_SIGNAL = (172, 172, 172)
@@ -60,6 +61,11 @@ class Compositor:
         self._current_mosaic: MosaicFrame | None = None
         self._dirty = False
         self._action = ""
+        # Raw screencast bytes, kept so the wall's movement can be replayed —
+        # not decoded here, because 24 decoded walls of memory per witness is a
+        # cost nobody pays until a clip is actually asked for.
+        self._history: dict[str, list[tuple[int, bytes]]] = {}
+        self._saw_motion = False
 
     @property
     def current_mosaic(self) -> MosaicFrame | None:
@@ -78,6 +84,8 @@ class Compositor:
         self._changed_at.clear()
         self._current_mosaic = None
         self._dirty = False
+        self._history.clear()
+        self._saw_motion = False
         self._action = action
 
     def submit(self, frame: Frame) -> None:
@@ -99,6 +107,10 @@ class Compositor:
             old_thumbnail, thumbnail, self._motion_threshold
         ):
             self._changed_at[frame.context_name] = self._clock()
+            self._saw_motion = True
+        history = self._history.setdefault(frame.context_name, [])
+        history.append((self._clock(), frame.jpeg))
+        del history[:-_MOTION_HISTORY]
 
         self._latest[frame.context_name] = (frame.seq, image)
         self._thumbnails[frame.context_name] = thumbnail
@@ -134,23 +146,95 @@ class Compositor:
             settled_ms=settled_ms,
         )
 
+    def motion_clip(self, max_steps: int = 14) -> tuple[bytes, int, int] | None:
+        """The wall's movement over this surface, as one animated WebP.
+
+        The settled stills are the evidence; this is the passage of time between
+        them — the screencast every witness already records and, until now,
+        threw away once the settle gate had used it. Composed once, at the end
+        of the surface, from the same raw frames: no re-encode of anything
+        published, and inter-frame compression keeps it lighter than any
+        sequence of JPEGs could be.
+
+        Returns (webp bytes, steps, duration ms), or None when nothing moved —
+        a static page must not ship a film of itself standing still.
+        """
+        if not self._saw_motion or self._tile_size is None or not self._history:
+            return None
+        stamps = sorted({ts for frames in self._history.values() for ts, _ in frames})
+        if len(stamps) < 2 or stamps[-1] - stamps[0] < 120:
+            return None
+        first, last = stamps[0], stamps[-1]
+        steps = min(max_steps, len(stamps))
+        times = [first + (last - first) * index // (steps - 1) for index in range(steps)]
+
+        decoded: dict[int, Image.Image] = {}
+
+        def tile_at(name: str, when: int) -> Image.Image | None:
+            newest = None
+            for ts, jpeg in self._history.get(name, ()):
+                if ts <= when:
+                    newest = jpeg
+                else:
+                    break
+            if newest is None:
+                return None
+            key = id(newest)
+            if key not in decoded:
+                decoded[key] = _fit_to_width(_decode(newest), self._tile_size)
+            return decoded[key]
+
+        walls: list[Image.Image] = []
+        previous_thumb: Image.Image | None = None
+        for when in times:
+            wall = self._paint_wall({name: tile_at(name, when) for name in self._contexts})
+            thumb = wall.convert("L").resize(_THUMBNAIL_SIZE, Image.Resampling.BILINEAR)
+            # Consecutive identical walls carry no motion and only add weight.
+            if previous_thumb is not None and not _has_motion(previous_thumb, thumb, 0.6):
+                continue
+            walls.append(wall)
+            previous_thumb = thumb
+        if len(walls) < 3:
+            return None
+
+        duration = max(80, min(400, (last - first) // len(walls)))
+        encoded = BytesIO()
+        walls[0].save(
+            encoded, format="WEBP", save_all=True, append_images=walls[1:],
+            duration=duration, loop=0, quality=80, method=3,
+        )
+        return encoded.getvalue(), len(walls), duration * len(walls)
+
     @property
     def _all_contexts_painted(self) -> bool:
         return all(name in self._latest for name in self._contexts)
 
-    def _compose(self) -> MosaicFrame:
+    def _paint_wall(self, images: dict[str, Image.Image | None]) -> Image.Image:
         assert self._tile_size is not None
         width, height = self._tile_size
         wall = Image.new("RGB", (_COLUMNS * width, _ROWS * height), _PLACEHOLDER)
-        tiles: list[Tile] = []
         for index, name in enumerate(self._contexts):
             x, y = (index % _COLUMNS) * width, (index // _COLUMNS) * height
-            image = self._latest.get(name)
+            image = images.get(name)
             if image is not None:
-                wall.paste(image[1], (x, y))
+                wall.paste(image, (x, y))
             else:
                 _draw_no_signal(wall, x, y, width, height)
-            tiles.append(Tile(context_name=name, x=x, y=y, w=width, h=height))
+        return wall
+
+    def _compose(self) -> MosaicFrame:
+        assert self._tile_size is not None
+        width, height = self._tile_size
+        wall = self._paint_wall({
+            name: (entry[1] if entry is not None else None)
+            for name, entry in ((name, self._latest.get(name)) for name in self._contexts)
+        })
+        tiles = [
+            Tile(context_name=name,
+                 x=(index % _COLUMNS) * width, y=(index // _COLUMNS) * height,
+                 w=width, h=height)
+            for index, name in enumerate(self._contexts)
+        ]
 
         encoded = BytesIO()
         # The wall is looked at, not measured: q100 would multiply the cost of

@@ -16,12 +16,15 @@ The feed is newline-delimited JSON (`.jsonl`). Each line is one frozen `FeedEven
 {"kind":"mosaic","at":"2026-08-29T16:04:01Z","payload":{"seq":42,"image":"https://…/mosaic.jpg","tiles":[{"context":"owner-en-light-desktop","x":0,"y":0,"w":350,"h":400}]}}
 {"kind":"finding","at":"2026-08-29T16:04:03Z","payload":{"id":"drift-locale-…","kind":"drift","severity":"high","axis":"locale","surface":"/billing","surface_id":"…","summary":"Arabic witness was redirected from billing.","evidence":"owner-en-light-desktop=reached · owner-ar-light-desktop=blocked","witnesses":["owner-en-light-desktop","owner-ar-light-desktop"]}}
 {"kind":"status","at":"2026-08-29T16:04:04Z","payload":{"state":"running","message":"Seven witnesses settled"}}
+{"kind":"motion","at":"2026-08-29T16:04:05Z","payload":{"surface_id":"…","image":"mosaics/…-motion.webp","frames":9,"duration_ms":1100}}
 ```
 
 `mosaic.image` may be an HTTP(S), relative, `data:` image URL, or a file-relative image URL. Tile coordinates are source-image pixels; the console measures the displayed image and scales every overlay from its natural dimensions. Findings are appended without re-rendering the existing list, newest first, and their `witnesses` activate the corresponding mosaic tiles.
 
 A recorded feed arrives in one read, so the console keeps every mosaic frame and
-replays them: **▶ PLAY** walks the sweep's captured moments and the scrubber
+replays them in a loop on its own for recorded feeds; surfaces that carry a
+`motion` clip play their animated capture in place of the still, except when a
+finding's evidence frame is pinned — evidence stays the exact settled image (frames are prefetched so the motion is immediate); **▶ PLAY** pauses and resumes, and the scrubber
 jumps to any frame. Selecting a finding pins its evidence frame and stops the
 playback. Clicking a tile (or **⤢ INSPECT**) opens that witness across the whole
 viewport, outlined, with everything else dimmed — seven contexts side by side

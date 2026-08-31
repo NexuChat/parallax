@@ -203,13 +203,14 @@ class Conductor:
         for surface in surfaces:
             self._write(feed_path, "status", {"surface": surface.describe(), "surface_id": surface.id, "state": "started"})
             compositor.set_action(surface.describe())
-            testimonies, moments = await self._run_surface(surface, compositor, sequence)
+            testimonies, moments, motion = await self._run_surface(surface, compositor, sequence)
             all_testimonies.extend(testimonies)
             for moment in moments:
                 image = self._write_mosaic(surface, moment)
                 self._write(feed_path, "mosaic", mosaic_payload(moment.mosaic, image, surface_id=surface.id))
             if moments:
                 surface_mosaics[surface.id] = moments[-1].mosaic
+            self._write_motion(feed_path, surface, motion)
 
             specialist_runs.append((surface, moments, testimonies))
 
@@ -237,7 +238,8 @@ class Conductor:
             self._write(feed_path, "status", {
                 "surface": scenario.surface.describe(), "surface_id": scenario.surface.id, "state": "started",
             })
-            testimonies, moments, observed_finding = await self._run_relational_scenario(scenario)
+            testimonies, moments, observed_finding, motion = await self._run_relational_scenario(scenario)
+            self._write_motion(feed_path, scenario.surface, motion)
             all_testimonies.extend(testimonies)
             scenario_mosaic = None
             for moment in moments:
@@ -606,11 +608,11 @@ class Conductor:
         final = compositor.tick(_now_ms() + self.settle_ms)
         if final is not None:
             moments.append(replace(final, surface=surface))
-        return testimonies, moments
+        return testimonies, moments, compositor.motion_clip()
 
     async def _run_relational_scenario(
         self, scenario: RelationalScenario
-    ) -> tuple[list[Testimony], list[Moment], Finding | None]:
+    ) -> tuple[list[Testimony], list[Moment], Finding | None, tuple[bytes, int, int] | None]:
         """Observe a declared cross-session effect without borrowing ordinary witnesses.
 
         This is intentionally a two-tile compositor: the sender and receiver are
@@ -687,7 +689,7 @@ class Conductor:
                 Testimony(scenario.surface, context, Outcome.ERROR, note=f"relational scenario failed: {type(error).__name__}: {error}")
                 for context in contexts
             ]
-            return testimonies, moments, None
+            return testimonies, moments, None, None
         finally:
             await asyncio.gather(pair.sender.stop_screencast(), pair.receiver.stop_screencast(), return_exceptions=True)
             await pair.close()
@@ -695,10 +697,11 @@ class Conductor:
         final = compositor.tick(_now_ms() + self.settle_ms)
         if final is not None:
             moments.append(replace(final, surface=scenario.surface))
+        motion_clip = compositor.motion_clip()
         if isinstance(observed, Finding):
             observed.replay = scenario.replay
-            return observed.testimonies, moments, observed
-        return observed, moments, None
+            return observed.testimonies, moments, observed, motion_clip
+        return observed, moments, None, motion_clip
 
     def _baseline(self) -> Context:
         return next((context for context in self.contexts if context.varies is Axis.BASELINE), self.contexts[0])
@@ -738,6 +741,28 @@ class Conductor:
                 # the page hid it; the differ will still use denial evidence.
                 pass
         testimony.offered_surfaces = offers  # type: ignore[attr-defined]
+
+    def _write_motion(self, feed_path: Path, surface: Surface, clip: tuple[bytes, int, int] | None) -> None:
+        """Publish the wall's movement for one surface, when there was any.
+
+        The stills remain the judged evidence; this is the same screencast the
+        settle gate consumed, retained and composed once, so a reader can see
+        the moments between the moments. Named like the managed stills so a
+        rerun replaces it rather than accumulating stale motion.
+        """
+        if clip is None:
+            return
+        data, frames, duration_ms = clip
+        relative = Path("mosaics") / f"{surface.id}-motion.webp"
+        path = self.out_dir / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        self._write(feed_path, "motion", {
+            "surface_id": surface.id,
+            "image": relative.as_posix(),
+            "frames": frames,
+            "duration_ms": duration_ms,
+        })
 
     def _write_mosaic(self, surface: Surface, moment: Moment) -> str:
         relative = Path("mosaics") / f"{surface.id}-{moment.mosaic.seq}.jpg"
@@ -920,7 +945,7 @@ def _applicable_testimonies(testimonies: Sequence[Testimony], exercised: set[Axi
     ]
 
 
-_MANAGED_MOSAIC = re.compile(r"[0-9a-f]{16}-\d+\.jpg")
+_MANAGED_MOSAIC = re.compile(r"[0-9a-f]{16}-(?:\d+\.jpg|motion\.webp)")
 
 
 def _clean_managed_mosaics(out_dir: Path) -> None:

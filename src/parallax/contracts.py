@@ -122,7 +122,7 @@ class Specialist(Protocol):
 class FeedEvent:
     """One line on the wire to the console. JSON, never bytes."""
 
-    kind: str            # "mosaic" | "finding" | "status"
+    kind: str            # "mosaic" | "motion" | "finding" | "status"
     payload: dict[str, Any]
     at: datetime = field(default_factory=_now)
 

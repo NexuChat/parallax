@@ -11,7 +11,7 @@
   // seven blank boxes reads as a broken product. `runs/latest` is published by
   // every graded sweep; the fixture remains the offline fallback only.
   const source = requestedFeed || 'runs/latest/feed.jsonl';
-  const state = { seen: new Set(), findings: [], mosaicsBySurface: new Map(), latestMosaic: null, tiles: [], lastFileText: '', byteOffset: 0, activeWitnesses: [], selectedFindingId: null, eventCount: 0, surfacesSeen: new Set(), witnessCount: 0, polled: false, shownMosaic: null, inspecting: null, frames: [], frameAt: 0, playing: false, timer: null };
+  const state = { seen: new Set(), findings: [], mosaicsBySurface: new Map(), latestMosaic: null, tiles: [], lastFileText: '', byteOffset: 0, activeWitnesses: [], selectedFindingId: null, eventCount: 0, surfacesSeen: new Set(), witnessCount: 0, polled: false, shownMosaic: null, inspecting: null, frames: [], frameAt: 0, playing: false, timer: null, autoplayed: false, receivingLive: false, motionBySurface: new Map() };
   const $ = (id) => document.getElementById(id);
   const el = {
     image: $('mosaicImage'), stage: $('mosaicStage'), layer: $('tileLayer'), mosaicEmpty: $('mosaicEmpty'),
@@ -43,13 +43,16 @@
   ];
 
   function safeEvent(value) {
-    return value && ['mosaic', 'finding', 'status'].includes(value.kind) && value.payload && typeof value.payload === 'object' ? value : null;
+    return value && ['mosaic', 'motion', 'finding', 'status'].includes(value.kind) && value.payload && typeof value.payload === 'object' ? value : null;
   }
   function keyFor(event) { return event.kind === 'finding' ? `finding:${event.payload.id}` : `${event.kind}:${event.payload.seq || event.at}:${event.payload.message || ''}`; }
   function processLine(line) { try { const event = safeEvent(JSON.parse(line)); if (event) processEvent(event); } catch (_) { /* A bad feed line must never disturb the wall. */ } }
   function processEvent(event) {
     const key = keyFor(event); if (state.seen.has(key)) return; state.seen.add(key); state.eventCount += 1;
     if (event.kind === 'mosaic') renderMosaic(event.payload);
+    if (event.kind === 'motion' && typeof event.payload.surface_id === 'string' && event.payload.image) {
+      state.motionBySurface.set(event.payload.surface_id, event.payload);
+    }
     if (event.kind === 'finding') addFinding(event.payload);
     if (event.kind === 'status') renderStatus(event.payload);
   }
@@ -83,18 +86,23 @@
     updateTransport();
     if (state.selectedFindingId) showSelectedFinding(); else showLiveMosaic();
   }
+  // A mosaic path in the feed is relative to the FEED, not to this page. A run
+  // published under runs/<id>/ names its images `mosaics/…`, and resolving that
+  // against the document gave /console/mosaics/… — a broken image on every frame.
+  function resolveImage(payload) {
+    return /^(data:|https?:|\/)/.test(payload.image)
+      ? payload.image
+      : new URL(payload.image, new URL(source, document.baseURI)).href;
+  }
   function displayMosaic(payload, { title, mode, caption, dim = false } = {}) {
     state.tiles = payload.tiles; state.shownMosaic = payload; el.title.textContent = title || 'Live witness mosaic'; el.wallMode.textContent = mode || 'SETTLED FRAME';
     el.wallMode.className = `wall-mode${mode === 'EVIDENCE FRAME' ? ' is-evidence' : ''}`;
     el.sequence.textContent = `FRAME ${payload.seq ?? '—'} · ${payload.tiles.length} WITNESSES`;
     el.stage.classList.toggle('is-unavailable', dim);
     el.image.onload = () => { el.image.style.display = 'block'; el.mosaicEmpty.style.display = 'none'; layoutTiles(); };
-    // A mosaic path in the feed is relative to the FEED, not to this page. A run
-    // published under runs/<id>/ names its images `mosaics/…`, and resolving that
-    // against the document gave /console/mosaics/… — a broken image on every frame.
-    el.image.src = /^(data:|https?:|\/)/.test(payload.image)
-      ? payload.image
-      : new URL(payload.image, new URL(source, document.baseURI)).href; el.caption.textContent = caption || `Live frame ${payload.seq ?? '—'} · ${payload.tiles.length} contexts aligned to their source pixels.`;
+    const clip = mode === 'EVIDENCE FRAME' ? null : state.motionBySurface.get(payload.surface_id);
+    el.image.src = clip ? resolveImage(clip) : resolveImage(payload); el.caption.textContent = caption || `Live frame ${payload.seq ?? '—'} · ${payload.tiles.length} contexts aligned to their source pixels.`;
+    if (clip) el.caption.textContent += ` · motion capture, ${clip.frames} frames`;
   }
   function showLiveMosaic() {
     if (!state.latestMosaic) return;
@@ -167,7 +175,19 @@
   function setFeedMode(label) { el.feedIndicator.textContent = label; el.feedSource.textContent = `feed: ${source}`; }
   // A finished sweep is a recording. Polling a file that has stopped growing is
   // not a live run, and saying so would misrepresent the wall as a run in flight.
+  function preloadFrames() {
+    state.frames.forEach((frame) => { const img = new Image(); img.src = resolveImage(frame); });
+    state.motionBySurface.forEach((clip) => { const img = new Image(); img.src = resolveImage(clip); });
+  }
+  function autoReplay() {
+    if (state.autoplayed || state.receivingLive || state.playing) return;
+    if (state.selectedFindingId || state.frames.length < 2) return;
+    state.autoplayed = true;
+    preloadFrames();
+    togglePlay();
+  }
   function setLiveness(receivingNow) {
+    state.receivingLive = receivingNow;
     const dot = $('liveDot');
     if (!dot) return;
     dot.textContent = receivingNow ? 'LIVE' : 'REPLAY';
@@ -255,6 +275,7 @@
     // a sibling file, and when the browser refuses we owe the reader the reason
     // rather than a wall of fabricated findings.
     await poll();
+    autoReplay();
     if (!state.eventCount) {
       if (requestedFeed || !(await tryFixture())) showNoFeed();
       if (location.protocol === 'file:') return;
@@ -382,9 +403,9 @@
     state.playing = true;
     if (state.frameAt >= state.frames.length - 1) state.frameAt = -1;
     state.timer = setInterval(() => {
-      const next = state.frameAt + 1;
-      if (next >= state.frames.length) { stopPlaying(); showFrame(state.frames.length - 1); return; }
-      showFrame(next);
+      // Wrap rather than stop: the wall keeps moving until a reader takes it —
+      // by pausing, scrubbing, or pinning a finding's evidence.
+      showFrame((state.frameAt + 1) % state.frames.length);
     }, FRAME_MS);
     showFrame(state.frameAt + 1);
   }

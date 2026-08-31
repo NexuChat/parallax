@@ -230,7 +230,10 @@ The command also accepts `--max-surfaces`, `--settle-ms`, and `--headed`. Omit `
 Everything for one run is written below `--out`:
 
 - `feed.jsonl` is the append-only event feed consumed by the console.
-- `mosaics/` contains JPEG walls for settled visual moments.
+- `mosaics/` contains JPEG walls for settled visual moments, and — for every
+  surface that actually moved — an animated `-motion.webp` of the same wall in
+  motion: the CDP screencast each witness records, retained and composed once
+  instead of discarded after the settle gate used it.
 - `specs/` contains one generated failing Playwright `.spec.ts` per finding that
   can be expressed as a check. A render finding from the vision lens has no
   measured defect behind it — the model said one tile disagreed with its peers,
@@ -697,11 +700,11 @@ implied: per-axis value lists (which locales, which viewports, which browser
 engines — each still varied alone); declared brand tokens (the project's own
 fonts and colours as measurable expectations, which is the honest version of a
 "design standard" — a declared rule, not a model's taste); and a temporal lens.
-Each witness already records a CDP screencast, used today only to decide when a
-frame has settled — and Gemini accepts video natively, so the burst a witness
-captures during an action is exactly the evidence a model could judge hover
-states, scroll behaviour and animation jank against. The frames exist; the lens
-that watches them does not yet.
+Each witness's CDP screencast is now retained and published as a motion clip
+per moving surface — and Gemini accepts video natively, so those clips are
+exactly the evidence a model could judge hover states, scroll behaviour and
+animation jank against. The footage ships; the lens that watches it does not
+yet.
 
 ## Reproducing the published figures
 

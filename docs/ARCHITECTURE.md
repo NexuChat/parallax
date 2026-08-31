@@ -166,6 +166,17 @@ The final layer is visual review. The layout and i18n specialist sends selected 
 
 ## Mosaic and motion gate
 
+The screencast is now retained as well as consumed. Each surface whose wall
+actually moved publishes `mosaics/<surface>-motion.webp` — the same raw frames
+the settle gate watched, composed once at surface end into an animated WebP
+(inter-frame compression keeps a full moving wall lighter than two of its JPEG
+stills). The feed announces it as a `motion` event, the console plays it in
+place of the still wherever the reader is not pinned to a finding's evidence
+frame, and a static page ships no film of itself standing still. The stills
+remain the judged evidence; the clip is the passage of time between them.
+
+### The gate itself
+
 Each witness starts a CDP screencast using JPEG quality 60. The compositor normalizes those frames into fixed tiles, maintains a four-by-two wall, and encodes the composed mosaic at JPEG quality 80 only when something needs to read it. It ignores stale frame sequence numbers and compares small grayscale thumbnails to detect motion.
 
 A moment is emitted only after a changed tile has been quiet for the configured settle interval. Loading intermediates are not evidence, so the motion gate avoids spending model calls on half-painted frames. Moments are harvested while witnesses work and then written as mosaic events to the feed.

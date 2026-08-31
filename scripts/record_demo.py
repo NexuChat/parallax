@@ -206,9 +206,8 @@ async def act_two_wall(rec: Recording) -> None:
         "A public practice site, swept with no plants, no configuration and no stored baseline. "
         "Every frame the sweep captured is replayed here."
     )
-    await rec.beat(4)
-    await rec.pane(0).locator("#playButton").click()
-    await rec.beat(5)
+    # The wall auto-replays recorded feeds now; the beat watches, then pauses.
+    await rec.beat(9)
     await rec.pane(0).locator("#playButton").click()
     await rec.note(
         "Seven contexts side by side are too small to read the control a finding is about. "
