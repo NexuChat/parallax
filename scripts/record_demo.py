@@ -105,11 +105,19 @@ class Recording:
         # and three get a fixed desktop window scaled down, so the applications
         # are shown in the layout they were designed for rather than in whatever
         # narrow breakpoint a third of the screen happens to trigger.
-        sizes = {1: None, 2: {"w": 1280, "h": 900}, 3: {"w": 1180, "h": 880}}
+        # Chosen for effective legibility at 1080p: two panes render ~0.9
+        # scale, three panes ~0.85 with the app's own single-column layout.
+        sizes = {1: None, 2: {"w": 1000, "h": 900}, 3: {"w": 720, "h": 980}}
         await self.page.evaluate(
             "([panes, size]) => window.stage.show(panes, size)",
             [panes, width if width is not None else sizes.get(len(panes))],
         )
+
+    async def zoom(self, index: int, seconds: float) -> None:
+        """Grow one pane and dim its siblings for a beat — pointing, on film."""
+        await self.page.evaluate("([i]) => window.stage.zoom(i, true)", [index])
+        await self.beat(seconds)
+        await self.page.evaluate("() => window.stage.zoom(0, false)")
 
     async def tone(self, index: int, tone: str) -> None:
         await self.page.evaluate("([i, t]) => window.stage.tone(i, t)", [index, tone])
@@ -201,6 +209,7 @@ async def act_one_start_a_sweep(rec: Recording) -> None:
     await rec.pane(0).locator(".presets button", has_text="the-internet").click()
     await rec.beat(1.5)
     await rec.pane(0).locator("#go").click()
+    await rec.zoom(0, 2.0)
     await rec.note(
         "That is a public practice site <b>nobody built for Parallax</b>. Seven browser contexts "
         "are opening on Cloud Run right now, on a background thread.",
@@ -217,7 +226,7 @@ async def act_two_meanwhile_the_idea(rec: Recording) -> None:
                     "role, language, theme, viewport. One disagreement, one cause. No stored screenshots. Measure first, model last.")
     await rec.show([
         {"label": "one command, end to end", "url": f"{CONSOLE}/architecture.html", "hint": "the architecture"},
-    ])
+    ], width={"w": 1640, "h": 1080})
     # The sweep continues server-side; the next act re-attaches to it — the
     # launcher remembers the run it started, so returning shows the same sweep
     # rather than an idle form and a second launch.
@@ -300,11 +309,13 @@ async def act_five_audio(rec: Recording) -> None:
     ])
     await rec.beat(7)
     await rec.pane(0).locator("#mute").click()
+    await rec.zoom(0, 1.8)
     await rec.note("amira presses <b>Mute microphone</b>. Nobody should hear her after this.")
     rec._mark("Amira presses mute. Her control says mic off — and Samir still hears her. "
               "Omar hears nothing, but he chose silence, and is correctly not reported.")
     await rec.beat(6)
     await rec.tone(1, "hot")
+    await rec.zoom(1, 2.2)
     await rec.verdict(
         "samir perceived 'muting stops the audio the others receive'\n"
         "but is not an intended audience for it\n"
@@ -371,6 +382,10 @@ async def record(out: Path) -> Path:
         )
         context = await browser.new_context(
             viewport={"width": WIDTH, "height": HEIGHT},
+            # Supersampled: the page renders at twice the pixel density and the
+            # recorder downsamples to 1080p, which is the difference between
+            # text that survives YouTube's re-encode and text that smears.
+            device_scale_factor=2,
             record_video_dir=str(videos),
             record_video_size={"width": WIDTH, "height": HEIGHT},
             permissions=["microphone"],
