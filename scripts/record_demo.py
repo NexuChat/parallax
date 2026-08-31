@@ -30,6 +30,7 @@ STAGE = "http://127.0.0.1:8123/demo/stage.html"
 DEMO = "https://demo.mlki.app"
 CONSOLE = "https://perallax.mlki.app"
 CLOUD_RUN = "https://parallax-x6nwdmf3oa-uc.a.run.app"
+PULL_REQUEST = "https://github.com/NexuChat/parallax/pull/3"
 
 WIDTH, HEIGHT = 1920, 1080
 
@@ -65,8 +66,23 @@ class Recording:
     async def verdict(self, text: str, good: bool = False) -> None:
         await self.page.evaluate("([t, g]) => window.stage.verdict(t, g)", [text, good])
 
-    async def show(self, panes: list[dict[str, str]]) -> None:
-        await self.page.evaluate("(panes) => window.stage.show(panes)", panes)
+    async def show(self, panes: list[dict[str, str]], width: dict[str, int] | None = None) -> None:
+        """Frame live sessions, rendered at a desktop width rather than squeezed.
+
+        Without a logical width the pane's own size becomes the page's viewport,
+        which crosses the responsive breakpoints of the applications being
+        demonstrated — so the demo would show every one of them in its narrow
+        layout while the narration calls it the desktop one.
+        """
+        # One pane gets the stage's own width, which is already a desktop. Two
+        # and three get a fixed desktop window scaled down, so the applications
+        # are shown in the layout they were designed for rather than in whatever
+        # narrow breakpoint a third of the screen happens to trigger.
+        sizes = {1: None, 2: {"w": 1280, "h": 900}, 3: {"w": 1180, "h": 880}}
+        await self.page.evaluate(
+            "([panes, size]) => window.stage.show(panes, size)",
+            [panes, width if width is not None else sizes.get(len(panes))],
+        )
 
     async def tone(self, index: int, tone: str) -> None:
         await self.page.evaluate("([i, t]) => window.stage.tone(i, t)", [index, tone])
@@ -90,6 +106,25 @@ async def act_one_thesis(rec: Recording) -> None:
     await rec.beat(6)
     await rec.pane(0).locator("#evidence").scroll_into_view_if_needed()
     await rec.beat(5)
+
+
+async def act_one_b_value(rec: Recording) -> None:
+    """What you hand it, and what it hands back."""
+    await rec.say("Point it at a URL. Get back failing tests.", "02 / WHAT IT DOES")
+    # The architecture diagram, which is also a required deliverable and had
+    # existed only as a file in the repository nobody would open.
+    await rec.show([{"label": "one command, end to end", "url": f"{CONSOLE}/architecture.html", "hint": "the architecture"}])
+    await rec.note(
+        "You give it a URL and a credentials file. It finds the sign-in surface itself — no selectors, "
+        "no configuration — signs in as each role, sweeps, decides which axes the application even supports, "
+        "writes the failing Playwright specs, and <b>opens the pull request</b>."
+    )
+    await rec.beat(9)
+    await rec.note(
+        "Nothing is compared against a stored screenshot, so there is <b>no baseline to record</b> and no golden "
+        "file to maintain — and the first sweep of a site it has never seen still has something to say."
+    )
+    await rec.beat(7)
 
 
 async def act_two_wall(rec: Recording) -> None:
@@ -260,6 +295,30 @@ async def act_six_cloud(rec: Recording) -> None:
     await rec.beat(12)
 
 
+async def act_eight_pull_request(rec: Recording) -> None:
+    """The end of the workflow, on GitHub.
+
+    Navigated to directly rather than framed: GitHub sends X-Frame-Options deny,
+    and a demo that showed a screenshot of a pull request instead of the pull
+    request would be exactly the substitution this whole project argues against.
+    """
+    await rec.say("And it opens the pull request", "08 / THE END OF THE WORKFLOW")
+    # No placeholder pane: about:blank held four seconds of empty white while
+    # the caption was read. The previous beat stays on screen until the browser
+    # actually leaves for GitHub.
+    await rec.note(
+        "The sweep does not stop at a report. These are real pull requests, opened by Parallax, "
+        "each carrying the specs for the findings of that run."
+    )
+    await rec.beat(4)
+    await rec.page.goto(PULL_REQUEST, wait_until="domcontentloaded")
+    await rec.beat(7)
+    await rec.page.mouse.wheel(0, 900)
+    await rec.beat(6)
+    await rec.page.mouse.wheel(0, 900)
+    await rec.beat(6)
+
+
 async def act_seven_close(rec: Recording) -> None:
     await rec.say("The output is a test, not a report", "07 / WHAT YOU GET")
     await rec.show([{"label": "a generated Playwright spec", "url": f"{CONSOLE}/#output"}])
@@ -299,8 +358,9 @@ async def record(out: Path) -> Path:
         await page.goto(STAGE, wait_until="domcontentloaded")
         rec = Recording(page)
         for act in (
-            act_one_thesis, act_two_wall, act_three_protocol,
+            act_one_thesis, act_one_b_value, act_two_wall, act_three_protocol,
             act_four_audio, act_five_graded, act_six_cloud, act_seven_close,
+            act_eight_pull_request,
         ):
             await act(rec)
         await rec.beat(1.5)

@@ -42,7 +42,14 @@
         border-bottom:1px solid var(--line); color:var(--muted); font-size:11px; letter-spacing:.1em; }
       .frame.is-hot .frame-label { color:#ffd7d9; }
       .frame.is-good .frame-label { color:var(--accent); }
-      .frame iframe { flex:1; width:100%; border:0; background:#fff; }
+      /* The framed pages are rendered at a desktop width and scaled to fit,
+         not squeezed into the pane. A 950px pane crosses the responsive
+         breakpoints of the very pages being demonstrated, so without this the
+         demo shows every application in its narrow layout and claims it is the
+         desktop one. */
+      .viewport { flex:1; position:relative; overflow:hidden; background:#0b1116; }
+      .viewport iframe { position:absolute; inset-block-start:0; inset-inline-start:0;
+        border:0; background:#fff; transform-origin:top left; }
 
       .note { min-height:64px; display:flex; align-items:center; gap:14px; padding:14px 26px;
         border-top:1px solid var(--line); color:#c8d6de; font-family:ui-sans-serif,system-ui,sans-serif; font-size:15px; }
@@ -82,14 +89,32 @@
           box.textContent = text;
           el('note').append(box);
         },
-        show(panes) {
+        show(panes, logicalWidth) {
           const frames = el('frames');
           frames.style.gridTemplateColumns = `repeat(${panes.length}, minmax(0, 1fr))`;
           frames.innerHTML = panes.map((pane, index) => `
             <div class="frame ${pane.tone ? 'is-' + pane.tone : ''}">
               <div class="frame-label"><span>${pane.label}</span><span>${pane.hint || ''}</span></div>
-              <iframe id="pane-${index}" src="${pane.url}" allow="microphone; autoplay"></iframe>
+              <div class="viewport"><iframe id="pane-${index}" src="${pane.url}" allow="microphone; autoplay"></iframe></div>
             </div>`).join('');
+          // Scaled after layout, because a pane's width is only known then.
+          // A pane is a desktop browser window of a fixed logical size, scaled
+          // down to fit. Stretching the logical height to fill the pane instead
+          // gave every short page a tall white void under it; the window simply
+          // ends, and the stage shows through.
+          document.querySelectorAll('.viewport').forEach((viewport) => {
+            const frame = viewport.querySelector('iframe');
+            if (!logicalWidth) {
+              frame.style.width = `${viewport.clientWidth}px`;
+              frame.style.height = `${viewport.clientHeight}px`;
+              frame.style.transform = 'none';
+              return;
+            }
+            const scale = viewport.clientWidth / logicalWidth.w;
+            frame.style.width = `${logicalWidth.w}px`;
+            frame.style.height = `${logicalWidth.h}px`;
+            frame.style.transform = `scale(${scale})`;
+          });
           return panes.length;
         },
         tone(index, tone) {
