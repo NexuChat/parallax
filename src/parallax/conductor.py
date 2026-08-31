@@ -228,6 +228,12 @@ class Conductor:
                 "state": "started",
             })
             runner = CapabilityRun(self.browser, storage_states=dict(self.storage_states or {}))
+            # Sequential on purpose, unlike every other multi-session path here.
+            # Each role performs the *same* declared action with the *same*
+            # payload, so running them together would let one role's effect
+            # satisfy another role's check and report a capability that the
+            # second role never had. An audience scenario can be concurrent
+            # because it has one actor and the rest only watch.
             attempts = [await runner.attempt(capability, role) for role in capability.roles]
             all_testimonies.extend(attempt.testimony for attempt in attempts)
             findings = _unpublished_findings(judge_capability(capability, attempts), published_finding_ids)
