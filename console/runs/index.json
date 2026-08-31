@@ -1,7 +1,7 @@
 {
   "admin": {
     "feed": "runs/admin/feed.jsonl",
-    "mosaics": 20,
+    "mosaics": 21,
     "findings": 4,
     "by_severity": {
       "high": 2,
@@ -29,7 +29,7 @@
   },
   "arena": {
     "feed": "runs/arena/feed.jsonl",
-    "mosaics": 42,
+    "mosaics": 46,
     "findings": 1,
     "by_severity": {
       "high": 1
@@ -40,7 +40,7 @@
   },
   "call": {
     "feed": "runs/call/feed.jsonl",
-    "mosaics": 19,
+    "mosaics": 25,
     "findings": 2,
     "by_severity": {
       "high": 2
@@ -51,7 +51,7 @@
   },
   "control": {
     "feed": "runs/control/feed.jsonl",
-    "mosaics": 7,
+    "mosaics": 4,
     "findings": 0,
     "by_severity": {},
     "by_kind": {}
@@ -71,7 +71,7 @@
   },
   "shop": {
     "feed": "runs/shop/feed.jsonl",
-    "mosaics": 23,
+    "mosaics": 20,
     "findings": 4,
     "by_severity": {
       "high": 1,
@@ -100,7 +100,7 @@
   },
   "workspace": {
     "feed": "runs/workspace/feed.jsonl",
-    "mosaics": 18,
+    "mosaics": 21,
     "findings": 5,
     "by_severity": {
       "high": 3,

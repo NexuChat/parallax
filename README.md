@@ -692,11 +692,16 @@ disagreement has exactly one candidate cause. A configuration that produced
 option will be added that quietly does so — widening an axis means more
 one-axis witnesses, never deeper ones.
 
-Two extensions are designed and not yet built, and are listed here rather than
+Three extensions are designed and not yet built, and are listed here rather than
 implied: per-axis value lists (which locales, which viewports, which browser
-engines — each still varied alone), and declared brand tokens (the project's own
+engines — each still varied alone); declared brand tokens (the project's own
 fonts and colours as measurable expectations, which is the honest version of a
-"design standard" — a declared rule, not a model's taste).
+"design standard" — a declared rule, not a model's taste); and a temporal lens.
+Each witness already records a CDP screencast, used today only to decide when a
+frame has settled — and Gemini accepts video natively, so the burst a witness
+captures during an action is exactly the evidence a model could judge hover
+states, scroll behaviour and animation jank against. The frames exist; the lens
+that watches them does not yet.
 
 ## Reproducing the published figures
 

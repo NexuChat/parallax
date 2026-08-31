@@ -155,7 +155,7 @@ class Compositor:
         encoded = BytesIO()
         # The wall is looked at, not measured: q100 would multiply the cost of
         # every moment sent to a model for detail no one can see at tile scale.
-        wall.save(encoded, format="JPEG", quality=80)
+        wall.save(encoded, format="JPEG", quality=85)
         return MosaicFrame(
             jpeg=encoded.getvalue(),
             tiles=tuple(tiles),

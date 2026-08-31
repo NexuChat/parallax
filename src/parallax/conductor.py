@@ -942,7 +942,7 @@ def _applicable_findings(findings: Sequence[Finding], exercised: set[Axis]) -> l
     ]
 
 
-_TILE_WIDTH = 480
+_TILE_WIDTH = 640
 
 
 def _tile_size(baseline: Context) -> tuple[int, int]:
@@ -950,7 +950,10 @@ def _tile_size(baseline: Context) -> tuple[int, int]:
 
     A wall of full 1440x900 tiles is 5760x1800 — re-encoded every time anyone
     looks at it and shipped to a model on every moment, for detail nobody can
-    resolve at tile scale.
+    resolve at tile scale. 640 is the middle: on a stacked laptop layout a tile
+    displays at roughly 330px, so 480-wide sources were being upscaled — the
+    evidence wall looked soft, which reads as a broken product rather than a
+    size choice. At 640 every common display downscales.
     """
     scale = _TILE_WIDTH / baseline.viewport.width
     return _TILE_WIDTH, max(1, round(baseline.viewport.height * scale))

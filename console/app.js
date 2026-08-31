@@ -6,7 +6,11 @@
   // be read we must say so: rendering the bundled sample in its place would show
   // invented findings under the caption of the run they asked for.
   const requestedFeed = new URLSearchParams(location.search).get('feed');
-  const source = requestedFeed || 'fixtures/feed.jsonl';
+  // A visitor with no ?feed should see a real run, not the sample: the sample's
+  // mosaic is an inline SVG of empty tiles, and a front door that opens on
+  // seven blank boxes reads as a broken product. `runs/latest` is published by
+  // every graded sweep; the fixture remains the offline fallback only.
+  const source = requestedFeed || 'runs/latest/feed.jsonl';
   const state = { seen: new Set(), findings: [], mosaicsBySurface: new Map(), latestMosaic: null, tiles: [], lastFileText: '', byteOffset: 0, activeWitnesses: [], selectedFindingId: null, eventCount: 0, surfacesSeen: new Set(), witnessCount: 0, polled: false, shownMosaic: null, inspecting: null, frames: [], frameAt: 0, playing: false, timer: null };
   const $ = (id) => document.getElementById(id);
   const el = {
@@ -192,9 +196,18 @@
     if (/\.(jsonl|json|txt)(\?|$)/i.test(source)) return;
     try { const stream = new EventSource(source); stream.onopen = () => { setFeedMode('SSE LIVE'); setLiveness(true); }; stream.onmessage = (message) => processLine(message.data); stream.onerror = () => { stream.close(); setTimeout(poll, 100); }; } catch (_) { /* Polling remains available. */ }
   }
-  function useFixture() {
+  async function tryFixture() {
+    // Offline fallback: only when the default published run is unreachable
+    // (file://, or a checkout with no runs). Never shown over a named feed.
+    try {
+      const probe = await fetch('fixtures/feed.jsonl', { cache: 'no-store' });
+      if (!probe.ok) throw new Error('no fixture');
+    } catch (_) {
+      if (location.protocol !== 'file:') return false;
+    }
     fallback.forEach(processEvent);
     setFeedMode('SAMPLE — NOT A RUN');
+    return true;
   }
   // Shown when a named feed could not be read. It must stay empty of findings:
   // an unreadable run has produced no evidence, and anything drawn here would be
@@ -243,7 +256,7 @@
     // rather than a wall of fabricated findings.
     await poll();
     if (!state.eventCount) {
-      if (requestedFeed) showNoFeed(); else useFixture();
+      if (requestedFeed || !(await tryFixture())) showNoFeed();
       if (location.protocol === 'file:') return;
     }
     setInterval(poll, 2500); connectSse();
