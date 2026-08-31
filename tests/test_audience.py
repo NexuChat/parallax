@@ -154,13 +154,14 @@ def test_every_observer_watches_before_the_event_happens() -> None:
         def __init__(self, name: str) -> None:
             self.page = FakePage(name)
 
-    class FakePair:
+    class FakeSession:
+        """One session each — a pair opened two and used one."""
+
         def __init__(self, name: str) -> None:
-            self.sender = FakeWitness(f"actor-{name}")
-            self.receiver = FakeWitness(name)
+            self.page = FakePage(name)
 
         async def open(self) -> None:
-            order.append(f"opened:{self.receiver.page.name}")
+            order.append(f"opened:{self.page.name}")
 
         async def close(self) -> None:
             pass
@@ -175,11 +176,14 @@ def test_every_observer_watches_before_the_event_happens() -> None:
         label=spec.label,
     )
 
-    pairs = iter([FakePair("a"), FakePair("b")])
+    watchers = iter([FakeSession("a"), FakeSession("b")])
 
     class Runner(AudienceRun):
-        def _pair(self, _scenario, _observer):
-            return next(pairs)
+        def _actor_session(self, _scenario):
+            return FakeSession("actor")
+
+        def _observer_session(self, _observer):
+            return next(watchers)
 
     asyncio.run(Runner(browser=None, poll_ms=1).observe(spec))
 

@@ -19,10 +19,11 @@ a single sighting fails it.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from .relational import Expectation, PageAction, RelationalPair, StorageState
+from .witness import Witness
 from .types import (
     Axis,
     Context,
@@ -100,19 +101,20 @@ class AudienceRun:
         # One pair per observer, each sharing the actor's context on the sending
         # side. Reusing the audited pair keeps navigation, storage state and
         # effect matching identical to the two-party path.
-        pairs = [self._pair(scenario, observer) for observer in scenario.observers]
-        if not pairs:
+        if not scenario.observers:
             return outcome
+        actor = self._actor_session(scenario)
+        watchers = [self._observer_session(observer) for observer in scenario.observers]
+        sessions = [actor, *watchers]
         try:
-            await asyncio.gather(*(pair.open() for pair in pairs))
-            await self._place(pairs, scenario)
+            await asyncio.gather(*(s.open() for s in sessions))
+            await self._place(actor, watchers, scenario)
             # Every observer is watching before the event happens. Acting first
             # and opening afterwards would make a negative result meaningless.
-            actor_page = pairs[0].sender.page
-            action_task = asyncio.create_task(self._perform(scenario.action, actor_page))
+            action_task = asyncio.create_task(self._perform(scenario.action, actor.page))
             results = await asyncio.gather(*(
-                self._watch(pair, observer, scenario.deadline_ms)
-                for pair, observer in zip(pairs, scenario.observers)
+                self._watch(watcher, observer, scenario.deadline_ms)
+                for watcher, observer in zip(watchers, scenario.observers)
             ))
             outcome.results = list(results)
             if action_task.done():
@@ -132,27 +134,40 @@ class AudienceRun:
         except Exception as error:  # noqa: BLE001 - a failed run is evidence
             outcome.actor_error = f"{type(error).__name__}: {error}"
         finally:
-            await asyncio.gather(*(pair.close() for pair in pairs), return_exceptions=True)
+            await asyncio.gather(*(s.close() for s in sessions), return_exceptions=True)
         return outcome
 
-    def _pair(self, scenario: AudienceScenario, observer: Observer) -> Any:
-        """One seam for the session pair, so a test can substitute it alone."""
-        return RelationalPair(
-            scenario.actor,
-            observer.context,
+    def _actor_session(self, scenario: AudienceScenario) -> Any:
+        """The one session that acts."""
+        return Witness(
+            replace(scenario.actor, varies=Axis.RELATIONAL),
             self._browser,
-            sender_storage_state=scenario.actor_storage_state,
-            receiver_storage_state=observer.storage_state,
+            storage_state=scenario.actor_storage_state,
         )
 
-    async def _place(self, pairs: list[Any], scenario: AudienceScenario) -> None:
+    def _observer_session(self, observer: Observer) -> Any:
+        """One session per observer, and no more.
+
+        Each observer used to arrive inside a RelationalPair, which opens two
+        contexts because it holds a sender and a receiver. The sending half was
+        never used for anything except the first pair, so a scenario with four
+        observers signed eight sessions in — and an application that shows who
+        is present, or that allows one session per account, behaves differently
+        under eight than under five. The harness must not become a participant
+        in the thing it is measuring.
+        """
+        return Witness(
+            replace(observer.context, varies=Axis.RELATIONAL),
+            self._browser,
+            storage_state=observer.storage_state,
+        )
+
+    async def _place(self, actor: Any, watchers: list[Any], scenario: AudienceScenario) -> None:
         """Put the actor and every observer on their surface before the event."""
-        moves = [pairs[0].sender.page.goto(
-            scenario.surface.path, wait_until="domcontentloaded", timeout=5_000
-        )]
-        for pair, observer in zip(pairs, scenario.observers):
+        moves = [actor.page.goto(scenario.surface.path, wait_until="domcontentloaded", timeout=5_000)]
+        for watcher, observer in zip(watchers, scenario.observers):
             target = (observer.surface or scenario.surface).path
-            moves.append(pair.receiver.page.goto(target, wait_until="domcontentloaded", timeout=5_000))
+            moves.append(watcher.page.goto(target, wait_until="domcontentloaded", timeout=5_000))
         await asyncio.gather(*moves)
 
     @staticmethod
@@ -162,7 +177,7 @@ class AudienceRun:
             await result
 
     async def _watch(
-        self, pair: Any, observer: Observer, deadline_ms: int
+        self, watcher: Any, observer: Observer, deadline_ms: int
     ) -> ObserverResult:
         """Poll one observer for the whole deadline, whichever answer is wanted.
 
@@ -175,7 +190,7 @@ class AudienceRun:
         error: str | None = None
         try:
             while True:
-                if await _perceives(pair.receiver.page, observer.effect):
+                if await _perceives(watcher.page, observer.effect):
                     perceived = True
                     break
                 if asyncio.get_running_loop().time() >= deadline:

@@ -22,10 +22,11 @@ cannot testify about whether the invitation arrived.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from .relational import Expectation, PageAction, RelationalPair, StorageState
+from .witness import Witness
 from .types import (
     Axis,
     Context,
@@ -109,27 +110,32 @@ class ChoreographyRun:
         self._browser = browser
         self._poll = max(1, poll_ms) / 1000
 
-    def _pair(self, choreography: Choreography, participant: Participant) -> Any:
-        # One pair per participant gives each its own isolated context through
-        # the same audited path the two-party scenarios use.
-        return RelationalPair(
-            participant.context,
-            participant.context,
+    def _session(self, participant: Participant) -> Any:
+        """One session per declared participant, and exactly one.
+
+        This used a RelationalPair, which opens two contexts because it exists
+        to hold a sender and a receiver. Only the sender was ever used, so a
+        four-participant protocol signed eight sessions in — and an application
+        that shows who is present, or that permits one session per account,
+        behaves differently under eight than under four. The harness must not be
+        a participant in the thing it is measuring.
+        """
+        return Witness(
+            replace(participant.context, varies=Axis.RELATIONAL),
             self._browser,
-            sender_storage_state=participant.storage_state,
-            receiver_storage_state=participant.storage_state,
+            storage_state=participant.storage_state,
         )
 
     async def play(self, choreography: Choreography) -> ChoreographyOutcome:
         outcome = ChoreographyOutcome(choreography)
-        pairs = {p.name: self._pair(choreography, p) for p in choreography.participants}
-        if not pairs:
+        sessions = {p.name: self._session(p) for p in choreography.participants}
+        if not sessions:
             return outcome
         pages: dict[str, Any] = {}
         try:
-            await asyncio.gather(*(pair.open() for pair in pairs.values()))
+            await asyncio.gather(*(s.open() for s in sessions.values()))
             for participant in choreography.participants:
-                page = pairs[participant.name].sender.page
+                page = sessions[participant.name].page
                 pages[participant.name] = page
                 target = (participant.surface or choreography.surface).path
                 await page.goto(target, wait_until="domcontentloaded", timeout=8_000)
@@ -145,7 +151,7 @@ class ChoreographyRun:
         except Exception as error:  # noqa: BLE001 - a failed run is evidence
             outcome.error = f"{type(error).__name__}: {error}"
         finally:
-            await asyncio.gather(*(pair.close() for pair in pairs.values()), return_exceptions=True)
+            await asyncio.gather(*(s.close() for s in sessions.values()), return_exceptions=True)
         return outcome
 
     async def _play_step(self, step: Step, pages: dict[str, Any]) -> StepResult:

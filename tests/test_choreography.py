@@ -121,27 +121,24 @@ def test_every_participant_is_open_before_the_first_step_runs() -> None:
         async def is_visible(self) -> bool:
             return True
 
-    class FakeWitness:
+    class FakeSession:
+        """One session per participant — a pair opened two and used one."""
+
         def __init__(self, name: str) -> None:
             self.page = FakePage(name)
 
-    class FakePair:
-        def __init__(self, name: str) -> None:
-            self.sender = FakeWitness(name)
-            self.receiver = self.sender
-
         async def open(self) -> None:
-            order.append(f"opened:{self.sender.page.name}")
+            order.append(f"opened:{self.page.name}")
 
         async def close(self) -> None:
             return None
 
     spec = game(Step("amira invites", "amira", lambda page: order.append("acted")))
-    pairs = {"amira": FakePair("amira"), "samir": FakePair("samir")}
+    sessions = {"amira": FakeSession("amira"), "samir": FakeSession("samir")}
 
     class Runner(ChoreographyRun):
-        def _pair(self, _spec, participant):
-            return pairs[participant.name]
+        def _session(self, participant):
+            return sessions[participant.name]
 
     asyncio.run(Runner(browser=None, poll_ms=1).play(spec))
 
@@ -163,10 +160,9 @@ def test_the_sequence_stops_at_the_first_divergence() -> None:
         async def is_visible(self) -> bool:
             return False
 
-    class FakePair:
+    class FakeSession:
         def __init__(self) -> None:
-            self.sender = type("W", (), {"page": FakePage()})()
-            self.receiver = self.sender
+            self.page = FakePage()
 
         async def open(self) -> None:
             return None
@@ -181,8 +177,8 @@ def test_the_sequence_stops_at_the_first_divergence() -> None:
     )
 
     class Runner(ChoreographyRun):
-        def _pair(self, _spec, _participant):
-            return FakePair()
+        def _session(self, _participant):
+            return FakeSession()
 
     result = asyncio.run(Runner(browser=None, poll_ms=1).play(spec))
 
