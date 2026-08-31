@@ -637,14 +637,19 @@ def assess_axis_applicability(
         and bool(locale_langs)
         and baseline.document_lang.lower() not in locale_langs
     )
+    # Non-Latin text is not a locale mechanism, and treating it as one made
+    # every monolingual Arabic page fail the mirror test. arbchat.org serves
+    # dir="rtl" whether asked for lang=ar or lang=en, so the "variant" was the
+    # baseline; Parallax compared a page to itself and reported that it was not
+    # mirrored, once per surface. An axis is applicable when the application
+    # offers the variation, not when the content happens to look foreign.
     locale_reason = _support_reason(
         support,
         (
             ("localeAlternate", "page declares localized alternatives"),
             ("languageSwitcher", "page exposes a language switcher"),
-            ("nonLatinText", "page serves non-Latin text"),
         ),
-        "no localized alternate, language switcher, changed lang attribute, or non-Latin text observed",
+        "no localized alternate, language switcher, or changed lang attribute observed",
     )
     if lang_changed:
         locale_reason = "page lang attribute changes between contexts"
@@ -673,7 +678,7 @@ def assess_axis_applicability(
         ),
         AxisApplicability(
             Axis.LOCALE,
-            bool(support & {"localeAlternate", "languageSwitcher", "nonLatinText"}) or lang_changed,
+            bool(support & {"localeAlternate", "languageSwitcher"}) or lang_changed,
             locale_reason,
         ),
         AxisApplicability(Axis.THEME, bool(support & {"themeMedia", "themeToggle"}), theme_reason),

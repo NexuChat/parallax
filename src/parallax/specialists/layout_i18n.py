@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 from collections.abc import Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
 from ..contracts import Moment
@@ -18,6 +19,11 @@ class LayoutI18nSpecialist:
     name = "layout_i18n"
 
     model = "gemini-3.6-flash"
+
+    # Six was chosen against the observed per-call latency: it collapses a
+    # typical sweep's judgement to roughly one call's wall time without a burst
+    # wide enough to be throttled.
+    _max_parallel_calls = 6
 
     def __init__(
         self,
@@ -50,26 +56,45 @@ class LayoutI18nSpecialist:
             self.last_error = self.last_error or "no client: credentials for the selected route were rejected"
             return []
 
+        selected = [moment for moment in moments if moment.changed][: self._max_moments]
+        if not selected:
+            return []
+
+        # Each call is a round trip to Vertex that spends its time waiting, and
+        # the calls do not depend on each other. Issuing them one at a time made
+        # judgement the whole cost of a sweep: on a six-surface run of a live
+        # site, twenty-eight calls took 398 of the run's 460 seconds while the
+        # browser work took 62. Threads rather than tasks because the Google SDK
+        # is synchronous, and a bounded pool because a burst large enough to be
+        # rate-limited is slower than the sequential loop it replaced.
+        self.calls_attempted += len(selected)
+        workers = min(self._max_parallel_calls, len(selected))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            responses = list(pool.map(lambda moment: self._attempt(client, moment), selected))
+
         findings: list[Finding] = []
-        sent = 0
-        for moment in moments:
-            if not moment.changed or sent >= self._max_moments:
-                continue
-            sent += 1
-            self.calls_attempted += 1
-            try:
-                response = self._generate(client, moment)
-                verdict = self._parse_response(response)
-            except Exception as error:
-                # A swallowed model error is indistinguishable from a model that
-                # found nothing, which is the one failure this project cannot
-                # afford to hide: the run would look identical whether Gemini
-                # answered or was never reachable at all.
-                self.last_error = f"{type(error).__name__}: {str(error)[:200]}"
+        for moment, (verdict, error) in zip(selected, responses):
+            # Ordered by moment, not by which call returned first, so the same
+            # run reports the same findings in the same order.
+            if error is not None:
+                self.last_error = error
                 continue
             self.calls_succeeded += 1
             findings.extend(self._findings_from_verdict(verdict, moment, testimonies))
         return findings
+
+    def _attempt(self, client: Any, moment: Moment) -> tuple[Any, str | None]:
+        """Return a verdict or the reason there is none.
+
+        A swallowed model error is indistinguishable from a model that found
+        nothing, which is the one failure this project cannot afford to hide:
+        the run would look identical whether Gemini answered or was never
+        reachable at all.
+        """
+        try:
+            return self._parse_response(self._generate(client, moment)), None
+        except Exception as error:  # noqa: BLE001 - reported through last_error
+            return None, f"{type(error).__name__}: {str(error)[:200]}"
 
     def _select_route(self) -> str:
         if self._client is not None:

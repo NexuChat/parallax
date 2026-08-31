@@ -846,3 +846,37 @@ def test_relational_action_error_is_evidence_without_aborting_the_sweep(tmp_path
         assert result.surfaces
 
     asyncio.run(check())
+
+
+def test_non_latin_text_alone_does_not_make_the_locale_axis_applicable() -> None:
+    """A monolingual Arabic page has no locale variant to compare against.
+
+    arbchat.org serves dir="rtl" whether asked for lang=ar or lang=en. Treating
+    its Arabic content as evidence of a locale mechanism made Parallax compare
+    the page to itself and report rtl_not_mirrored on every surface.
+    """
+    surface = Surface(SurfaceKind.ROUTE, f"{SITE}/")
+    baseline = WitnessTestimony(
+        surface, Context(), Outcome.REACHED, document_lang="ar", support={"nonLatinText": True}
+    )
+    variant = WitnessTestimony(
+        surface, Context(locale=Locale.AR, varies=Axis.LOCALE), Outcome.REACHED, document_lang="ar"
+    )
+
+    decisions = {d.axis: d for d in assess_axis_applicability([baseline, variant], None)}
+
+    assert decisions[Axis.LOCALE].applicable is False
+    assert "no localized alternate" in decisions[Axis.LOCALE].reason
+
+
+def test_a_changed_lang_attribute_still_makes_the_locale_axis_applicable() -> None:
+    surface = Surface(SurfaceKind.ROUTE, f"{SITE}/")
+    baseline = WitnessTestimony(surface, Context(), Outcome.REACHED, document_lang="en", support={})
+    variant = WitnessTestimony(
+        surface, Context(locale=Locale.AR, varies=Axis.LOCALE), Outcome.REACHED, document_lang="ar"
+    )
+
+    decisions = {d.axis: d for d in assess_axis_applicability([baseline, variant], None)}
+
+    assert decisions[Axis.LOCALE].applicable is True
+    assert decisions[Axis.LOCALE].reason == "page lang attribute changes between contexts"

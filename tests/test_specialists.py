@@ -273,3 +273,62 @@ def test_realtime_says_nothing_about_an_ordinary_sweep() -> None:
         [say(BASELINE), say(Context(locale=Locale.AR, varies=Axis.LOCALE))],
     )
     assert findings == []
+
+
+def test_vision_calls_run_concurrently_and_report_in_moment_order() -> None:
+    """Judgement was 398 of a 460-second sweep because the calls were serial."""
+    import threading
+
+    barrier = threading.Barrier(3, timeout=5)
+
+    class ConcurrentModels:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+            self._lock = threading.Lock()
+
+        def generate_content(self, **kwargs: object) -> object:
+            with self._lock:
+                self.calls.append(kwargs)
+            # Times out unless all three calls are in flight together.
+            barrier.wait()
+            return TextResponse('{"outlier": null}')
+
+    class ConcurrentClient:
+        def __init__(self) -> None:
+            self.models = ConcurrentModels()
+
+    client = ConcurrentClient()
+    lens = LayoutI18nSpecialist(client=client, max_moments=5)
+    moments = [moment(changed=("owner-ar-light-desktop",)) for _ in range(3)]
+
+    findings = lens.judge(moments, [])
+
+    assert len(client.models.calls) == 3
+    assert lens.calls_attempted == 3
+    assert lens.calls_succeeded == 3
+    assert findings == []
+
+
+def test_one_failed_vision_call_does_not_lose_the_others() -> None:
+    class FlakyModels:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def generate_content(self, **kwargs: object) -> object:
+            self.calls.append(kwargs)
+            if len(self.calls) == 2:
+                raise RuntimeError("transient")
+            return TextResponse('{"outlier": null}')
+
+    class FlakyClient:
+        def __init__(self) -> None:
+            self.models = FlakyModels()
+
+    lens = LayoutI18nSpecialist(client=FlakyClient(), max_moments=5)
+    lens._max_parallel_calls = 1
+
+    lens.judge([moment(changed=("owner-ar-light-desktop",)) for _ in range(3)], [])
+
+    assert lens.calls_attempted == 3
+    assert lens.calls_succeeded == 2
+    assert lens.last_error is not None and "transient" in lens.last_error
