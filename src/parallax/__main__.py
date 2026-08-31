@@ -17,7 +17,9 @@ from typing import Any
 from urllib.parse import urljoin
 
 from .conductor import Conductor, RelationalScenario
+from .capability import CapabilityScenario
 from .contracts import FeedEvent
+from .delivery import DeliveryReport, PullRequestDelivery
 from .differ import configure_semantics
 from .proposer import ProposalReport, ScenarioProposer
 from .semantics import SemanticComparator
@@ -50,6 +52,18 @@ def _parse(argv: list[str] | None = None) -> argparse.Namespace:
         default=[],
         metavar="ROLE=PATH",
         help="Playwright storage state per role, e.g. owner=.auth/owner.json (repeatable)",
+    )
+    parser.add_argument(
+        "--open-pr",
+        nargs="?",
+        const="",
+        metavar="OWNER/REPO",
+        help="deliver the generated specs as a pull request (needs GITHUB_TOKEN)",
+    )
+    parser.add_argument(
+        "--pr-base",
+        metavar="BRANCH",
+        help="branch to open the pull request against; defaults to the repository default",
     )
     parser.add_argument(
         "--no-vision",
@@ -125,6 +139,22 @@ def _append_triage(feed_path: Path, triage: TriageReport) -> None:
     )
     with feed_path.open("a", encoding="utf-8") as feed:
         feed.write(json.dumps(event.to_json(), separators=(",", ":")) + "\n")
+
+
+def _deliver(args: argparse.Namespace, summary: Any) -> DeliveryReport:
+    """Turn the findings into a pull request, or say precisely why not."""
+    if args.open_pr is None:
+        return DeliveryReport(note="not requested")
+    delivery = PullRequestDelivery(args.open_pr or None, base=args.pr_base)
+    report = delivery.deliver(summary.findings, summary.spec_paths)
+    if report.error:
+        print(f"pull request delivery failed: {report.error}", file=sys.stderr)
+    elif report.note:
+        print(f"pull request delivery skipped: {report.note}", file=sys.stderr)
+    elif report.pull_request_url:
+        state = "already open" if report.already_open else "opened"
+        print(f"pull request {state}: {report.pull_request_url}", file=sys.stderr)
+    return report
 
 
 def _scenario_proposer(enabled: bool) -> ScenarioProposer | None:
@@ -236,9 +266,62 @@ def _scenario_type(spec: dict[str, Any], name: str, source: str) -> str:
     return scenario_type
 
 
+def capability_scenarios_from_data(data: Any, start_url: str, *, source: str = "declaration") -> list[CapabilityScenario]:
+    """Parse capability declarations with the same validated action grammar.
+
+    A capability names the roles to try the action as and which of them are
+    supposed to succeed. Everything else — the form, the fills, the effect — is
+    the identical vocabulary a relational scenario uses, so nothing here widens
+    what Parallax is willing to execute.
+    """
+    entries = data.get("capabilities") if isinstance(data, dict) else data
+    if entries is None:
+        return []
+    if not isinstance(entries, list):
+        raise _scenario_error(source, "capabilities must be a list")
+    result: list[CapabilityScenario] = []
+    for index, spec in enumerate(entries, start=1):
+        name = f"capability {index}"
+        if not isinstance(spec, dict):
+            raise _scenario_error(source, f"{name} must be an object")
+        surface = _string(spec.get("surface"), f"{name}.surface", source)
+        label = spec.get("label") if isinstance(spec.get("label"), str) and spec.get("label") else "action"
+        deadline_ms = spec.get("deadline_ms")
+        if not isinstance(deadline_ms, int) or isinstance(deadline_ms, bool) or deadline_ms < 1:
+            raise _scenario_error(source, f"{name}.deadline_ms must be a positive integer")
+        roles = _roles(spec.get("roles"), f"{name}.roles", source)
+        allowed = _roles(spec.get("allowed", []), f"{name}.allowed", source, allow_empty=True)
+        if unknown := set(allowed) - set(roles):
+            raise _scenario_error(
+                source, f"{name}.allowed names {sorted(r.value for r in unknown)[0]}, which is not in {name}.roles"
+            )
+        action, _ = _action(spec.get("action"), name, source)
+        effect, _ = _effect(spec.get("effect"), name, source)
+        result.append(CapabilityScenario(
+            surface=Surface(SurfaceKind.ROUTE, urljoin(start_url, surface)),
+            action=action, effect=effect,
+            roles=tuple(roles), allowed=frozenset(allowed),
+            deadline_ms=deadline_ms, label=label,
+        ))
+    return result
+
+
+def _roles(value: Any, name: str, source: str, *, allow_empty: bool = False) -> list[Privilege]:
+    if not isinstance(value, list) or (not value and not allow_empty):
+        raise _scenario_error(source, f"{name} must be a non-empty list of roles")
+    try:
+        return [Privilege(_string(item, name, source)) for item in value]
+    except ValueError as error:
+        raise _scenario_error(source, f"{name} must contain only anon, member, or owner") from error
+
+
 def relational_scenarios_from_data(data: Any, start_url: str, *, source: str = "declaration") -> list[RelationalScenario]:
     """Turn the restricted, data-only relational scenario format into conductor calls."""
     scenarios = data.get("scenarios") if isinstance(data, dict) else data
+    # A file may declare capabilities and no relational scenarios. Demanding an
+    # empty "scenarios" key to say so would be a trap, not a contract.
+    if scenarios is None and isinstance(data, dict) and "capabilities" in data:
+        return []
     if not isinstance(scenarios, list):
         raise _scenario_error(source, "scenarios must be a list")
     result: list[RelationalScenario] = []
@@ -303,6 +386,15 @@ async def _run(args: argparse.Namespace) -> int:
     from playwright.async_api import async_playwright
 
     relational_scenarios = _relational_scenarios(args.relational_scenarios, args.url) if args.relational_scenarios else None
+    capability_scenarios = (
+        capability_scenarios_from_data(
+            json.loads(args.relational_scenarios.read_text(encoding="utf-8")),
+            args.url,
+            source=str(args.relational_scenarios),
+        )
+        if args.relational_scenarios
+        else []
+    )
     # Built once and kept, because the run summary has to report what the lens
     # actually did and cannot ask a list the conductor threw away.
     specialists = _specialists(args.no_vision)
@@ -314,13 +406,17 @@ async def _run(args: argparse.Namespace) -> int:
             headless=not args.headed, args=["--no-sandbox", "--disable-dev-shm-usage"]
         )
         try:
-            summary = await _conduct(args, browser, relational_scenarios, specialists, proposer)
+            summary = await _conduct(
+                args, browser, relational_scenarios, specialists, proposer,
+                capability_scenarios=capability_scenarios,
+            )
         finally:
             await browser.close()
 
     counts: dict[str, int] = {}
     for finding in summary.findings:
         counts[finding.severity.value] = counts.get(finding.severity.value, 0) + 1
+    delivery = _deliver(args, summary)
     triage = GemmaTriage().group(summary.findings)
     # The console reads the feed, not this process's stdout. A grouping that
     # exists only in the terminal cannot be checked against the published
@@ -342,6 +438,10 @@ async def _run(args: argparse.Namespace) -> int:
             {"axis": decision.axis.value, "applicable": decision.applicable, "reason": decision.reason}
             for decision in summary.axis_applicability
         ],
+        "capabilities": {
+            "ran": len(capability_scenarios),
+            "roles_exercised": sum(len(c.roles) for c in capability_scenarios),
+        },
         "relational_scenarios": {
             "ran": summary.scenarios_exercised,
             "declared": len(relational_scenarios or []),
@@ -355,6 +455,7 @@ async def _run(args: argparse.Namespace) -> int:
         "proposal": _proposal_report(summary.proposal_report),
         # Grouping is a wording judgement, not a measurement, so it is reported
         # separately from the findings themselves and never alters them.
+        "delivery": delivery.report(),
         "triage": {
             "summary": triage.summary,
             "groups": [
@@ -372,6 +473,7 @@ async def _conduct(
     args: argparse.Namespace, browser: object, relational_scenarios: list[RelationalScenario] | None,
     specialists: list[object] | None = None,
     proposer: ScenarioProposer | None = None,
+    capability_scenarios: list[CapabilityScenario] | None = None,
 ) -> object:
     """Make the CLI-to-conductor contract testable without launching Chromium."""
     options: dict[str, object] = {
@@ -383,6 +485,8 @@ async def _conduct(
     }
     if relational_scenarios is not None:
         options["relational_scenarios"] = relational_scenarios
+    if capability_scenarios:
+        options["capability_scenarios"] = capability_scenarios
     if args.propose_scenarios:
         options["scenario_proposer"] = proposer or ScenarioProposer()
         options["proposal_validator"] = relational_scenarios_from_data

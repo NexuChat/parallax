@@ -186,6 +186,64 @@ The axis still works, because untranslated content was never a semantic question
 
 This path is bounded deliberately. Regions with matching content signatures are never sent; each sweep compares at most twelve changed regions, batched into at most one translation request and one embedding request. That is at most two paid semantic-model calls regardless of the number of visited surfaces. The JSON `semantics` report records attempted and successful calls and errors for both services. If embeddings fail, theme and viewport findings fall back to the content-signature mismatch and say that the comparison degraded. A locale comparison that cannot be translated or embedded is also reported as degraded; it produces a locale finding only if the deterministic untranslated check has evidence.
 
+## What a role can do, not just what it can see
+
+Every other check here asks what a role can *see*. A capability scenario asks
+what a role can *do*, and then measures what the doing produced. The two come
+apart in the case that matters most: a control hidden with CSS in front of an
+endpoint that still accepts the request is not a visibility bug, it is an
+authorisation bug, and a witness that only reads the rendered page calls that
+surface clean.
+
+Declare one beside `scenarios` in the same file, using the same validated
+action grammar:
+
+```json
+{
+  "capabilities": [
+    {
+      "label": "post a message to a thread",
+      "surface": "/workspace/threads",
+      "roles": ["owner", "member", "anon"],
+      "allowed": ["owner", "member"],
+      "action": {"type": "submit_form", "form": "form.composer",
+                 "fills": [{"selector": "#message", "value": "check"}]},
+      "effect": {"type": "json_contains", "url": "api/messages?since=0",
+                 "items": "messages", "field": "text", "equals": "check"},
+      "deadline_ms": 4000
+    }
+  ]
+}
+```
+
+The action is replayed once per role on its own session. A role outside
+`allowed` that completes it is an **escalation** — the control being hidden did
+not stop the action. A role inside `allowed` that cannot complete it is a
+**capability drift**: the feature is broken for someone who holds it. Both were
+exercised live against the bundled demo; pointing the same declaration at the
+workspace demo's deliberately broken quiet thread reports
+`owner holds 'post a message to a thread' … but the action did not take effect
+within 4000ms`, and pointing it at the working thread reports nothing.
+
+Then the state the action produced is measured. This is the part no snapshot
+tool reaches: a dialog, a drawer, a confirmation panel is on no freshly loaded
+page, so a checker that measures page load never measures it at all. The same
+probe that finds overflow, contrast, tap-target and mirroring defects on a page
+runs again on whatever the action put on screen, and the finding says
+`measured after the action, not at page load`.
+
+Nothing is discovered and clicked. The action is declared in the validated
+grammar, or proposed by Gemini and filtered by the observed-evidence guard;
+Parallax never invents an action to perform.
+
+**A capability check mutates the application under test.** That is not a caveat,
+it is the point — an action that changed nothing proves nothing — but it has a
+cost that was measured here rather than imagined: exercising the demo fleet's
+composer left real messages in its threads, which changed the page content and
+made the next graded sweep report three findings nobody planted. Point
+capability scenarios at an environment you are willing to have written to, and
+reset it between graded runs.
+
 ## Limits
 
 Parallax observes rendered surfaces and discovered controls; it does not prove application policy, API authorization, or behavior outside the exercised browser flow. It uses the role storage states you supply, so a missing or incorrect role state limits what its privilege witnesses can establish. Evidence is tiered on purpose. Anything a page can be measured for — overflow, contrast ratio, mirrored geometry, tap-target size — is decided by the in-page probe, because a measurement is repeatable and a model's opinion is not; that is what makes a live unedited run reproducible. Gemini 3.6 Flash is given the one question geometry cannot express: shown all seven witness tiles composed into a single frame, which tile disagrees with its peers. Its verdicts are accepted only when they name a real tile, and they are labelled with their source in the feed. Running with `--no-vision` therefore removes cross-tile visual comparison and leaves every measured check intact.

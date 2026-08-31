@@ -109,13 +109,23 @@ class Witness:
         except Exception as error:
             return self._error_testimony(surface, "navigation", error)
 
+        return await self.measure(surface, status=getattr(response, "status", None) if response is not None else None)
+
+    async def measure(self, surface: Surface, *, status: int | None = None) -> Testimony:
+        """Measure whatever the page currently shows, however it got there.
+
+        `visit` navigates and then calls this. A capability check calls it again
+        after an action, because the state a click produces — the dialog, the
+        drawer, the confirmation — is never on a freshly loaded page and is
+        therefore invisible to every check that only measures page load.
+        """
+        assert self.page is not None
         try:
             probe = await self.page.evaluate(self._load_probe())
         except Exception as error:
             return self._error_testimony(surface, "probe", error)
 
         self.last_probe = probe if isinstance(probe, dict) else {}
-        status = getattr(response, "status", None) if response is not None else None
         final_path = self._path_of(str(getattr(self.page, "url", surface.path)))
         observations = self._map_defects(self.last_probe.get("defects"))
         defects = list(dict.fromkeys(observation.defect for observation in observations))

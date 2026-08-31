@@ -20,6 +20,8 @@ from .differ import compare
 from .emitter import emit_all
 from .mirror import mirror_defects, mirror_report
 from .proposer import BaselineObservation, ObservedAffordance, ProposalRejection, ProposalReport, ScenarioProposer
+from .capability import CapabilityRun, CapabilityScenario
+from .capability import judge as judge_capability
 from .relational import Expectation, RelationalPair
 from .types import Axis, AxisApplicability, Context, DefectObservation, Finding, Outcome, Privilege, RelationalReplay, Surface, SurfaceKind, Testimony, derive_witnesses
 from .witness import StorageState, Witness
@@ -122,6 +124,7 @@ class Conductor:
         settle_ms: int = 500,
         poll_ms: int = 50,
         relational_scenarios: Sequence[RelationalScenario] | None = None,
+        capability_scenarios: Sequence[CapabilityScenario] | None = None,
         scenario_proposer: ScenarioProposer | None = None,
         proposal_validator: Callable[..., list[RelationalScenario]] | None = None,
     ) -> None:
@@ -137,6 +140,7 @@ class Conductor:
         self.settle_ms = settle_ms
         self.poll_ms = max(1, poll_ms)
         self.relational_scenarios = list(relational_scenarios or [])
+        self.capability_scenarios = list(capability_scenarios or [])
         self.scenario_proposer = scenario_proposer
         self.proposal_validator = proposal_validator
         self._observed_routes: set[str] = set()
@@ -216,6 +220,20 @@ class Conductor:
             all_findings.extend(findings)
             for finding in findings:
                 self._write(feed_path, "finding", finding_payload(finding, mosaic=scenario_mosaic))
+
+        for capability in self.capability_scenarios:
+            self._write(feed_path, "status", {
+                "surface": capability.surface.describe(),
+                "surface_id": capability.surface.id,
+                "state": "started",
+            })
+            runner = CapabilityRun(self.browser, storage_states=dict(self.storage_states or {}))
+            attempts = [await runner.attempt(capability, role) for role in capability.roles]
+            all_testimonies.extend(attempt.testimony for attempt in attempts)
+            findings = _unpublished_findings(judge_capability(capability, attempts), published_finding_ids)
+            all_findings.extend(findings)
+            for finding in findings:
+                self._write(feed_path, "finding", finding_payload(finding))
 
         spec_paths = emit_all(
             all_findings, self.out_dir / "specs",
