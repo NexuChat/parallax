@@ -145,7 +145,7 @@ def test_layout_selects_vertex_with_configured_project_and_bearer_token(monkeypa
     assert captured["location"] == "global"
     assert captured["http_options"] == {"api_version": "v1"}
     assert captured["credentials"].token == "test-bearer-token"
-    assert fake.models.calls[0]["model"] == "gemini-3.6-flash"
+    assert fake.models.calls[0]["model"] == "gemini-3.7-flash"
 
 
 def test_layout_selects_ai_studio_when_vertex_is_not_configured(monkeypatch) -> None:
@@ -204,7 +204,7 @@ def test_layout_sends_the_mosaic_and_parses_a_canned_verdict() -> None:
     assert findings[0].axis is Axis.LOCALE
     assert "Arabic controls" in findings[0].summary
     call = fake.models.calls[0]
-    assert call["model"] == "gemini-3.6-flash"
+    assert call["model"] == "gemini-3.7-flash"
     prompt, image = call["contents"]
     assert "owner-ar-light-desktop" in prompt
     assert image["inline_data"]["data"] == b"mosaic-jpeg"

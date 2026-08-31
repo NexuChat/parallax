@@ -84,7 +84,7 @@ class ProposalReport:
 class ScenarioProposer:
     """Ask Gemini for constrained relational scenarios, never executable instructions."""
 
-    model = "gemini-3.6-flash"
+    model = "gemini-3.7-flash"
 
     def __init__(
         self,

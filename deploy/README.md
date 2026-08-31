@@ -2,7 +2,7 @@
 
 `cloudrun.sh` deploys the `parallax` service in **us-central1** in GCP project
 `rasikh-fleet-2026`. This region is the intended home for the project and its
-Gemini `gemini-3.6-flash` usage. It enables Cloud Run, Cloud Build, Artifact
+Gemini `gemini-3.7-flash` usage. It enables Cloud Run, Cloud Build, Artifact
 Registry, and Secret Manager; creates an Artifact Registry Docker repository if
 needed; submits the current checkout to Cloud Build; and deploys the result.
 It is safe to rerun.

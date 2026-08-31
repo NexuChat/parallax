@@ -86,7 +86,7 @@ Switching the assertion to a live request from the open page produced 2,572 mill
 
 Anything measurable is measured. Overflow is `scrollWidth > clientWidth`. Contrast is the WCAG formula over computed styles. RTL mirroring is `x' = W − x − w` compared against recorded geometry. These are repeatable, which is what makes a live unedited demo survive contact with an audience.
 
-**Gemini 3.6 Flash** gets the one question geometry cannot express. The seven witness frames are composed into a single mosaic, and the model is asked which tile disagrees with its peers. Sending one image instead of seven screenshots is not a cost trick: the outlier becomes *spatial*, and comparison is native to a single frame rather than something a model must reconstruct.
+**Gemini 3.7 Flash** gets the one question geometry cannot express. The seven witness frames are composed into a single mosaic, and the model is asked which tile disagrees with its peers. Sending one image instead of seven screenshots is not a cost trick: the outlier becomes *spatial*, and comparison is native to a single frame rather than something a model must reconstruct.
 
 **Gemma 3** gets a different job. An early sweep of five applications produced ninety-four findings that were not defects — a number I published rather than hid. That was a detector-calibration failure, not a grouping problem; fixing page-wide duplication, contextual URLs, and unintended fixture defects brought the declared fleet to zero false positives in the later calibrated sweep. On an uncalibrated real application there can still be many legitimate findings, and Gemma can partition those by cause. It reads only summaries the deterministic layers already produced, and it cannot add to its input — an id it never received is discarded.
 
@@ -187,6 +187,6 @@ Saying what you did *not* test is worth more than one more finding.
 
 ---
 
-**Stack:** Gemini 3.6 Flash on Vertex AI · Google GenAI SDK · Gemma 3 self-hosted · Cloud Run, Cloud Build, Artifact Registry, Secret Manager · Playwright + CDP · Python 3.12, no framework
+**Stack:** Gemini 3.7 Flash on Vertex AI · Google GenAI SDK · Gemma 3 self-hosted · Cloud Run, Cloud Build, Artifact Registry, Secret Manager · Playwright + CDP · Python 3.12, no framework
 
 **Try it:** [github.com/NexuChat/parallax](https://github.com/NexuChat/parallax)

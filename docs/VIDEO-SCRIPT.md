@@ -93,9 +93,9 @@ On camera, in this order:
 1. Cloud Run console — the `parallax` service, region `us-central1`, green.
 2. The `.run.app` URL in the address bar, serving the console.
 3. Vertex AI logs, or a sweep's JSON summary showing
-   `"model": {"name": "gemini-3.6-flash", "route": "vertex", "calls_succeeded": 25}`.
+   `"model": {"name": "gemini-3.7-flash", "route": "vertex", "calls_succeeded": 25}`.
 
-> The sweep service runs on Cloud Run. Gemini 3.6 Flash is reached through
+> The sweep service runs on Cloud Run. Gemini 3.7 Flash is reached through
 > Vertex AI with the Google GenAI SDK — and the run reports how many calls it
 > attempted and how many succeeded, so a run that silently lost the model says
 > so instead of looking like a run that found nothing.
@@ -104,10 +104,12 @@ On camera, in this order:
 
 On camera: the `triage` event in the `the-internet` feed.
 
-> Three more Google models each do one job. Cloud Translation and
-> `text-embedding-005` carry the locale comparison. Gemma 3 groups the findings
-> by cause — nineteen findings into three causes — and it runs self-hosted, so
-> defect summaries about someone's application never leave the machine.
+> Three more Google models each do one job. Cloud Translation translates the
+> baseline so the comparison is same-language, and `gemini-embedding-001` decides
+> whether the meanings match — the model it replaced could not, scoring correct
+> and wrong translations in bands that overlapped. Gemma 3 groups the findings by
+> cause, and it runs self-hosted, so defect summaries about someone's application
+> never leave the machine.
 
 ## Beat 7 — close, 3:40–3:50
 

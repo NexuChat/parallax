@@ -26,7 +26,7 @@ Paste the resulting post URL into the Devpost field
 > Graded on 5 apps that declare their own planted defects: 15/15 found, 0
 > missed, 0 false positives — enforced in CI on every push.
 >
-> Gemini 3.6 Flash on Vertex AI · Cloud Run · Gemma 3 groups findings by cause.
+> Gemini 3.7 Flash on Vertex AI · Cloud Run · gemini-embedding-001 · Gemma 3.
 >
 > #AllThingsAgenticHackathon
 >
@@ -71,7 +71,7 @@ Paste the resulting post URL into the Devpost field
 > its threshold. A number that depends on the operator's font set isn't
 > reproducible, and reproducibility was the whole reason it was worth quoting.
 >
-> Built on Gemini 3.6 Flash via Vertex AI and the Google GenAI SDK, deployed on
+> Built on Gemini 3.7 Flash via Vertex AI and the Google GenAI SDK, deployed on
 > Cloud Run, with Gemma 3 self-hosted to group findings by cause.
 >
 > #AllThingsAgenticHackathon

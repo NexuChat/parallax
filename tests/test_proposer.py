@@ -73,7 +73,7 @@ def test_proposer_uses_an_injected_client_and_keeps_only_observed_references() -
     assert result.rejections == ()
     assert result.note is None
     assert len(fake.models.calls) == 1
-    assert fake.models.calls[0]["model"] == "gemini-3.6-flash"
+    assert fake.models.calls[0]["model"] == "gemini-3.7-flash"
     assert "form.revoke-form" in fake.models.calls[0]["contents"]
 
 

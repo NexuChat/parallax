@@ -18,7 +18,7 @@ class LayoutI18nSpecialist:
 
     name = "layout_i18n"
 
-    model = "gemini-3.6-flash"
+    model = "gemini-3.7-flash"
 
     # Six was chosen against the observed per-call latency: it collapses a
     # typical sweep's judgement to roughly one call's wall time without a burst
