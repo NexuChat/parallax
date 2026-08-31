@@ -223,8 +223,8 @@ async def act_three_harvest_the_run(rec: Recording) -> None:
         "url": f"{CLOUD_RUN}/run.html",
         "hint": "no cuts: this is the same service",
     }])
-    rec._mark("Back on the service — it remembers the run this page started, and the counters "
-              "are the sweep itself: mosaics as surfaces settle, findings as witnesses disagree.")
+    rec._mark("And back to the sweep we started — the service remembers it, and while the game "
+              "was being judged, it finished.")
     await rec.note("Re-attached to the same sweep. Nothing was restarted.")
     await rec.beat(3)
     try:
@@ -374,8 +374,12 @@ async def record(out: Path) -> Path:
         await page.goto(STAGE, wait_until="domcontentloaded")
         rec = Recording(page)
         for act in (
-            act_one_start_a_sweep, act_two_meanwhile_the_idea, act_three_harvest_the_run,
-            act_four_protocol, act_five_audio, act_six_the_deliverable, act_seven_cloud_and_close,
+            # The protocol beat is deliberately played INSIDE the live sweep's
+            # window: the film's best material fills what would otherwise be a
+            # minute of watching a counter, and the return finds the run done.
+            act_one_start_a_sweep, act_two_meanwhile_the_idea, act_four_protocol,
+            act_three_harvest_the_run, act_five_audio, act_six_the_deliverable,
+            act_seven_cloud_and_close,
         ):
             await act(rec)
         await rec.beat(1.5)

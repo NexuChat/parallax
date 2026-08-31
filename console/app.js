@@ -296,7 +296,10 @@
     const tile = mosaic.tiles.find((item) => item.context === context) || mosaic.tiles[0];
     state.inspecting = tile.context;
     el.inspector.hidden = false;
-    el.inspectorImage.src = el.image.src;
+    // Always the settled still, never the motion clip the wall may be playing:
+    // inspection is a look at one moment, and a tile that animates under the
+    // crop shows NO SIGNAL whenever the loop happens to be on an early frame.
+    el.inspectorImage.src = resolveImage(mosaic);
     el.inspectorImage.alt = `Witness ${tile.context} at full size`;
     el.inspectorTitle.textContent = tile.context;
     const evidence = state.activeWitnesses.includes(tile.context);

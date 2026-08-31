@@ -4,47 +4,47 @@
     "say": "Every regression tool compares a page against yesterday's copy of itself \u2014 it catches what changed, never what only one kind of user sees."
   },
   {
-    "at": 15.62,
+    "at": 15.63,
     "say": "While it works: seven contexts on the same commit, each changing one property \u2014 role, language, theme, viewport. One disagreement, one cause. No stored screenshots."
   },
   {
-    "at": 28.63,
-    "say": "Back on the service \u2014 it remembers the run this page started, and the counters are the sweep itself: mosaics as surfaces settle, findings as witnesses disagree."
-  },
-  {
-    "at": 89.86,
-    "say": "6 findings, produced while you watched. Now the evidence behind them."
-  },
-  {
-    "at": 104.46,
-    "say": "Seven contexts side by side are too small to read, so any witness opens across the whole screen."
-  },
-  {
-    "at": 115.54,
+    "at": 31.65,
     "say": "Now the part no screenshot tool can do: the same game at two routes, pixel identical \u2014 one tells only the winner. Nobody is clicking these boards; Parallax plays them itself, and the ledger is what it observed."
   },
   {
-    "at": 131.92,
+    "at": 46.63,
     "say": "Step seven. Identical winning line \u2014 amira is told she won; samir, that it is his turn."
   },
   {
-    "at": 139.93,
+    "at": 54.64,
+    "say": "And back to the sweep we started \u2014 the service remembers it, and while the game was being judged, it finished."
+  },
+  {
+    "at": 83.15,
+    "say": "5 findings, produced while you watched. Now the evidence behind them."
+  },
+  {
+    "at": 97.72,
+    "say": "Seven contexts side by side are too small to read, so any witness opens across the whole screen."
+  },
+  {
+    "at": 105.76,
     "say": "And a real call \u2014 audio truly travels here. One route mutes; the other only repaints the button."
   },
   {
-    "at": 147.0,
+    "at": 112.82,
     "say": "Amira presses mute. Her control says mic off \u2014 and Samir still hears her. Omar hears nothing, but he chose silence, and is correctly not reported."
   },
   {
-    "at": 158.01,
+    "at": 123.83,
     "say": "The workflow ends where a developer's day starts. A real pull request, opened by the sweep \u2014 one failing Playwright spec per finding, one commit each. Eighteen of eighteen generated specs fail as assertions. None skipped, none passing."
   },
   {
-    "at": 175.04,
+    "at": 140.8,
     "say": "All of it ran on one Cloud Run service, at its own Google address. Gemini, embeddings, Translation, Gemma \u2014 and this narration \u2014 one project."
   },
   {
-    "at": 187.05,
+    "at": 152.81,
     "say": "Seven applications declare their own defects, two clean controls among them. Seventeen of seventeen, zero false positives \u2014 graded in C I on every push. Parallax."
   }
 ]
