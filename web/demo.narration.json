@@ -8,43 +8,43 @@
     "say": "You hand it a URL and a credentials file. It signs itself in, sweeps, writes the failing tests, and opens the pull request."
   },
   {
-    "at": 21.14,
+    "at": 21.13,
     "say": "This is a sweep of a public practice site built by somebody else. No plants, no configuration. Twenty six findings on the first run. Seven browser contexts looked at the same page at the same instant, and the finding is where they disagreed."
   },
   {
-    "at": 39.44,
+    "at": 39.26,
     "say": "Some promises are not a moment. They are an order."
   },
   {
-    "at": 43.45,
+    "at": 43.27,
     "say": "Nobody is clicking these boards. Parallax opens its own two sessions, plays the protocol, and checks every step from both players before it is allowed to run the next one. Watch the ledger on the right: that is what it observed."
   },
   {
-    "at": 65.84,
+    "at": 65.67,
     "say": "This is a real call. Audio genuinely travels between these three sessions. One route enforces its own mute. The other updates the button, and never touches the outgoing track."
   },
   {
-    "at": 77.89,
+    "at": 77.77,
     "say": "Her control says mic off. Samir still hears her. Omar hears nothing, but Omar turned his own speaker off, and is correctly not reported."
   },
   {
-    "at": 86.89,
+    "at": 86.78,
     "say": "Seven applications declare their own defects, including two clean controls. Seventeen of seventeen, zero false positives."
   },
   {
-    "at": 96.97,
+    "at": 96.91,
     "say": "One Cloud Run instance in us-central1, at its own Google address. Gemini, embeddings and Gemma four all reached through Vertex A I."
   },
   {
-    "at": 108.98,
+    "at": 108.93,
     "say": "Now watch it work. This is the deployed service, and it is about to sweep a site it has never been configured for."
   },
   {
-    "at": 186.98,
+    "at": 182.4,
     "say": "Every finding it can express ships as a failing Playwright spec. Eighteen of eighteen fail as assertions \u2014 none skipped, none passing."
   },
   {
-    "at": 196.05,
+    "at": 191.47,
     "say": "And the workflow does not stop at a report. These are real pull requests, opened by Parallax, one commit per finding."
   }
 ]
