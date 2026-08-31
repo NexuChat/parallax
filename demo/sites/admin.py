@@ -74,7 +74,7 @@ class AdminSite:
         return self._page(request, content, "sign_in")
 
     blurb = "An operations console. Privilege inversion and a locale-only dead link."
-    entry = "/reports"
+    entry = "/"
 
     def handle(self, request: Request) -> Response:
         w, role = self._words[request.lang], self._role(request)

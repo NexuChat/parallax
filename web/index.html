@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="dark">
-    <meta name="description" content="Parallax compares seven isolated browser witnesses to turn disagreement into regression tests.">
-    <title>Parallax — relational browser regression investigation</title>
+    <meta name="description" content="Parallax runs seven browser contexts against the same commit at once and turns their disagreement into failing Playwright specs. Graded on seven applications that declare their own defects.">
+    <title>Parallax — relational browser regression</title>
     <link rel="stylesheet" href="/home.css">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230b1015'/%3E%3Cpath d='M7 25V7h9.5a5.5 5.5 0 0 1 0 11H11v7Z' fill='%2355d2e5'/%3E%3C/svg%3E">
   </head>
@@ -13,45 +13,30 @@
     <header class="masthead">
       <a class="wordmark" href="#thesis" aria-label="Parallax home"><span>P</span> PARALLAX</a>
       <nav aria-label="Page sections">
+        <a href="#evidence">Evidence</a>
         <a href="#scoreboard">Scoreboard</a>
+        <a href="#revocation">Revocation</a>
         <a href="#wall">Live wall</a>
         <a href="#output">Output</a>
       </nav>
     </header>
 
     <main>
+      <!-- 01 — one idea, and the diagram that makes it concrete. Everything the
+           page can prove comes later; the hero's only job is the thesis. -->
       <section class="hero section" id="thesis" aria-labelledby="thesis-title">
         <div class="hero-copy">
-          <p class="kicker">RELATIONAL BROWSER TESTING</p>
+          <p class="kicker">01 / RELATIONAL BROWSER TESTING</p>
           <h1 id="thesis-title">One eye sees no depth.<br>Two do.</h1>
-          <section class="measured-control" aria-labelledby="control-title" aria-describedby="control-explanation">
-            <p class="kicker">MEASURED CONTROL</p>
-            <h2 id="control-title">The result includes being wrong.</h2>
-            <div class="control-figures" id="control-figures" role="status" aria-live="polite">
-              <span class="control-figure"><b>Loading</b><small>defects found</small></span>
-              <span class="control-figure"><b>Loading</b><small>defects planted</small></span>
-              <span class="control-figure"><b>Loading</b><small>findings on control</small></span>
-            </div>
-            <p class="control-ratio" id="control-ratio">Measured control result loading.</p>
-            <p class="control-explanation" id="control-explanation">The control is an application deliberately built correct, so any finding on it is a false positive by definition; that makes the error rate measured rather than claimed and keeps detector accuracy visible.</p>
-          </section>
-          <section class="revocation-claim" aria-labelledby="revocation-title" aria-describedby="revocation-explanation">
-            <p class="kicker">REVOCATION LAG</p>
-            <h2 id="revocation-title">Revocation in a live session can outlive the authority change.</h2>
-            <div class="revocation-figures" id="revocation-figures" role="status" aria-live="polite">
-              <span class="revocation-figure"><b>2,572ms</b><small>open-session lag</small></span>
-              <span class="revocation-figure"><b>Decision</b><small>plane passed</small></span>
-              <span class="revocation-figure"><b>Distribution</b><small>plane passed</small></span>
-              <span class="revocation-figure"><b>Enforcement</b><small>plane passed</small></span>
-              <span class="revocation-figure"><b>Effects</b><small>plane failed</small></span>
-            </div>
-            <p class="revocation-explanation" id="revocation-explanation">The owner revokes a member in one live session while the member keeps a second session open. The claim must be tested in parallel because sequential runs close the open session before that assertion starts. OWASP ASVS V3 and the OWASP testing guide define active-session revocation as a control point, but there is no standard automated verifier.</p>
-          </section>
-          <p class="lede">A single browsing session cannot know what it is missing. A member does not know that the page it just opened should have denied them. The evidence is in the relationship between accounts.</p>
-          <p class="lede secondary">Parallax runs seven isolated browser contexts at the same instant, changes exactly one axis from a baseline, then reads the disagreement.</p>
+          <p class="lede">A single browsing session cannot know what it is missing. A member does not know the page it just opened should have denied them. A sender does not know the message never arrived. The evidence is not in the page — it is in the relationship between sessions looking at it.</p>
+          <p class="lede secondary">Parallax opens seven isolated browser contexts against the same commit at the same instant, changes exactly one property from a baseline in each, and reads the disagreement. There is no stored screenshot to compare against, so the first sweep of a site it has never seen still has something to say.</p>
+          <div class="hero-actions">
+            <a class="button" href="#evidence">See what it found</a>
+            <a class="button ghost" href="https://github.com/NexuChat/parallax">Repository ↗</a>
+          </div>
         </div>
         <div class="derivation" aria-label="Seven one-axis browser witnesses derived from the owner English light desktop baseline">
-          <div class="derivation-head"><span>01 / DERIVATION</span><span>7 WITNESSES · NOT 36 COMBINATIONS</span></div>
+          <div class="derivation-head"><span>DERIVATION</span><span>7 WITNESSES · NOT 36 COMBINATIONS</span></div>
           <div class="baseline witness"><span class="node">0</span><span class="identity"><b>owner</b><b>English</b><b>light</b><b>1440</b></span><span class="tag">BASELINE</span></div>
           <div class="witness-grid">
             <div class="witness variant" data-axis="privilege"><span class="node">1</span><span>member</span><small>privilege</small></div>
@@ -61,25 +46,100 @@
             <div class="witness variant" data-axis="viewport"><span class="node">5</span><span>360</span><small>viewport</small></div>
             <div class="witness variant" data-axis="viewport"><span class="node">6</span><span>768</span><small>viewport</small></div>
           </div>
-          <p class="derivation-note">Each variant preserves every other baseline value. When it disagrees, there is one possible intentional cause.</p>
+          <p class="derivation-note">Each variant preserves every other baseline value. When one disagrees, there is exactly one property that could have caused it.</p>
         </div>
       </section>
 
+      <!-- 02 — the three classes, in ascending order of "a screenshot cannot do
+           this". The last two are the point of the whole project. -->
+      <section class="evidence section" id="evidence" aria-labelledby="evidence-title">
+        <div class="section-heading"><p class="kicker">02 / WHAT ONLY TWO EYES CAN SEE</p><h2 id="evidence-title">Three things a diff cannot find.</h2></div>
+        <p class="section-intro">Every finding below is in a published sweep on this site. The last two are the ones that matter most: in both, the correct route and the broken one are pixel-identical, so no screenshot comparison of any kind can tell them apart.</p>
+
+        <div class="evidence-grid">
+          <article class="evidence-card">
+            <p class="kicker">THE SAME PAGE, TWO VIEWPORTS</p>
+            <h3>A control that only exists on a desktop.</h3>
+            <p>A sweep of <b>the-internet.herokuapp.com</b> — a public site built by someone else, for practising browser automation. No plants, no configuration, no baseline. First run: 26 findings across 13 surfaces.</p>
+            <pre class="finding"><code>/challenging_dom: an actionable control sits
+outside the viewport; seen by owner-en-light-mobile,
+not seen by owner-en-light-desktop</code></pre>
+            <p class="evidence-note">Confirmed by hand: <b>20</b> actionable controls off-screen at 360px, <b>0</b> at 768px. The page never changed, so nothing comparing it against its own history would ever report this.</p>
+          </article>
+
+          <article class="evidence-card is-key">
+            <p class="kicker">AN ORDER, NOT A MOMENT</p>
+            <h3>A game that ends for the winner alone.</h3>
+            <p>Some promises are not an instant but a sequence. The demo fleet serves the same game at two routes. One plays correctly. On the other, a win is reported to the winner while the loser is still told it is their turn.</p>
+            <pre class="finding"><code>'invite, play, and win' broke at step 7 of 7,
+'amira completes the middle row and wins':
+samir should have seen it but it never appeared
+— and so is the player who lost</code></pre>
+            <p class="evidence-note">Two live sessions play a seven-step protocol, and every step is verified from both boards before the next one runs — so the finding names the first promise that broke rather than the wreckage after it.</p>
+            <p class="evidence-links"><a href="https://demo.mlki.app/arena/game?me=amira&amp;vs=samir" target="_blank" rel="noopener">correct route ↗</a><a href="https://demo.mlki.app/arena/game-legacy?me=amira&amp;vs=samir" target="_blank" rel="noopener">broken route ↗</a></p>
+          </article>
+
+          <article class="evidence-card is-key">
+            <p class="kicker">ONE EVENT, SEVERAL VANTAGE POINTS</p>
+            <h3>A mute button that mutes nothing.</h3>
+            <p>A real WebRTC mesh: audio genuinely travels between browser sessions. One route enforces its own mute. The other updates the control, sets the label to <code>mic-off</code>, and never touches the outgoing track.</p>
+            <pre class="finding"><code>samir perceived 'muting stops the audio the others
+receive' but is not an intended audience for it
+— the event reached samir, layla</code></pre>
+            <p class="evidence-note">Two listeners still hear her. A third, who turned his own speaker off, is correctly <b>not</b> reported — which is why the sensor measures audio energy rather than asking whether a track exists. A muted sender, a deafened listener and a working call all have tracks.</p>
+            <p class="evidence-links"><a href="https://demo.mlki.app/call/room?peer=you&amp;call=1" target="_blank" rel="noopener">correct route ↗</a><a href="https://demo.mlki.app/call/room-legacy?peer=you&amp;call=1" target="_blank" rel="noopener">broken route ↗</a></p>
+          </article>
+        </div>
+      </section>
+
+      <!-- 03 — the number, and the false-positive rate that makes it mean
+           anything. The measured control belongs beside the scoreboard, not in
+           the hero where it competed with the thesis. -->
       <section class="scoreboard section" id="scoreboard" aria-labelledby="scoreboard-title">
-        <div class="section-heading"><p class="kicker">02 / GRADED DEMO FLEET</p><h2 id="scoreboard-title">The full result is measurable and complete.</h2></div>
-        <p class="section-intro">The public graded sweep reports 15 of 15 planted defects found, 0 missed, and 0 false positives, with a clean control and 0 findings. The control figure below is the measured false-positive rate, not a hidden exception.</p>
+        <div class="section-heading"><p class="kicker">03 / GRADED DEMO FLEET</p><h2 id="scoreboard-title">A detection rate is meaningless without an error rate.</h2></div>
+        <p class="section-intro">Seven applications declare their own deliberate defects in code, including two clean controls with nothing planted at all. A finding on a control is a false positive by definition, which is what makes the error rate measured rather than claimed. Every figure below is read live from <code>/graded-summary.json</code>, produced by the same run that CI gates on.</p>
+
+        <section class="measured-control" aria-labelledby="control-title" aria-describedby="control-explanation">
+          <p class="kicker">MEASURED RESULT</p>
+          <h3 id="control-title">The result includes being wrong.</h3>
+          <div class="control-figures" id="control-figures" role="status" aria-live="polite">
+            <span class="control-figure"><b>—</b><small>defects found</small></span>
+            <span class="control-figure"><b>—</b><small>defects planted</small></span>
+            <span class="control-figure"><b>—</b><small>findings on the controls</small></span>
+          </div>
+          <p class="control-ratio" id="control-ratio">Measured control result loading.</p>
+          <p class="control-explanation" id="control-explanation">The controls are applications deliberately built correct, so anything found on them is an error the tool made. Keeping them in the fleet keeps the detector's accuracy visible instead of assumed.</p>
+        </section>
+
         <div class="scoreboard-wrap">
           <table>
-            <thead><tr><th scope="col">Application</th><th scope="col">Defects planted</th><th scope="col">Defects found</th><th scope="col">Defects missed</th><th scope="col">False positives</th></tr></thead>
+            <thead><tr><th scope="col">Application</th><th scope="col">Planted</th><th scope="col">Found</th><th scope="col">Missed</th><th scope="col">False positives</th></tr></thead>
             <tbody id="scoreboard-data"></tbody>
           </table>
         </div>
-        <p class="table-note" id="scoreboard-note">Run figures are not yet run. Planted counts come from each demo site's declared <code>planted</code> list.</p>
+        <p class="table-note" id="scoreboard-note">Loading the graded summary.</p>
       </section>
 
+      <!-- 04 — the standards claim. Kept as its own section because it is an
+           argument about an industry gap, not a feature of the tool. -->
+      <section class="revocation section" id="revocation" aria-labelledby="revocation-title">
+        <div class="section-heading"><p class="kicker">04 / REVOCATION LAG</p><h2 id="revocation-title">Authority can outlive the decision that removed it.</h2></div>
+        <p class="section-intro">An owner revokes a member in one live session while the member keeps a second session open. The claim has to be tested in parallel, because a sequential run closes the member's session before the assertion could start — the tool would be measuring its own cleanup.</p>
+        <div class="plane-row" aria-label="Four planes of a revocation">
+          <div class="plane is-pass"><b>Decision</b><small>the owner's action succeeded</small></div>
+          <div class="plane is-pass"><b>Distribution</b><small>the change reached the store</small></div>
+          <div class="plane is-pass"><b>Enforcement</b><small>new requests are refused</small></div>
+          <div class="plane is-fail"><b>Effects</b><small>the open session still reads</small></div>
+        </div>
+        <p class="section-intro">Three of the four planes pass, which is why this is invisible to every check that stops at the first one. Only the fourth is measured against a clock, and only from a session that was already open when the authority changed.</p>
+        <p class="table-note">OWASP ASVS V3 requires that active sessions be revoked when an account is disabled, and names an employee leaving the company as the case. The OWASP testing guide describes checking it by hand. There is no standard automated verifier.</p>
+      </section>
+
+      <!-- 05 — the console, with the real-site sweeps in the gallery rather than
+           hidden. They are the strongest evidence on the page. -->
       <section class="wall section" id="wall" aria-labelledby="wall-title">
-        <div class="section-heading"><p class="kicker">03 / PUBLISHED SWEEPS</p><h2 id="wall-title">Five applications, one method.</h2></div>
-        <p class="section-intro">Choose an application to inspect its seven-session wall. Each sweep preserves the same witnesses while changing only one axis at a time.</p>
+        <div class="section-heading"><p class="kicker">05 / PUBLISHED SWEEPS</p><h2 id="wall-title">Every claim above, with its pixels attached.</h2></div>
+        <p class="section-intro">Choose a sweep to load its recorded feed. Press <b>▶ PLAY</b> in the console to move through the frames the sweep captured, and click any tile to open that witness across the viewport — seven contexts side by side are too small to read the control a finding is about.</p>
         <div class="app-gallery" id="app-gallery" aria-label="Published application sweeps" aria-busy="true">
           <p class="gallery-loading">Loading published application sweeps.</p>
         </div>
@@ -89,26 +149,28 @@
         <p class="feed-status" id="feed-status" role="status">Loading the published sweep index.</p>
       </section>
 
+      <!-- 06 — the deliverable. -->
       <section class="output section" id="output" aria-labelledby="output-title">
-        <div class="section-heading"><p class="kicker">04 / OUTPUT</p><h2 id="output-title">The output is a test, not a report.</h2></div>
-        <p class="section-intro">Every finding ships as a failing Playwright test ready for CI. This example is generated from a workspace audit escalation <code>Finding</code> through Parallax’s emitter.</p>
+        <div class="section-heading"><p class="kicker">06 / OUTPUT</p><h2 id="output-title">The output is a test, not a report.</h2></div>
+        <p class="section-intro">A finding ships as a failing Playwright spec you can run in your own suite. Every generated spec must fail as an assertion against the application it was generated from — a generated spec that <em>passes</em> means the defect did not reproduce, which is a broken deliverable rather than good news.</p>
         <div class="generated-spec-summary">
           <div class="generated-spec-figures" id="generated-spec-figures" role="status" aria-live="polite">
-            <span class="generated-spec-figure"><b>Loading</b><small>expected</small></span>
-            <span class="generated-spec-figure"><b>Loading</b><small>total</small></span>
-            <span class="generated-spec-figure"><b>Loading</b><small>failed</small></span>
-            <span class="generated-spec-figure"><b>Loading</b><small>passed</small></span>
-            <span class="generated-spec-figure"><b>Loading</b><small>skipped</small></span>
-            <span class="generated-spec-figure"><b>Loading</b><small>setup failures</small></span>
+            <span class="generated-spec-figure"><b>—</b><small>expected</small></span>
+            <span class="generated-spec-figure"><b>—</b><small>total</small></span>
+            <span class="generated-spec-figure"><b>—</b><small>failed</small></span>
+            <span class="generated-spec-figure"><b>—</b><small>passed</small></span>
+            <span class="generated-spec-figure"><b>—</b><small>skipped</small></span>
+            <span class="generated-spec-figure"><b>—</b><small>setup failures</small></span>
           </div>
-          <p class="section-intro" id="generated-spec-summary-note">Generated spec figures from /generated-spec-verification.json are loading.</p>
+          <p class="section-intro" id="generated-spec-summary-note">Generated spec figures are loading.</p>
         </div>
         <div class="code-panel"><div class="code-title"><span>GENERATED / PLAYWRIGHT</span><span>.spec.ts</span></div><pre><code id="generated-spec">Loading generated example.</code></pre></div>
+        <p class="table-note">Not every finding becomes a spec, and the gap is stated rather than hidden. A protocol failure and an audience leak are claims about several live sessions in one moment; this emitter writes single-page specs, so it declines them instead of writing a check that would fail for the wrong reason.</p>
       </section>
     </main>
 
     <footer>
-      <div><span class="kicker">DEMO TARGETS</span><div class="footer-links"><a href="https://demo.mlki.app/workspace/">workspace</a><a href="https://demo.mlki.app/shop/">shop</a><a href="https://demo.mlki.app/docs/">docs</a><a href="https://demo.mlki.app/admin/">admin</a><a href="https://demo.mlki.app/control/">control</a></div></div>
+      <div><span class="kicker">DEMO FLEET</span><div class="footer-links" id="footer-links"><a href="https://demo.mlki.app/">all seven applications ↗</a></div></div>
       <a class="repo-link" href="https://github.com/NexuChat/parallax">Repository ↗</a>
     </footer>
     <script src="/home.js"></script>

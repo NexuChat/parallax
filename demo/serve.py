@@ -138,8 +138,20 @@ class Fleet:
                 f' · <b>{len(site.planted)}</b> planted defect{"" if len(site.planted) == 1 else "s"}'
                 if getattr(site, "planted", None) else " · <b>clean control</b> — nothing planted"
             )
-            + (f' · {len(getattr(site, "accounts", []))} accounts' if getattr(site, "accounts", None) else "")
-            + "</p></article>"
+            + "</p>"
+            # A demo account nobody is told about is a locked door. These are
+            # fixtures with no data worth protecting, and a visitor who cannot
+            # sign in sees a login form and concludes the link is broken.
+            + (
+                '<p class="meta">sign in: '
+                + " · ".join(
+                    f"<code>{escape(account.email)}</code> / <code>{escape(account.password)}</code>"
+                    for account in site.accounts
+                )
+                + "</p>"
+                if getattr(site, "accounts", None) else ""
+            )
+            + "</article>"
             for site in self.sites.values()
         ) or "<p>No demo sites are available yet.</p>"
         planted = sum(len(getattr(site, "planted", [])) for site in self.sites.values())

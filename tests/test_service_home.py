@@ -96,7 +96,13 @@ def test_home_html_references_only_served_assets(tmp_path: Path) -> None:
     assert "Control result unavailable" in script
     assert "/console/runs/index.json" in script
     assert "new URLSearchParams(location.search).get('app')" in script
-    assert "entries.find((entry) => entry.name === 'workspace')" in script
+    # The gallery opens on a sweep of a site nobody built for Parallax, because
+    # that is the strongest evidence the page has and it used to be buried
+    # behind a demo fixture the reader has no reason to trust yet.
+    assert "entries.find((entry) => entry.name === 'the-internet')" in script
+    # Nothing about the fleet is enumerated in the script any more; a second
+    # source of truth for which sites exist is what went stale last time.
+    assert "applicationOrder" not in script
     assert "|| entries[0]" in script
     assets = re.findall(r'(?:href|src)="(/[^"?#]+)', body.decode())
     for asset in assets:

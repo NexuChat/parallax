@@ -52,6 +52,61 @@ def _new_game() -> dict[str, Any]:
 _STALE_AFTER_S = 120.0
 
 
+
+
+# Kept out of the page builder so the markup above reads as a page rather than a
+# stylesheet with HTML in it. Every interactive target clears 44px and nothing
+# has a fixed width, because this fixture is graded by the same rules it grades.
+_STYLE = (
+    ':root{--ink:#16211f;--muted:#5d6b68;--line:#d8e0de;--surface:#fff;--canvas:#f7f8f7;--accent:#1f6f5c;'
+    '--accent-ink:#fff;--x:#1f6f5c;--o:#b4532a}'
+    '*{box-sizing:border-box}'
+    'body{margin:0;background:var(--canvas);color:var(--ink);font:16px/1.6 "Parallax Serif",serif}'
+    '.bar{display:flex;align-items:center;justify-content:space-between;gap:16px;'
+    'background:var(--ink);color:#f4f7f6;padding:14px clamp(16px,4vw,40px)}'
+    '.brand{font:800 12px/1 "Parallax Sans",sans-serif;letter-spacing:.16em}'
+    '.route{font:650 11px/1 "Parallax Mono",monospace;color:#9fb3ad;letter-spacing:.08em}'
+    '.shell{display:grid;gap:clamp(16px,3vw,28px);grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);'
+    'max-inline-size:1040px;margin-inline:auto;padding:clamp(18px,4vw,44px)}'
+    '.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;'
+    'padding:clamp(16px,3vw,28px)}'
+    '.play-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}'
+    'h1{font:800 clamp(24px,3.4vw,34px)/1.1 "Parallax Sans",sans-serif;letter-spacing:-.02em;margin:0 0 6px}'
+    'h2{font:800 13px/1.2 "Parallax Sans",sans-serif;letter-spacing:.09em;text-transform:uppercase;'
+    'color:var(--muted);margin:22px 0 10px}'
+    '.side h2:first-child{margin-block-start:0}'
+    '.seat{margin:0;color:var(--muted);font-size:14px}'
+    '.seat b{color:var(--ink)}'
+    '#status{font:700 12px/1 "Parallax Mono",monospace;letter-spacing:.08em;text-transform:uppercase;'
+    'border:1px solid var(--line);border-radius:999px;background:var(--canvas);color:var(--muted);'
+    'padding:0 18px;display:inline-flex;align-items:center;min-block-size:44px;margin:0}'
+    '#status[data-state="playing"]{border-color:var(--accent);color:var(--accent)}'
+    '#status[data-state="won"]{border-color:var(--o);color:var(--o)}'
+    '.invite-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-block:22px 20px}'
+    '#invite{margin:0;font:650 14px/1.4 "Parallax Sans",sans-serif;color:var(--accent)}'
+    'button{font:700 14px/1 "Parallax Sans",sans-serif;border-radius:10px;cursor:pointer;'
+    'min-block-size:44px;min-inline-size:44px;padding:12px 20px}'
+    '#send-invite{background:var(--accent);border:1px solid var(--accent);color:var(--accent-ink)}'
+    '#accept{background:var(--surface);border:1px solid var(--accent);color:var(--accent)}'
+    '.board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;max-inline-size:340px}'
+    '.cell{aspect-ratio:1;inline-size:100%;font:800 34px/1 "Parallax Sans",sans-serif;'
+    'background:var(--canvas);border:1px solid var(--line);color:var(--ink);padding:0}'
+    '.cell:hover{border-color:var(--accent)}'
+    '.cell[data-mark="X"]{color:var(--x)}.cell[data-mark="O"]{color:var(--o)}'
+    '#winner{margin:22px 0 0;font:800 18px/1.3 "Parallax Sans",sans-serif;color:var(--o)}'
+    '.hint{color:var(--muted);font-size:13px;line-height:1.6}'
+    '.hint code{background:var(--canvas);border-radius:4px;padding:1px 5px;font-family:"Parallax Mono",monospace}'
+    '.seats{display:grid;gap:8px}'
+    '.seat-link{display:flex;align-items:center;min-block-size:44px;padding:10px 14px;'
+    'border:1px solid var(--line);border-radius:10px;color:var(--ink);text-decoration:none;font-size:14px}'
+    '.seat-link:hover{border-color:var(--accent);color:var(--accent)}'
+    '.protocol{margin:0;padding-inline-start:20px;color:var(--muted);font-size:13.5px;line-height:1.8}'
+    '.protocol b{color:var(--ink)}'
+    'button:focus-visible,a:focus-visible{outline:3px solid var(--ink);outline-offset:2px}'
+    '@media(max-width:820px){.shell{grid-template-columns:1fr}}'
+)
+
+
 _ARENA: dict[str, Any] = _new_game()
 
 
@@ -242,39 +297,65 @@ class ArenaSite:
     def _page(self, request: Request, *, legacy: bool = False) -> str:
         lang = request.query.get("lang", "en")
         direction = "rtl" if lang == "ar" else "ltr"
+        me = request.query.get("me", "")
+        opponent = request.query.get("vs", "")
         cells = "".join(
             f'<button class="cell" id="cell-{index}" data-cell="{index}" '
             f'aria-label="cell {index}"></button>'
             for index in range(9)
         )
+        route = "game-legacy" if legacy else "game"
+        seat = (
+            f'<p class="seat">You are <b>{escape(me)}</b>'
+            + (f' · playing <b>{escape(opponent)}</b>' if opponent else "")
+            + "</p>"
+            if me else
+            '<p class="seat">No seat taken. Open one of the two boards below to sit down.</p>'
+        )
+        lobby = "".join(
+            f'<a class="seat-link" href="{request.mount}/{route}?me={escape(name)}&amp;vs={escape(other)}">'
+            f'Sit as&nbsp;<b>{escape(name)}</b></a>'
+            for name, other in (("amira", "samir"), ("samir", "amira"))
+        )
         return (
             f'<!doctype html><html lang="{escape(lang)}" dir="{direction}"><head>'
             '<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-            f"<title>{escape(self.title)}</title><style>{FONT_FACE_CSS}"
-            'body{margin:0;font:16px/1.5 "Parallax Serif",serif;background:#fbfbfa;color:#16211f}'
-            '.shell{max-inline-size:760px;margin-inline:auto;padding:clamp(16px,4vw,44px)}'
-            'h1{font:700 26px/1.2 "Parallax Sans",sans-serif}'
-            '#status{font:650 13px/1 "Parallax Mono",monospace;border:1px solid #cfd8d6;border-radius:8px;'
-            'padding:12px 16px;display:inline-flex;align-items:center;min-block-size:44px;margin-block:14px}'
-            '.board{display:grid;grid-template-columns:repeat(3,88px);gap:8px}'
-            '.cell{inline-size:88px;block-size:88px;font:700 30px/1 "Parallax Sans",sans-serif;'
-            'background:#fff;border:1px solid #cfd8d6;border-radius:10px;cursor:pointer}'
-            '#invite,#winner{font:650 14px/1.4 "Parallax Sans",sans-serif;margin-block:10px}'
-            # The graded sweep caught these at 44px on its first run, which is
-            # the fixture being held to the same rule as the sites it grades.
-            '#send-invite,#accept{font:650 14px/1 "Parallax Sans",sans-serif;background:#fff;'
-            'border:1px solid #cfd8d6;border-radius:8px;cursor:pointer;min-block-size:44px;'
-            'min-inline-size:44px;padding:10px 18px}'
-            "</style></head><body><main class=\"shell\">"
-            f"<h1>{escape(self.title)}</h1>"
+            f"<title>{escape(self.title)}</title><style>{FONT_FACE_CSS}{_STYLE}"
+            "</style></head><body>"
+            '<header class="bar"><span class="brand">PARALLAX ARENA</span>'
+            f'<span class="route">{escape(route)}</span></header>'
+            '<main class="shell">'
+            '<section class="panel play">'
+            '<div class="play-head">'
+            f'<div><h1>{escape(self.title)}</h1>{seat}</div>'
             '<p id="status" data-state="idle">idle</p>'
+            "</div>"
+            '<div class="invite-row">'
             '<p id="invite" hidden></p>'
-            '<button id="send-invite">Invite</button> '
-            '<button id="accept" hidden>Accept</button>'
+            '<button id="send-invite">Invite opponent</button>'
+            '<button id="accept" hidden>Accept invitation</button>'
+            "</div>"
+            f'<div class="board" role="grid" aria-label="game board">{cells}</div>'
             '<p id="winner" hidden></p>'
-            f'<div class="board">{cells}</div>'
+            "</section>"
+            '<aside class="panel side">'
+            '<h2>Both seats</h2>'
+            '<p class="hint">A game needs two live sessions. Open each seat in its own window '
+            'and play them against each other.</p>'
+            f'<div class="seats">{lobby}</div>'
+            '<h2>Turn order</h2>'
+            '<ol class="protocol" id="protocol">'
+            '<li data-step="invite">amira invites samir</li>'
+            '<li data-step="accept">samir accepts</li>'
+            '<li data-step="play">the players alternate</li>'
+            '<li data-step="win">a line of three ends the game <b>for both</b></li>'
+            "</ol>"
+            '<p class="hint">The last promise is the one this fixture exists to test, and the '
+            'one <code>game-legacy</code> breaks.</p>'
+            "</aside>"
+            "</main>"
             f"{_CLIENT.replace('__MOUNT__', escape(request.mount)).replace('__LEGACY__', '1' if legacy else '')}"
-            "</main></body></html>"
+            "</body></html>"
         )
 
 
@@ -299,7 +380,9 @@ const render = (state) => {
   document.getElementById('status').dataset.state = state.state;
   document.getElementById('status').dataset.turn = state.turn || '';
   state.board.forEach((mark, index) => {
-    document.getElementById('cell-' + index).textContent = mark;
+    const cell = document.getElementById('cell-' + index);
+    cell.textContent = mark;
+    if (mark) cell.dataset.mark = mark; else delete cell.dataset.mark;
   });
   const invite = document.getElementById('invite');
   // The invitation is only shown to its recipient, which is itself a promise
