@@ -22,7 +22,7 @@ from .contracts import FeedEvent
 from .delivery import DeliveryReport, PullRequestDelivery
 from .differ import configure_semantics
 from .media import MediaExpectation, media_probe, perceived
-from .discovery import Credential, SessionDiscovery, credentials_from_data
+from .discovery import SessionDiscovery, credentials_from_data
 from .proposer import ProposalReport, ScenarioProposer
 from .semantics import SemanticComparator
 from .specialists import LayoutI18nSpecialist, RealtimeSpecialist

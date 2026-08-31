@@ -65,7 +65,7 @@
   },
   "workspace": {
     "feed": "runs/workspace/feed.jsonl",
-    "mosaics": 11,
+    "mosaics": 12,
     "findings": 5,
     "by_severity": {
       "high": 3,
