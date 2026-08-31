@@ -161,7 +161,18 @@ class Compositor:
         """
         if not self._saw_motion or self._tile_size is None or not self._history:
             return None
+        if set(self._history) != set(self._contexts):
+            # A context that never delivered a frame would be a NO SIGNAL tile
+            # in every animation frame — the harness's placeholder shipped as
+            # if it were the application's behaviour.
+            return None
         stamps = sorted({ts for frames in self._history.values() for ts, _ in frames})
+        # The film starts when the LAST witness has painted, not when the first
+        # one did. Anything earlier bakes NO SIGNAL boxes and half-loaded white
+        # pages into the clip's opening frames, and the console then loops that
+        # broken-looking second forever in place of the settled still.
+        painted_at = max(frames[0][0] for frames in self._history.values())
+        stamps = [ts for ts in stamps if ts >= painted_at]
         if len(stamps) < 2 or stamps[-1] - stamps[0] < 120:
             return None
         first, last = stamps[0], stamps[-1]

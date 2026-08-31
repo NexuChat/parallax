@@ -127,3 +127,42 @@ def test_reruns_clean_stale_motion_clips(tmp_path: Path) -> None:
 
     assert not stale.exists()
     assert keep.exists()
+
+
+def test_the_clip_never_opens_before_the_last_witness_has_painted() -> None:
+    """A late joiner must not appear as a NO SIGNAL box in the film's start."""
+    clock = [0]
+    comp = compositor(clock)
+    # left paints and moves early; right delivers its first frame late
+    for step, color in enumerate([(250, 250, 250), (10, 10, 10), (250, 20, 20)]):
+        clock[0] = step * 200
+        feed(comp, "left", color, step + 1)
+    clock[0] = 500
+    feed(comp, "right", (250, 250, 250), 1)
+    clock[0] = 700
+    feed(comp, "left", (20, 250, 20), 4)
+    feed(comp, "right", (10, 10, 10), 2)
+    clock[0] = 900
+    feed(comp, "left", (250, 250, 10), 5)
+    feed(comp, "right", (250, 20, 250), 3)
+
+    clip = comp.motion_clip()
+
+    assert clip is not None
+    data, _, _ = clip
+    from parallax.compositor import _PLACEHOLDER
+    with Image.open(BytesIO(data)) as animation:
+        animation.seek(0)
+        frame = animation.convert("RGB")
+        # centre of the second tile (right context) in the fixed 4x2 grid
+        assert frame.getpixel((60, 10)) != _PLACEHOLDER
+
+
+def test_a_witness_that_never_painted_means_no_clip_at_all() -> None:
+    clock = [0]
+    comp = compositor(clock)
+    for step, color in enumerate([(250, 250, 250), (10, 10, 10), (250, 20, 20)]):
+        clock[0] = step * 200
+        feed(comp, "left", color, step + 1)
+
+    assert comp.motion_clip() is None
