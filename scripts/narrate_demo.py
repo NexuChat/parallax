@@ -28,7 +28,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ENDPOINT = "https://texttospeech.googleapis.com/v1/text:synthesize"
-VOICE = "en-US-Chirp3-HD-Charon"
+VOICE = "en-US-Chirp3-HD-Puck"
 PROJECT = "rasikh-fleet-2026"
 RATE = 24_000
 
@@ -93,6 +93,19 @@ def build(video: Path, manifest: Path, out: Path, *, rate: float) -> dict[str, o
         clips.append((float(line["at"]), clip, duration(clip)))
 
     video_seconds = duration(video)
+    # Generative voices vary a little between renders, so a line that fits on
+    # paper can still spill into the next by a few hundred milliseconds — two
+    # narrators talking over each other. Starts are timestamps from the
+    # recording, but they are floors, not walls: a colliding line is pushed
+    # later by exactly the overflow plus a breath, and the drift is absorbed by
+    # the next natural gap.
+    placed: list[tuple[float, Path, float]] = []
+    cursor = 0.0
+    for at, clip, length in clips:
+        start = max(at, cursor + 0.15) if placed else at
+        placed.append((start, clip, length))
+        cursor = start + length
+    clips = placed
     overruns = [
         {"at": at, "ends": round(at + length, 1), "say": str(lines[i]["say"])[:60]}
         for i, (at, _, length) in enumerate(clips)
@@ -133,9 +146,12 @@ def main() -> int:
     parser.add_argument("--video", type=Path, default=ROOT / "web" / "demo.mp4")
     parser.add_argument("--manifest", type=Path, help="defaults to the video's .narration.json")
     parser.add_argument("--out", type=Path, help="defaults to overwriting the video in place")
-    parser.add_argument("--rate", type=float, default=1.0, help="speaking rate")
+    parser.add_argument("--rate", type=float, default=1.08, help="speaking rate")
+    parser.add_argument("--voice", default=None, help="Chirp3-HD voice name override")
     args = parser.parse_args()
 
+    global VOICE
+    if args.voice: VOICE = args.voice
     manifest = args.manifest or args.video.with_suffix(".narration.json")
     out = args.out or args.video.with_name(f"{args.video.stem}-narrated{args.video.suffix}")
     print(json.dumps(build(args.video, manifest, out, rate=args.rate), indent=2))

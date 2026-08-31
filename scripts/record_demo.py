@@ -143,6 +143,12 @@ class Recording:
             await self.page.wait_for_timeout(1500)
             state = await (await self.page.request.get(f"{CONSOLE}/protocol/{run_id}")).json()
             steps = state.get("steps") or []
+            spoken = {
+                1: "Invitation delivered to Samir — and correctly hidden from Amira. "
+                   "A negative expectation, checked live.",
+                4: "Every move must appear on the opponent's board before the next is allowed to run.",
+                7: "Now the winning move — watch Samir's board.",
+            }
             for step in steps[shown:]:
                 observations = [
                     f"<b>{want['participant']}</b> {want['wanted']} — "
@@ -152,6 +158,7 @@ class Recording:
                 ]
                 if step.get("error"):
                     observations.append(f"<span class='no'>{step['error']}</span>")
+                self._mark(spoken.get(steps.index(step) + 1))
                 await self.entry(
                     "ok" if step["passed"] else "bad",
                     f"{step['actor']} — {step['label']}",
@@ -196,7 +203,9 @@ async def act_one_start_a_sweep(rec: Recording) -> None:
     await rec.pane(0).locator("#go").click()
     await rec.note(
         "That is a public practice site <b>nobody built for Parallax</b>. Seven browser contexts "
-        "are opening on Cloud Run right now, on a background thread."
+        "are opening on Cloud Run right now, on a background thread.",
+        voice="That's a public practice site — nobody built it for Parallax. One U R L, one button… "
+              "and seven contexts are opening on Cloud Run right now.",
     )
     await rec.beat(8)
 
@@ -205,7 +214,7 @@ async def act_two_meanwhile_the_idea(rec: Recording) -> None:
     """The architecture, told while the agent is actually doing it."""
     await rec.say("Meanwhile — what it is doing", "02 / SEVEN WITNESSES, ONE AXIS EACH",
               voice="While it works: seven contexts on the same commit, each changing one property — "
-                    "role, language, theme, viewport. One disagreement, one cause. No stored screenshots.")
+                    "role, language, theme, viewport. One disagreement, one cause. No stored screenshots. Measure first, model last.")
     await rec.show([
         {"label": "one command, end to end", "url": f"{CONSOLE}/architecture.html", "hint": "the architecture"},
     ])

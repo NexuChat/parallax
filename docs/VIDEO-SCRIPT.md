@@ -44,7 +44,7 @@ The beats, in order:
 Two beats wait for real work (the live sweep, the played protocol) and take as
 long as they take. So the recorder stamps every headline line with the second it
 appeared on screen (`demo.narration.json`), and `narrate_demo.py` synthesises
-each line with **Cloud Text-to-Speech** (`en-US-Chirp3-HD-Charon`), pads it to
+each line with **Cloud Text-to-Speech** (`en-US-Chirp3-HD-Puck`), pads it to
 its own timestamp, and mixes the track under the untouched picture. The video
 stream is stream-copied — narration cannot alter a frame of what was recorded.
 The tool reports any line that would overrun its slot; the published render has

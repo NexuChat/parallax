@@ -4,8 +4,16 @@
     "say": "Every regression tool compares a page against yesterday's copy of itself \u2014 it catches what changed, never what only one kind of user sees."
   },
   {
+    "at": 7.4,
+    "say": "That's a public practice site \u2014 nobody built it for Parallax. One U R L, one button\u2026 and seven contexts are opening on Cloud Run right now."
+  },
+  {
     "at": 15.63,
     "say": "While it works: seven contexts on the same commit, each changing one property \u2014 role, language, theme, viewport. One disagreement, one cause. No stored screenshots."
+  },
+  {
+    "at": 28.3,
+    "say": "Measure first. Model last."
   },
   {
     "at": 31.65,
@@ -20,12 +28,32 @@
     "say": "And back to the sweep we started \u2014 the service remembers it, and while the game was being judged, it finished."
   },
   {
+    "at": 61.5,
+    "say": "Invitation delivered to Samir \u2014 and correctly hidden from Amira. A negative expectation, checked live."
+  },
+  {
+    "at": 70.0,
+    "say": "Every move must appear on the opponent's board before the next is allowed to run."
+  },
+  {
+    "at": 77.5,
+    "say": "Now the winning move \u2014 watch Samir's board."
+  },
+  {
     "at": 83.15,
     "say": "5 findings, produced while you watched. Now the evidence behind them."
   },
   {
+    "at": 88.3,
+    "say": "Step seven fails. The winner is told\u2026 the loser never is. The engine wrote that verdict \u2014 not a caption."
+  },
+  {
     "at": 97.72,
     "say": "Seven contexts side by side are too small to read, so any witness opens across the whole screen."
+  },
+  {
+    "at": 103.9,
+    "say": "Any witness, full screen."
   },
   {
     "at": 105.76,
@@ -36,12 +64,24 @@
     "say": "Amira presses mute. Her control says mic off \u2014 and Samir still hears her. Omar hears nothing, but he chose silence, and is correctly not reported."
   },
   {
+    "at": 121.9,
+    "say": "That distinction is the whole sensor."
+  },
+  {
     "at": 123.83,
     "say": "The workflow ends where a developer's day starts. A real pull request, opened by the sweep \u2014 one failing Playwright spec per finding, one commit each. Eighteen of eighteen generated specs fail as assertions. None skipped, none passing."
   },
   {
+    "at": 139.0,
+    "say": "One commit per finding."
+  },
+  {
     "at": 140.8,
     "say": "All of it ran on one Cloud Run service, at its own Google address. Gemini, embeddings, Translation, Gemma \u2014 and this narration \u2014 one project."
+  },
+  {
+    "at": 150.9,
+    "say": "Its own Google address \u2014 no trust required."
   },
   {
     "at": 152.81,
