@@ -1,5 +1,10 @@
 # Parallax
 
+[![verify](https://github.com/NexuChat/parallax/actions/workflows/verify.yml/badge.svg?branch=master)](https://github.com/NexuChat/parallax/actions/workflows/verify.yml)
+
+The badge is the graded sweep, not just the unit tests: every push runs the
+full demo fleet and fails the build on a single missed plant or false positive.
+
 Parallax is a relational browser regression system. It runs seven isolated contexts together, then turns witness disagreement into failing Playwright specs. The published demo target, `https://demo.mlki.app`, currently reports 15 of 15 planted defects found, 0 missed, and 0 false positives on five demo sites, while the clean control stays at zero.
 
 It also reports revocation lag in an open session: the owner revokes one member while the member’s other live session is still open, and the remaining authority window is measured at 2,572ms. In that run the decision plane passes and the effects plane fails; distribution and enforcement are reported as unmeasured, because a browser witness sees what the member's session could still do, not what the server sent or refused. The finding says so in those words rather than counting an unobserved plane as a passing one.
