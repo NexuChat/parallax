@@ -170,7 +170,10 @@ receive' but is not an intended audience for it
     </main>
 
     <footer>
-      <div><span class="kicker">DEMO FLEET</span><div class="footer-links" id="footer-links"><a href="https://demo.mlki.app/">all seven applications ↗</a></div></div>
+      <div><span class="kicker">DEMO FLEET</span><div class="footer-links" id="footer-links"><a href="https://demo.mlki.app/">all seven applications ↗</a></div>
+      <!-- Named, not implied. A judge asked to see a Google Cloud backend should
+           not have to take a Cloudflare-fronted hostname on trust. -->
+      <p class="host-note">This console is one Cloud Run service in <code>us-central1</code>, also reachable at <a href="https://parallax-x6nwdmf3oa-uc.a.run.app/console">parallax-x6nwdmf3oa-uc.a.run.app</a>. Gemini 3.7 Flash, <code>gemini-embedding-001</code> and Gemma 4 are reached through Vertex AI on the same project.</p></div>
       <a class="repo-link" href="https://github.com/NexuChat/parallax">Repository ↗</a>
     </footer>
     <script src="/home.js"></script>

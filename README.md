@@ -216,7 +216,12 @@ rejected for a different reason — the model kept inventing effect keys like
 it. With both effect shapes spelled out exactly as the validator enforces them,
 format rejections stopped and only evidence-grounding rejections remain.
 
-Open `console/index.html?feed=../runs/first/feed.jsonl` in the repository's console, or use the [live console](https://perallax.mlki.app). The local console reads the newline-delimited feed and its referenced mosaics; serving the repository with a static web server avoids browser `file:` restrictions.
+Open `console/index.html?feed=../runs/first/feed.jsonl` in the repository's console, or use the live console. It is served by one Cloud Run service in
+`us-central1`, reachable at its own Google URL —
+[`parallax-x6nwdmf3oa-uc.a.run.app`](https://parallax-x6nwdmf3oa-uc.a.run.app/console)
+— and at [`perallax.mlki.app`](https://perallax.mlki.app), which is the same
+service behind a friendlier name. The `.run.app` address is given first because
+the Cloudflare-fronted one shows no evidence of where it runs. The local console reads the newline-delimited feed and its referenced mosaics; serving the repository with a static web server avoids browser `file:` restrictions.
 
 The command also accepts `--max-surfaces`, `--settle-ms`, and `--headed`. Omit `--no-vision` to enable the Gemini layout and i18n lens. It chooses the first available route: a configured Vertex AI project (`GOOGLE_CLOUD_PROJECT`, with optional `GOOGLE_CLOUD_LOCATION`, defaulting to `global`) using application-default credentials or a fresh `gcloud auth print-access-token` bearer token; then `GEMINI_API_KEY` for AI Studio. The CLI prints the selected route, or explains why the lens is disabled, before the sweep starts.
 
@@ -532,6 +537,22 @@ The findings are still reported, still published, and still graded. What is
 missing is the generated regression test for them, and that is an emitter that
 cannot yet write multi-context specs rather than a finding anybody should trust
 less.
+
+## A limit the axis gate does not cover
+
+The applicability gate drops findings on an axis the application does not
+support, and it decides that per axis. A specialist finding carries the axis of
+the witness pair it compared, not the axis of the thing it describes — so the
+vision lens observing "this interface is Arabic where an English locale was
+requested" is filed under theme, or privilege, or viewport, depending on which
+pair happened to surface it, and the locale gate never sees it.
+
+On the published `arbchat` sweep that is twenty findings which are one
+observation repeated. They are real observations about a monolingual
+application, and the locale axis on that same run correctly reports itself not
+applicable — which is the contradiction. The fix is for a specialist to name the
+axis it is talking about instead of inheriting the one it was called on, and
+that is not done.
 
 ## Limits
 
