@@ -49,6 +49,12 @@ def _sweep(args: argparse.Namespace, extra: list[str]) -> int:
     if "--deny" not in extra:
         for pattern in settings.deny:
             argv.extend(["--deny", pattern])
+    if "--locale" not in extra and settings.locales is not None:
+        for tag in settings.locales:
+            argv.extend(["--locale", tag])
+    if "--viewport" not in extra and settings.viewports is not None:
+        for size in settings.viewports:
+            argv.extend(["--viewport", size])
     unless_given("--open-pr", settings.open_pr)
     unless_given("--pr-base", settings.pr_base)
     if settings.propose_scenarios and "--propose-scenarios" not in extra:

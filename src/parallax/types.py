@@ -80,6 +80,43 @@ class Locale(str, Enum):
         return "rtl" if self is Locale.AR else "ltr"
 
 
+# Languages written right-to-left, by primary subtag. Direction is derived
+# rather than declared because it is a property of the language, not of the
+# project — asking someone to state that Hebrew runs right-to-left is asking
+# them to get it wrong once.
+_RTL_LANGS = frozenset({"ar", "he", "fa", "ur", "ps", "sd", "ug", "dv", "ckb", "yi"})
+
+
+@dataclass(frozen=True)
+class LocaleSpec:
+    """A locale beyond the built-in pair.
+
+    The locale axis was an enum of two, which made "does the French rendering
+    disagree with the English one" unaskable for the same reason privilege
+    questions were once unaskable beyond three roles. A declared locale is any
+    BCP 47 tag; its text direction is derived from the language subtag, so a
+    declared `he` witness is judged with the same RTL mirror checks as the
+    built-in Arabic one.
+    """
+
+    value: str
+
+    def __post_init__(self) -> None:
+        if not self.value or not self.value.strip():
+            raise ValueError("a locale needs a language tag")
+
+    @property
+    def direction(self) -> str:
+        return "rtl" if self.value.split("-")[0].lower() in _RTL_LANGS else "ltr"
+
+    def __str__(self) -> str:
+        return self.value
+
+
+# Either kind of locale can sit on a Context, exactly as with roles.
+AnyLocale = Locale | LocaleSpec
+
+
 class Theme(str, Enum):
     LIGHT = "light"
     DARK = "dark"
@@ -130,8 +167,8 @@ class AxisApplicability:
 class Context:
     """One witness's full configuration."""
 
-    privilege: Privilege = Privilege.OWNER
-    locale: Locale = Locale.EN
+    privilege: AnyRole = Privilege.OWNER
+    locale: AnyLocale = Locale.EN
     theme: Theme = Theme.LIGHT
     viewport: Viewport = DESKTOP
     varies: Axis = Axis.BASELINE
@@ -154,12 +191,23 @@ BASELINE = Context()
 
 
 def derive_witnesses(
-    baseline: Context = BASELINE, *, extra_roles: Sequence["Role"] = ()
+    baseline: Context = BASELINE,
+    *,
+    extra_roles: Sequence["Role"] = (),
+    locales: Sequence[AnyLocale] | None = None,
+    viewports: Sequence[Viewport] | None = None,
 ) -> list[Context]:
-    """One-axis-at-a-time derivation: 8 witnesses instead of a 36-cell product.
+    """One-axis-at-a-time derivation: witnesses, never a cross-product.
 
     Each returned context differs from the baseline in exactly one axis, so any
-    disagreement it reports has exactly one candidate cause.
+    disagreement it reports has exactly one candidate cause. The *values* on an
+    axis are declarable — which locales, which viewports, which roles — but the
+    derivation rule is not: every declared value adds one witness, and the cell
+    count grows linearly with the declaration, not multiplicatively.
+
+    `None` means the built-in default for that axis; an explicit empty sequence
+    means the caller has decided the axis has nothing to compare, which is a
+    statement, not an omission.
     """
     witnesses = [baseline]
     for privilege in (Privilege.MEMBER, Privilege.ANON):
@@ -169,9 +217,10 @@ def derive_witnesses(
     # stop asking the questions it asked before.
     for role in extra_roles:
         witnesses.append(replace(baseline, privilege=role, varies=Axis.PRIVILEGE))
-    witnesses.append(replace(baseline, locale=Locale.AR, varies=Axis.LOCALE))
+    for locale in (locales if locales is not None else (Locale.AR,)):
+        witnesses.append(replace(baseline, locale=locale, varies=Axis.LOCALE))
     witnesses.append(replace(baseline, theme=Theme.DARK, varies=Axis.THEME))
-    for viewport in (MOBILE, TABLET):
+    for viewport in (viewports if viewports is not None else (MOBILE, TABLET)):
         witnesses.append(replace(baseline, viewport=viewport, varies=Axis.VIEWPORT))
     return witnesses
 

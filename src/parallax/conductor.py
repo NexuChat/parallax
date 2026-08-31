@@ -134,6 +134,8 @@ class Conductor:
         *,
         browser: Any,
         contexts: Sequence[Context] | None = None,
+        locales: Sequence[Any] | None = None,
+        viewports: Sequence[Any] | None = None,
         specialists: Sequence[Specialist] | None = None,
         storage_states: Mapping[Privilege | str, StorageState] | None = None,
         max_surfaces: int = 12,
@@ -153,7 +155,9 @@ class Conductor:
         self.start_url = _normal_url(start_url)
         self.out_dir = Path(out_dir)
         self.browser = browser
-        self.contexts = list(contexts or derive_witnesses(extra_roles=_declared_roles(storage_states)))
+        self.contexts = list(contexts or derive_witnesses(
+            extra_roles=_declared_roles(storage_states), locales=locales, viewports=viewports,
+        ))
         self.specialists = list(specialists or [])
         self.storage_states = storage_states
         self.max_surfaces = max_surfaces

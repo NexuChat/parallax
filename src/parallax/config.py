@@ -82,6 +82,15 @@ file = ""
 # (so "delete" covers every delete button); glob patterns match the whole path.
 # An agent pressing things on a live application needs a written "never this".
 deny = []
+
+[axes]
+# Which values each axis compares against the baseline. The derivation rule is
+# fixed — one witness per declared value, never a cross-product — but the
+# values are yours. Roles come from the credentials file; these two are the
+# rest. Omit a key to keep the built-in default.
+#
+# locales = ["fr", "he"]        # BCP 47 tags; direction is derived (he -> RTL)
+# viewports = ["320x568"]       # WIDTHxHEIGHT, one witness each
 '''
 
 
@@ -101,6 +110,8 @@ class Settings:
     pr_base: str | None = None
     scenarios: Path | None = None
     deny: list[str] = field(default_factory=list)
+    locales: list[str] | None = None
+    viewports: list[str] | None = None
     source: Path | None = field(default=None, compare=False)
 
     def describe(self) -> str:
@@ -136,6 +147,7 @@ def _settings_from(data: dict[str, Any], source: Path) -> Settings:
     delivery = _table(data, "delivery")
     scenarios = _table(data, "scenarios")
     constraints = _table(data, "constraints")
+    axes = _table(data, "axes")
     base = source.parent
 
     def resolved(value: Any) -> Path | None:
@@ -160,6 +172,10 @@ def _settings_from(data: dict[str, Any], source: Path) -> Settings:
         pr_base=_text(delivery.get("base")),
         scenarios=resolved(scenarios.get("file")),
         deny=_texts(constraints.get("deny")),
+        # An absent key keeps the axis's built-in default; a present list, even
+        # an empty one, is the project declaring the values itself.
+        locales=_texts(axes["locales"]) if "locales" in axes else None,
+        viewports=_texts(axes["viewports"]) if "viewports" in axes else None,
         source=source,
     )
 

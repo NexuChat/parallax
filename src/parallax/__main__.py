@@ -30,7 +30,8 @@ from .semantics import SemanticComparator
 from .specialists import LayoutI18nSpecialist, RealtimeSpecialist
 from .triage import GemmaTriage, TriageReport
 from .types import (
-    Axis, EffectExpectation, FormAction, Context, Privilege, RelationalReplay, Severity, Surface, SurfaceKind,
+    Axis, EffectExpectation, FormAction, Context, LocaleSpec, Privilege, RelationalReplay, Severity, Surface,
+    SurfaceKind, Viewport,
 )
 
 
@@ -58,6 +59,22 @@ def _parse(argv: list[str] | None = None) -> argparse.Namespace:
         metavar="PATTERN",
         help="never visit a route or press a control matching PATTERN (repeatable); "
              "plain text matches anywhere, glob characters match the whole value",
+    )
+    parser.add_argument(
+        "--locale",
+        action="append",
+        default=None,
+        metavar="TAG",
+        help="a locale the locale axis compares against the baseline, e.g. fr or he "
+             "(repeatable; text direction is derived from the language; default: ar)",
+    )
+    parser.add_argument(
+        "--viewport",
+        action="append",
+        default=None,
+        metavar="WxH",
+        help="a viewport the viewport axis renders beside the baseline, e.g. 320x568 "
+             "(repeatable; default: 360x740 and 768x1024)",
     )
     parser.add_argument("--headed", action="store_true", help="show the browsers (a demo, not a run)")
     parser.add_argument(
@@ -91,6 +108,29 @@ def _parse(argv: list[str] | None = None) -> argparse.Namespace:
         help="skip the Gemini lens; the deterministic ones still run",
     )
     return parser.parse_args(argv)
+
+
+def _declared_locales(tags: list[str] | None) -> list[LocaleSpec] | None:
+    """None keeps the built-in default; declared tags replace it, one witness each."""
+    if tags is None:
+        return None
+    try:
+        return [LocaleSpec(tag.strip()) for tag in tags]
+    except ValueError as error:
+        raise SystemExit(f"--locale: {error}") from error
+
+
+def _declared_viewports(sizes: list[str] | None) -> list[Viewport] | None:
+    """Parse WxH pairs; the name is the size itself, which is what a finding should say."""
+    if sizes is None:
+        return None
+    viewports = []
+    for size in sizes:
+        width, _, height = size.lower().partition("x")
+        if not (width.strip().isdigit() and height.strip().isdigit()):
+            raise SystemExit(f"--viewport expects WIDTHxHEIGHT, e.g. 320x568, got {size!r}")
+        viewports.append(Viewport(size.strip().lower(), int(width), int(height)))
+    return viewports
 
 
 def _storage_states(pairs: list[str]) -> dict[Privilege | str, str]:
@@ -837,6 +877,8 @@ async def _conduct(
         "max_surfaces": args.max_surfaces,
         "settle_ms": args.settle_ms,
         "deny": args.deny,
+        "locales": _declared_locales(getattr(args, "locale", None)),
+        "viewports": _declared_viewports(getattr(args, "viewport", None)),
     }
     if relational_scenarios is not None:
         options["relational_scenarios"] = relational_scenarios

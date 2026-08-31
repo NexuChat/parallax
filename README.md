@@ -284,6 +284,35 @@ Parallax starts with `owner-en-light-desktop` and changes exactly one axis at a 
 
 There are two expectations. Privilege is the exception: access should narrow as privilege falls, so an anonymous or member witness reaching a surface that the owner also reaches is reported as an escalation. Locale, theme, and viewport are equivalence axes: changing one must not change what the user can reach; theme and viewport are also checked for unexpected content changes. The locale comparison additionally checks that geometry is mirrored for right-to-left rendering, while the theme comparison requires unchanged layout geometry.
 
+The table above is the default vocabulary, not the boundary. The derivation
+rule — one changed axis per witness, never a cross-product — is the
+architecture and is closed; the *values* on each axis are open and declared.
+Roles beyond the built-in three come from the credentials file with a rank
+(see below). Locales and viewports are declared in `parallax.toml` or as
+repeatable flags:
+
+```toml
+[axes]
+locales = ["fr", "he"]      # any BCP 47 tag; direction is derived, so a
+                            # declared `he` witness gets the RTL mirror checks
+viewports = ["320x568"]     # WIDTHxHEIGHT, one witness each
+```
+
+```bash
+python -m parallax https://app.example.com --locale fr --locale he --viewport 320x568
+```
+
+Each declared value adds exactly one witness, so the sweep grows linearly with
+the declaration — two locales and three viewports are five extra sessions, not
+a thirty-cell grid — and the mosaic wall adds rows to seat them. Declaring an
+axis replaces that axis's default; declaring it empty (`locales = []`) states
+that the axis has nothing to compare, which the run records as a decision
+rather than treating as an omission. Translation, semantic comparison, and the
+applicability gate all read the declared value, so a `fr` witness is translated
+to French before being judged, exactly as the built-in Arabic witness always
+was. Themes stay the browser's own pair, because `prefers-color-scheme` is the
+mechanism applications actually implement.
+
 ## Semantic content and translation checks
 
 A content-signature mismatch is a reason to inspect a changed region, not by itself proof of a defect. The FNV-1a signature still identifies changed content, but it no longer decides ordinary content divergence alone. For theme and viewport comparisons, Parallax sends only the changed visible landmark text to Vertex AI's `gemini-embedding-001` model and compares the vectors by cosine similarity. A score of at least `0.90` is equivalent; a lower score becomes a content-divergence finding. The finding keeps the model name, score, and threshold as evidence, so a reviewer can see why a hash mismatch was or was not treated as material.

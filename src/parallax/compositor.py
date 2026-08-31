@@ -40,8 +40,8 @@ class Compositor:
         names = tuple(contexts) if contexts is not None else tuple(
             context.name for context in derive_witnesses()
         )
-        if not names or len(names) > _COLUMNS * _ROWS:
-            raise ValueError("contexts must contain between 1 and 7 names")
+        if not names:
+            raise ValueError("contexts must contain at least one name")
         if len(set(names)) != len(names):
             raise ValueError("context names must be unique")
         if settle_ms < 0:
@@ -223,7 +223,10 @@ class Compositor:
     def _paint_wall(self, images: dict[str, Image.Image | None]) -> Image.Image:
         assert self._tile_size is not None
         width, height = self._tile_size
-        wall = Image.new("RGB", (_COLUMNS * width, _ROWS * height), _PLACEHOLDER)
+        # The wall grows rows to fit however many witnesses were declared; the
+        # default seven still compose to the same 4x2 sheet they always did.
+        rows = max(_ROWS, -(-len(self._contexts) // _COLUMNS))
+        wall = Image.new("RGB", (_COLUMNS * width, rows * height), _PLACEHOLDER)
         for index, name in enumerate(self._contexts):
             x, y = (index % _COLUMNS) * width, (index // _COLUMNS) * height
             image = images.get(name)
