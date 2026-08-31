@@ -455,10 +455,16 @@ class Conductor:
             except Exception as error:
                 return Testimony(surface, context, Outcome.ERROR, note=f"conductor failed: {type(error).__name__}: {error}")
             finally:
-                try:
-                    await witness.stop_screencast()
-                finally:
-                    await witness.close()
+                # A cleanup failure must not escape: this block runs after the
+                # except above has already been passed, so a raise here leaves
+                # `run` and takes the whole sweep with it — losing this
+                # surface's testimony and every later surface, against a
+                # docstring that promises a witness error stays testimony.
+                for step in (witness.stop_screencast, witness.close):
+                    try:
+                        await step()
+                    except Exception:  # noqa: BLE001 - teardown is best effort
+                        pass
 
         # Moments have to be harvested WHILE the witnesses work. Letting them all
         # finish and ticking once would reduce a live wall to a single end-state

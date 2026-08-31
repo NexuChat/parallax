@@ -189,3 +189,11 @@ def test_the_produced_state_is_measured_before_the_session_closes() -> None:
 
     assert order == ["measured", "closed"]
     assert [o.defect for o in attempt.observations] == [Defect.HORIZONTAL_OVERFLOW]
+
+
+def test_an_explicitly_empty_session_is_not_downgraded_to_anonymous() -> None:
+    """`{}` is a legal Playwright storage state and means "signed out on purpose"."""
+    run = CapabilityRun(browser=None, storage_states={Privilege.ANON: {}})
+
+    assert run._state_for(Privilege.ANON) == {}
+    assert run._state_for(Privilege.OWNER) is None

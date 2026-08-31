@@ -389,3 +389,26 @@ def test_navigation_or_probe_failure_becomes_recorded_error() -> None:
         assert probe.note.startswith("probe failed:")
 
     asyncio.run(check())
+
+
+def test_a_control_that_is_absent_is_not_reported_as_a_redirect() -> None:
+    """The page was served and stayed put; only the control was missing.
+
+    `_note_for` fell through both 4xx branches with status 200 and an unchanged
+    path, and returned "redirected to /threads/1" — a false statement about
+    what happened that reaches every consumer of the note, including the
+    emitted spec.
+    """
+    from parallax.witness import Witness
+
+    note = Witness._note_for(Outcome.BLOCKED, 200, "/threads/1", [], affordance="button#delete")
+
+    assert "redirected" not in note
+    assert "button#delete" in note and "not rendered" in note
+
+
+def test_a_real_redirect_still_reads_as_one() -> None:
+    from parallax.witness import Witness
+
+    assert Witness._note_for(Outcome.BLOCKED, 200, "/login", []) == "redirected to /login"
+    assert Witness._note_for(Outcome.BLOCKED, 404, "/gone", []) == "HTTP 404: absent"

@@ -133,7 +133,11 @@ class ChoreographyRun:
             return outcome
         pages: dict[str, Any] = {}
         try:
-            await asyncio.gather(*(s.open() for s in sessions.values()))
+            opened = await asyncio.gather(
+                *(s.open() for s in sessions.values()), return_exceptions=True
+            )
+            if (failure := next((r for r in opened if isinstance(r, Exception)), None)) is not None:
+                raise failure
             for participant in choreography.participants:
                 page = sessions[participant.name].page
                 pages[participant.name] = page
@@ -160,17 +164,26 @@ class ChoreographyRun:
         if actor is None:
             result.error = f"step {step.label!r} names an actor that is not a participant: {step.actor}"
             return result
+        # The watchers start before the move, for the same reason an audience
+        # does. Awaiting the action first and polling afterwards misses anything
+        # that appears and is gone again while the action is still running — a
+        # toast that auto-dismisses, a spinner, a transient permission prompt —
+        # and a containment expectation against one of those was recorded as
+        # satisfied because nobody was looking while it existed.
+        checks_task = asyncio.gather(*(
+            self._await_expectation(expect, pages, step.deadline_ms) for expect in step.expect
+        ))
         try:
             outcome = step.action(actor)
             if outcome is not None and hasattr(outcome, "__await__"):
                 await outcome
         except Exception as error:  # noqa: BLE001 - a refused move is the finding
+            checks_task.cancel()
+            await asyncio.gather(checks_task, return_exceptions=True)
             result.error = f"{step.actor} could not perform {step.label!r}: {type(error).__name__}: {error}"
             return result
 
-        checks = await asyncio.gather(*(
-            self._await_expectation(expect, pages, step.deadline_ms) for expect in step.expect
-        ))
+        checks = await checks_task
         for expect, (observed, error) in zip(step.expect, checks):
             if error is not None:
                 result.violated.append((expect, error))

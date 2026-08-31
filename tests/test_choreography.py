@@ -185,3 +185,54 @@ def test_the_sequence_stops_at_the_first_divergence() -> None:
     assert ran == ["first"]
     assert len(result.results) == 1
     assert judge(result)[0].summary.startswith("'invite and play' broke at step 1 of 2")
+
+
+def test_an_effect_that_appears_and_vanishes_during_the_move_is_still_seen() -> None:
+    """Polling only after the action returns misses anything transient.
+
+    A toast that auto-dismisses, a spinner, a permission prompt — each exists
+    only while the action is running. A containment expectation against one was
+    recorded as satisfied because nobody was looking while it existed.
+    """
+    visible = {"now": False}
+
+    class FakePage:
+        async def goto(self, *_args, **_kwargs) -> None:
+            return None
+
+        def locator(self, _selector: str) -> "FakePage":
+            return self
+
+        async def is_visible(self) -> bool:
+            return visible["now"]
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.page = FakePage()
+
+        async def open(self) -> None:
+            return None
+
+        async def close(self) -> None:
+            return None
+
+    async def flashes(_page):
+        visible["now"] = True          # the toast appears
+        await asyncio.sleep(0.05)
+        visible["now"] = False         # and is gone before the action returns
+
+    spec = Choreography(
+        ARENA, (player("amira"),),
+        (Step("amira invites", "amira", flashes,
+              (Expect("amira", "#toast", True, "the toast must be seen"),), deadline_ms=400),),
+        label="transient",
+    )
+
+    class Runner(ChoreographyRun):
+        def _session(self, _participant):
+            return FakeSession()
+
+    result = asyncio.run(Runner(browser=None, poll_ms=1).play(spec))
+
+    assert result.results[0].passed, "the watcher must be running while the action is"
+    assert judge(result) == []

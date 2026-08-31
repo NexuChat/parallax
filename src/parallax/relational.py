@@ -55,7 +55,13 @@ class RelationalPair:
 
     async def open(self) -> None:
         """Open both private contexts before either participant can act."""
-        await asyncio.gather(self.sender.open(), self.receiver.open())
+        opened = await asyncio.gather(
+            self.sender.open(), self.receiver.open(), return_exceptions=True
+        )
+        # One side failing must not leave the other's context open and unclosed:
+        # gather propagates the first error but never cancels its siblings.
+        if (failure := next((r for r in opened if isinstance(r, Exception)), None)) is not None:
+            raise failure
 
     async def close(self) -> None:
         await asyncio.gather(self.sender.close(), self.receiver.close())

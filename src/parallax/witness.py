@@ -186,9 +186,11 @@ class Witness:
         observations = self._map_defects(self.last_probe.get("defects"))
         defects = list(dict.fromkeys(observation.defect for observation in observations))
         blocked = self._is_denied(status, surface.path, final_path)
+        affordance_missing = False
         if not blocked and surface.kind is SurfaceKind.AFFORDANCE and surface.selector:
             try:
-                blocked = not await self._affordance_is_visible(surface.selector)
+                affordance_missing = not await self._affordance_is_visible(surface.selector)
+                blocked = affordance_missing
             except Exception as error:
                 return self._error_testimony(surface, "affordance", error)
 
@@ -196,7 +198,10 @@ class Witness:
         # access question: no role reached a server error page.
         server_error = status is not None and 500 <= status < 600
         outcome = Outcome.BLOCKED if blocked else Outcome.PARTIAL if server_error or defects else Outcome.REACHED
-        note = self._note_for(outcome, status, final_path, defects)
+        note = self._note_for(
+            outcome, status, final_path, defects,
+            affordance=surface.selector if affordance_missing else None,
+        )
         return Testimony(
             surface=surface,
             context=self.context,
@@ -367,8 +372,20 @@ class Witness:
         return contextual_url(url, self.context)
 
     @staticmethod
-    def _note_for(outcome: Outcome, status: int | None, final_path: str, defects: list[Defect]) -> str:
+    def _note_for(
+        outcome: Outcome,
+        status: int | None,
+        final_path: str,
+        defects: list[Defect],
+        *,
+        affordance: str | None = None,
+    ) -> str:
         if outcome is Outcome.BLOCKED:
+            if affordance is not None:
+                # The page was served and stayed put; the control simply was not
+                # there for this witness. Reporting that as a redirect is a false
+                # statement about what happened, and it reaches the emitted spec.
+                return f"{affordance} was not rendered for this witness"
             if status in (404, 410):
                 return f"HTTP {status}: absent"
             if status is not None and 400 <= status < 500:

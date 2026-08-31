@@ -77,7 +77,11 @@ class CapabilityRun:
         self._states = storage_states or {}
 
     def _state_for(self, role: Privilege) -> StorageState:
-        return self._states.get(role) or self._states.get(role.value)
+        # `.get(...) or .get(...)` treated an explicitly empty session — `{}`,
+        # which Playwright accepts — as absent and silently downgraded the role
+        # to anonymous. The conductor already uses the default form; this now
+        # matches it.
+        return self._states.get(role, self._states.get(role.value))
 
     def _pair(self, context: Context, role: Privilege) -> Any:
         """One seam for the session pair, matching the audience and choreography runs."""

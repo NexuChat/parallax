@@ -96,6 +96,17 @@ its hand-written counterpart uses. The guard is stricter for a capability than
 for a relational scenario, because an invented `allowed` list would turn a
 correct authorisation rule into a reported escalation.
 
+### A known limit of the relational mosaic
+
+`observe` and `measure_revocation_lag` close both witnesses in their own
+`finally`, and closing a witness cancels the in-flight frame-delivery tasks that
+feed the compositor. A relational effect that lands in the last fraction of the
+deadline can therefore be missing from the published mosaic even though the
+finding itself is correct — the verdict comes from the observation, not from the
+image. It is an incomplete illustration rather than a wrong result, and it is
+recorded here rather than fixed close to a deadline, because the fix moves
+teardown out of the two methods that own it.
+
 ## Delivery
 
 `delivery.py` closes the loop the rest of the pipeline opens. A finding that

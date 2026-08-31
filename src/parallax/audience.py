@@ -107,7 +107,13 @@ class AudienceRun:
         watchers = [self._observer_session(observer) for observer in scenario.observers]
         sessions = [actor, *watchers]
         try:
-            await asyncio.gather(*(s.open() for s in sessions))
+            # return_exceptions, because gather without it propagates the
+            # first failure while the siblings keep opening — contexts created
+            # moments later that the cleanup then skips, because close() no-ops
+            # on a witness whose context was still None when the error fired.
+            opened = await asyncio.gather(*(s.open() for s in sessions), return_exceptions=True)
+            if (failure := next((r for r in opened if isinstance(r, Exception)), None)) is not None:
+                raise failure
             await self._place(actor, watchers, scenario)
             # Every observer is watching before the event happens. Acting first
             # and opening afterwards would make a negative result meaningless.
