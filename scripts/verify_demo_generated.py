@@ -55,7 +55,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--base-url", default="http://127.0.0.1:8080")
-    parser.add_argument("--expected", type=int, default=21)
+    parser.add_argument("--expected", type=int, default=18)
     parser.add_argument("--report", default="web/generated-spec-verification.json")
     return parser.parse_args(argv)
 

@@ -124,7 +124,7 @@ claimed until it ships and is graded.
 
 The last thing I did was make the graded sweep run on every push. It failed
 immediately: two render findings nobody had planted, on a GitHub runner, from
-the commit that graded a clean 15/15/0 on my machine.
+the commit that graded a clean sweep on my machine.
 
 The cause was fonts. The demo sites asked for `Georgia`, `system-ui` and
 `ui-monospace` — none of which is installed everywhere — so each host resolved a

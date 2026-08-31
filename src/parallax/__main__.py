@@ -18,6 +18,8 @@ from urllib.parse import urljoin
 
 from .conductor import Conductor, RelationalScenario
 from .capability import CapabilityScenario
+from .audience import AudienceScenario, Observer
+from .choreography import Choreography, Expect, Participant, Step
 from .contracts import FeedEvent
 from .delivery import DeliveryReport, PullRequestDelivery
 from .differ import configure_semantics
@@ -27,7 +29,9 @@ from .proposer import ProposalReport, ScenarioProposer
 from .semantics import SemanticComparator
 from .specialists import LayoutI18nSpecialist, RealtimeSpecialist
 from .triage import GemmaTriage, TriageReport
-from .types import EffectExpectation, FormAction, Context, Privilege, RelationalReplay, Severity, Surface, SurfaceKind
+from .types import (
+    Axis, EffectExpectation, FormAction, Context, Privilege, RelationalReplay, Severity, Surface, SurfaceKind,
+)
 
 
 def _parse(argv: list[str] | None = None) -> argparse.Namespace:
@@ -247,8 +251,19 @@ def _string(value: Any, name: str, source: str) -> str:
 def _action(spec: Any, name: str, source: str) -> tuple[object, FormAction]:
     if not isinstance(spec, dict):
         raise _scenario_error(source, f"{name}.action must be an object")
+    if spec.get("type") == "click":
+        # A protocol is played by pressing things. This stays inside the same
+        # restriction as submit_form — a selector naming an element on the page,
+        # never a string of script — so widening the grammar to cover ordered
+        # protocols does not widen what a declaration is able to execute.
+        selector = _string(spec.get("selector"), f"{name}.action.selector", source)
+
+        async def click(page: object) -> None:
+            await page.locator(selector).click()
+
+        return click, FormAction(selector, (), (), kind="click")
     if spec.get("type") != "submit_form":
-        raise _scenario_error(source, f"{name}.action.type must be 'submit_form'")
+        raise _scenario_error(source, f"{name}.action.type must be 'submit_form' or 'click'")
     form = _string(spec.get("form"), f"{name}.action.form", source)
     checks = spec.get("checks", [])
     fills = spec.get("fills", [])
@@ -298,6 +313,16 @@ def _effect(spec: Any, name: str, source: str) -> tuple[object, EffectExpectatio
             return bool(await page.locator(selector).is_visible())
 
         return visible, EffectExpectation("visible", selector=selector)
+    if effect_type == "text_equals":
+        # Presence is not content. A board cell, a status line and a counter are
+        # all permanently "visible"; what changes is what they say.
+        selector = _string(spec.get("selector"), f"{name}.effect.selector", source)
+        expected = _string(spec.get("equals"), f"{name}.effect.equals", source)
+
+        async def text_equals(page: object) -> bool:
+            return (await page.locator(selector).inner_text()).strip() == expected
+
+        return text_equals, EffectExpectation("text_equals", selector=selector, equals=expected)
     if effect_type in {"audio_received", "audio_audible", "video_received"}:
         # Presence is not perception. A muted participant negotiates the call and
         # receives packets exactly like a listening one, so the threshold is on
@@ -333,7 +358,9 @@ def _effect(spec: Any, name: str, source: str) -> tuple[object, EffectExpectatio
             }""", request))
 
         return json_contains, EffectExpectation("json_contains", **request)
-    raise _scenario_error(source, f"{name}.effect.type must be 'visible' or 'json_contains'")
+    raise _scenario_error(
+        source, f"{name}.effect.type must be 'visible', 'text_equals', 'json_contains', or a media kind"
+    )
 
 
 def _scenario_type(spec: dict[str, Any], name: str, source: str) -> str:
@@ -383,6 +410,175 @@ def capability_scenarios_from_data(data: Any, start_url: str, *, source: str = "
     return result
 
 
+def audiences_from_data(data: Any, start_url: str, *, source: str = "declaration") -> list[AudienceScenario]:
+    """Parse one-actor, many-observer declarations from the same vocabulary.
+
+    An audience differs from a capability in what it is asking. A capability
+    repeats the same action as several roles and asks who may perform it. An
+    audience performs the action once and asks who perceives it — which is why
+    the observers run concurrently and why each carries its own expectation,
+    including a negative one. "Nobody outside the thread saw it" is a claim that
+    can only be made by watching the people who should not have.
+    """
+    entries = data.get("audiences") if isinstance(data, dict) else data
+    if entries is None:
+        return []
+    if not isinstance(entries, list):
+        raise _scenario_error(source, "audiences must be a list")
+    result: list[AudienceScenario] = []
+    for index, spec in enumerate(entries, start=1):
+        name = f"audience {index}"
+        if not isinstance(spec, dict):
+            raise _scenario_error(source, f"{name} must be an object")
+        label = spec.get("label") if isinstance(spec.get("label"), str) and spec.get("label") else name
+        surface = Surface(SurfaceKind.ROUTE, urljoin(start_url, _string(spec.get("surface"), f"{name}.surface", source)))
+        deadline_ms = spec.get("deadline_ms", 5_000)
+        if not isinstance(deadline_ms, int) or isinstance(deadline_ms, bool) or deadline_ms < 1:
+            raise _scenario_error(source, f"{name}.deadline_ms must be a positive integer")
+        action, _ = _action(spec.get("action"), name, source)
+
+        actor_spec = spec.get("actor")
+        if not isinstance(actor_spec, dict):
+            raise _scenario_error(source, f"{name}.actor must be an object")
+        actor = _audience_context(actor_spec, f"{name}.actor", source)
+        actor_surface = actor_spec.get("surface")
+
+        declared = spec.get("observers")
+        if not isinstance(declared, list) or not declared:
+            raise _scenario_error(source, f"{name}.observers must be a non-empty list")
+        observers: list[Observer] = []
+        for position, entry in enumerate(declared, start=1):
+            where = f"{name}.observers[{position}]"
+            if not isinstance(entry, dict):
+                raise _scenario_error(source, f"{where} must be an object")
+            effect, _ = _effect(entry.get("effect"), where, source)
+            expect_visible = entry.get("expect_visible", True)
+            if not isinstance(expect_visible, bool):
+                raise _scenario_error(source, f"{where}.expect_visible must be true or false")
+            own = entry.get("surface")
+            observers.append(Observer(
+                name=_string(entry.get("name"), f"{where}.name", source),
+                context=_audience_context(entry, where, source),
+                effect=effect,
+                expect_visible=expect_visible,
+                surface=(
+                    Surface(SurfaceKind.ROUTE, urljoin(start_url, own))
+                    if isinstance(own, str) and own else None
+                ),
+            ))
+        if len({observer.name for observer in observers}) != len(observers):
+            raise _scenario_error(source, f"{name}.observers must have distinct names")
+        result.append(AudienceScenario(
+            surface=(
+                Surface(SurfaceKind.ROUTE, urljoin(start_url, actor_surface))
+                if isinstance(actor_surface, str) and actor_surface else surface
+            ),
+            actor=actor, action=action, observers=tuple(observers), deadline_ms=deadline_ms, label=label,
+        ))
+    return result
+
+
+def _audience_context(spec: dict[str, Any], name: str, source: str) -> Context:
+    privilege = spec.get("privilege", "member")
+    try:
+        return Context(privilege=Privilege(privilege), varies=Axis.RELATIONAL)
+    except ValueError as error:
+        raise _scenario_error(source, f"{name}.privilege must be anon, member, or owner") from error
+
+
+def choreographies_from_data(data: Any, start_url: str, *, source: str = "declaration") -> list[Choreography]:
+    """Parse ordered multi-session protocols from the same restricted vocabulary.
+
+    A choreography differs from every other declaration in one way that matters:
+    its participants are named, and the names are the only thing tying a step's
+    actor and its expectations together. So the names are resolved here, at parse
+    time, rather than at play time — a step naming a participant who was never
+    declared is a broken declaration, not a finding about the application.
+    """
+    entries = data.get("choreographies") if isinstance(data, dict) else data
+    if entries is None:
+        return []
+    if not isinstance(entries, list):
+        raise _scenario_error(source, "choreographies must be a list")
+    result: list[Choreography] = []
+    for index, spec in enumerate(entries, start=1):
+        name = f"choreography {index}"
+        if not isinstance(spec, dict):
+            raise _scenario_error(source, f"{name} must be an object")
+        label = spec.get("label") if isinstance(spec.get("label"), str) and spec.get("label") else name
+        surface = Surface(SurfaceKind.ROUTE, urljoin(start_url, _string(spec.get("surface"), f"{name}.surface", source)))
+
+        declared = spec.get("participants")
+        if not isinstance(declared, list) or len(declared) < 2:
+            raise _scenario_error(source, f"{name}.participants must be a list of at least two participants")
+        participants: list[Participant] = []
+        for position, entry in enumerate(declared, start=1):
+            where = f"{name}.participants[{position}]"
+            if not isinstance(entry, dict):
+                raise _scenario_error(source, f"{where} must be an object")
+            privilege = entry.get("privilege", "member")
+            try:
+                context = Context(privilege=Privilege(privilege), varies=Axis.RELATIONAL)
+            except ValueError as error:
+                raise _scenario_error(source, f"{where}.privilege must be anon, member, or owner") from error
+            own_surface = entry.get("surface")
+            participants.append(Participant(
+                name=_string(entry.get("name"), f"{where}.name", source),
+                context=context,
+                storage_state=None,
+                surface=(
+                    Surface(SurfaceKind.ROUTE, urljoin(start_url, own_surface))
+                    if isinstance(own_surface, str) and own_surface else None
+                ),
+            ))
+        names = {participant.name for participant in participants}
+        if len(names) != len(participants):
+            raise _scenario_error(source, f"{name}.participants must have distinct names")
+
+        declared_steps = spec.get("steps")
+        if not isinstance(declared_steps, list) or not declared_steps:
+            raise _scenario_error(source, f"{name}.steps must be a non-empty list")
+        steps: list[Step] = []
+        for position, entry in enumerate(declared_steps, start=1):
+            where = f"{name}.steps[{position}]"
+            if not isinstance(entry, dict):
+                raise _scenario_error(source, f"{where} must be an object")
+            actor = _string(entry.get("actor"), f"{where}.actor", source)
+            if actor not in names:
+                raise _scenario_error(source, f"{where}.actor names {actor!r}, which is not a participant")
+            action, _ = _action(entry.get("action"), where, source)
+            deadline_ms = entry.get("deadline_ms", 5_000)
+            if not isinstance(deadline_ms, int) or isinstance(deadline_ms, bool) or deadline_ms < 1:
+                raise _scenario_error(source, f"{where}.deadline_ms must be a positive integer")
+            expectations = entry.get("expect", [])
+            if not isinstance(expectations, list):
+                raise _scenario_error(source, f"{where}.expect must be a list")
+            expects: list[Expect] = []
+            for slot, want in enumerate(expectations, start=1):
+                spot = f"{where}.expect[{slot}]"
+                if not isinstance(want, dict):
+                    raise _scenario_error(source, f"{spot} must be an object")
+                who = _string(want.get("participant"), f"{spot}.participant", source)
+                if who not in names:
+                    raise _scenario_error(source, f"{spot}.participant names {who!r}, which is not a participant")
+                effect, _ = _effect(want.get("effect"), spot, source)
+                visible = want.get("visible", True)
+                if not isinstance(visible, bool):
+                    raise _scenario_error(source, f"{spot}.visible must be true or false")
+                note = want.get("note", "")
+                if not isinstance(note, str):
+                    raise _scenario_error(source, f"{spot}.note must be a string")
+                expects.append(Expect(participant=who, effect=effect, visible=visible, note=note))
+            steps.append(Step(
+                label=_string(entry.get("label"), f"{where}.label", source),
+                actor=actor, action=action, expect=tuple(expects), deadline_ms=deadline_ms,
+            ))
+        result.append(Choreography(
+            surface=surface, participants=tuple(participants), steps=tuple(steps), label=label,
+        ))
+    return result
+
+
 def _roles(value: Any, name: str, source: str, *, allow_empty: bool = False) -> list[Privilege]:
     if not isinstance(value, list) or (not value and not allow_empty):
         raise _scenario_error(source, f"{name} must be a non-empty list of roles")
@@ -397,7 +593,7 @@ def relational_scenarios_from_data(data: Any, start_url: str, *, source: str = "
     scenarios = data.get("scenarios") if isinstance(data, dict) else data
     # A file may declare capabilities and no relational scenarios. Demanding an
     # empty "scenarios" key to say so would be a trap, not a contract.
-    if scenarios is None and isinstance(data, dict) and "capabilities" in data:
+    if scenarios is None and isinstance(data, dict) and ({"capabilities", "choreographies", "audiences"} & set(data)):
         return []
     if not isinstance(scenarios, list):
         raise _scenario_error(source, "scenarios must be a list")
@@ -463,6 +659,24 @@ async def _run(args: argparse.Namespace) -> int:
     from playwright.async_api import async_playwright
 
     relational_scenarios = _relational_scenarios(args.relational_scenarios, args.url) if args.relational_scenarios else None
+    audiences = (
+        audiences_from_data(
+            json.loads(args.relational_scenarios.read_text(encoding="utf-8")),
+            args.url,
+            source=str(args.relational_scenarios),
+        )
+        if args.relational_scenarios
+        else []
+    )
+    choreographies = (
+        choreographies_from_data(
+            json.loads(args.relational_scenarios.read_text(encoding="utf-8")),
+            args.url,
+            source=str(args.relational_scenarios),
+        )
+        if args.relational_scenarios
+        else []
+    )
     capability_scenarios = (
         capability_scenarios_from_data(
             json.loads(args.relational_scenarios.read_text(encoding="utf-8")),
@@ -487,6 +701,8 @@ async def _run(args: argparse.Namespace) -> int:
             summary = await _conduct(
                 args, browser, relational_scenarios, specialists, proposer,
                 capability_scenarios=capability_scenarios,
+                choreographies=choreographies,
+                audiences=audiences,
                 discovered_states=discovered_states,
                 locale_kind=locale.kind,
             )
@@ -528,6 +744,16 @@ async def _run(args: argparse.Namespace) -> int:
             "proposed_by_model": summary.capabilities_proposed_exercised,
             "roles_exercised": summary.capability_roles_exercised,
         },
+        "audiences": {
+            "ran": summary.audiences_exercised,
+            "declared": len(audiences),
+            "observers": summary.audience_observers_exercised,
+        },
+        "choreographies": {
+            "ran": summary.choreographies_exercised,
+            "declared": len(choreographies),
+            "steps": summary.choreography_steps_exercised,
+        },
         "relational_scenarios": {
             "ran": summary.scenarios_exercised,
             "declared": len(relational_scenarios or []),
@@ -560,6 +786,8 @@ async def _conduct(
     specialists: list[object] | None = None,
     proposer: ScenarioProposer | None = None,
     capability_scenarios: list[CapabilityScenario] | None = None,
+    choreographies: list[Choreography] | None = None,
+    audiences: list[AudienceScenario] | None = None,
     discovered_states: dict[str, Any] | None = None,
     locale_kind: str | None = None,
 ) -> object:
@@ -577,6 +805,10 @@ async def _conduct(
         options["relational_scenarios"] = relational_scenarios
     if capability_scenarios:
         options["capability_scenarios"] = capability_scenarios
+    if choreographies:
+        options["choreographies"] = choreographies
+    if audiences:
+        options["audiences"] = audiences
     if args.propose_scenarios:
         options["scenario_proposer"] = proposer or ScenarioProposer()
         options["proposal_validator"] = relational_scenarios_from_data

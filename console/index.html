@@ -28,14 +28,33 @@
 
       <section class="wall-grid">
         <section class="mosaic-panel panel" aria-labelledby="mosaicTitle">
-          <div class="panel-heading"><div><span class="eyebrow">COMPOSITOR / SEVEN CONTEXTS</span><h1 id="mosaicTitle">Live witness mosaic</h1></div><div class="wall-status"><span class="wall-mode" id="wallMode">LIVE FRAME</span><span class="sequence" id="sequence">WAITING FOR FRAME</span></div></div>
+          <div class="panel-heading"><div><span class="eyebrow">COMPOSITOR / SEVEN CONTEXTS</span><h1 id="mosaicTitle">Live witness mosaic</h1></div><div class="wall-status"><button class="inspect-button" id="playButton" type="button" title="Play the recorded frames of this sweep" hidden>▶ PLAY</button><button class="inspect-button" id="inspectButton" type="button" title="Open one witness at full size">⤢ INSPECT</button><span class="wall-mode" id="wallMode">LIVE FRAME</span><span class="sequence" id="sequence">WAITING FOR FRAME</span></div></div>
           <div class="mosaic-stage" id="mosaicStage">
             <div class="mosaic-empty" id="mosaicEmpty">No mosaic frame yet. Waiting for the compositor feed.</div>
             <img id="mosaicImage" alt="Live mosaic of seven witness contexts">
             <div class="tile-layer" id="tileLayer" aria-hidden="true"></div>
           </div>
+          <label class="scrubber" id="scrubber" hidden><span id="scrubberLabel">FRAME</span><input type="range" id="scrubberRange" min="0" max="0" value="0" aria-label="Frame in this sweep"></label>
           <p class="mosaic-caption" id="mosaicCaption">Each outline is a witness. Finding evidence lights the exact witness tiles behind the claim.</p>
         </section>
+
+        <!-- Seven contexts side by side means each one is a seventh of the panel,
+             which is too small to read the thing the finding is about. The
+             inspector puts one witness on the whole screen at native pixels. -->
+        <div class="inspector" id="inspector" hidden role="dialog" aria-modal="true" aria-labelledby="inspectorTitle">
+          <div class="inspector-bar">
+            <div><span class="eyebrow">EVIDENCE INSPECTOR</span><h2 id="inspectorTitle">Witness</h2></div>
+            <div class="inspector-witnesses" id="inspectorWitnesses" role="tablist" aria-label="Witness contexts"></div>
+            <button class="inspector-close" id="inspectorClose" type="button" aria-label="Close the inspector">CLOSE ✕</button>
+          </div>
+          <div class="inspector-stage" id="inspectorStage">
+            <div class="inspector-frame" id="inspectorFrame">
+              <img id="inspectorImage" alt="">
+              <div class="inspector-window" id="inspectorWindow" aria-hidden="true"></div>
+            </div>
+          </div>
+          <p class="inspector-caption" id="inspectorCaption"></p>
+        </div>
 
         <aside class="findings-panel panel" aria-labelledby="findingsTitle">
           <div class="panel-heading"><div><span class="eyebrow">SPECIALIST OUTPUT</span><h2 id="findingsTitle">Findings <span id="findingCount">0</span></h2></div><span class="feed-indicator" id="feedIndicator">FIXTURE</span></div>

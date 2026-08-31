@@ -44,7 +44,10 @@ def test_generated_spec_verifier_is_a_reproducible_json_gate() -> None:
     package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     verifier = ROOT / "scripts" / "verify-generated-specs.mjs"
 
-    assert package["scripts"]["verify:generated"] == "node scripts/verify-generated-specs.mjs --expected 21"
+    assert package["scripts"]["verify:generated"] == "node scripts/verify-generated-specs.mjs --expected 18"
+    # console/runs also holds sweeps of real sites whose specs address their own
+    # origin; verifying those against the demo fleet fails for the wrong reason.
+    assert "--runs" in verifier.read_text(encoding="utf-8")
     assert verifier.is_file()
 
     help_result = subprocess.run(

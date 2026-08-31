@@ -24,17 +24,18 @@ Options:
   --owner-state PATH   Owner Playwright state (or PARALLAX_OWNER_STORAGE_STATE)
   --member-state PATH  Member Playwright state (or PARALLAX_MEMBER_STORAGE_STATE)
   --expected COUNT     Exact release-manifest spec count
+  --runs a,b,c         Published runs to verify (default: the demo fleet)
   --report PATH        Write this gate's JSON result to PATH
   --help               Show this help
 `;
 }
 
 function parseArguments(argv) {
-  const options = { baseUrl: process.env.PARALLAX_BASE_URL, ownerState: process.env.PARALLAX_OWNER_STORAGE_STATE, memberState: process.env.PARALLAX_MEMBER_STORAGE_STATE, expected: undefined, report: undefined };
+  const options = { baseUrl: process.env.PARALLAX_BASE_URL, ownerState: process.env.PARALLAX_OWNER_STORAGE_STATE, memberState: process.env.PARALLAX_MEMBER_STORAGE_STATE, expected: undefined, report: undefined, runs: undefined };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--help") return { help: true };
-    const key = { "--base-url": "baseUrl", "--owner-state": "ownerState", "--member-state": "memberState", "--expected": "expected", "--report": "report" }[arg];
+    const key = { "--base-url": "baseUrl", "--owner-state": "ownerState", "--member-state": "memberState", "--expected": "expected", "--report": "report", "--runs": "runs" }[arg];
     if (!key || index + 1 >= argv.length) throw new Error(`unknown or incomplete option: ${arg}`);
     options[key] = argv[index + 1];
     index += 1;
@@ -124,7 +125,17 @@ function main() {
     process.stdout.write(usage());
     return 0;
   }
-  const specs = generatedSpecs(SPECS_ROOT);
+  // Only the runs named here. console/runs also holds sweeps of real sites —
+  // arbchat.org, the-internet — whose specs address their own origin, and
+  // running those against the demo fleet fails for a reason that has nothing to
+  // do with whether spec generation works. `latest` is a copy of one demo run,
+  // so including it would verify the same specs twice.
+  const runs = (options.runs ?? "admin,arena,call,control,docs,shop,workspace")
+    .split(",").map((name) => name.trim()).filter(Boolean);
+  const specs = runs.flatMap((name) => {
+    const directory = join(SPECS_ROOT, name);
+    return existsSync(directory) ? generatedSpecs(directory) : [];
+  }).sort();
   const expected = Number(options.expected);
   const summary = resultSkeleton(Number.isInteger(expected) && expected > 0 ? expected : 0);
   const stateErrors = [regularState(options.ownerState, "owner"), regularState(options.memberState, "member")].filter(Boolean);
@@ -142,7 +153,11 @@ function main() {
     output(summary, options.report);
     return 1;
   }
-  const run = spawnSync(process.execPath, [playwright, "test", JSON_REPORTER], {
+  // The spec paths are passed explicitly. Counting a scoped set and then letting
+  // Playwright walk the whole testDir verified a different set than the one the
+  // count was checked against — including sweeps of remote sites, whose specs
+  // time out against the demo fleet and are reported as harness failures.
+  const run = spawnSync(process.execPath, [playwright, "test", JSON_REPORTER, ...specs], {
     cwd: REPOSITORY_ROOT,
     encoding: "utf8",
     env: { ...process.env, PARALLAX_BASE_URL: options.baseUrl, PARALLAX_OWNER_STORAGE_STATE: resolve(options.ownerState), PARALLAX_MEMBER_STORAGE_STATE: resolve(options.memberState) },

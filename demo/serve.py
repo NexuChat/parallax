@@ -11,6 +11,7 @@ import inspect
 import os
 import pkgutil
 import sys
+from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qsl, unquote, urlsplit
@@ -20,7 +21,7 @@ DEMO_DIR = Path(__file__).resolve().parent
 if str(DEMO_DIR) not in sys.path:
     sys.path.insert(0, str(DEMO_DIR))
 
-from sites.base import Request, Response, Site  # noqa: E402
+from sites.base import FONT_FACE_CSS, Request, Response, Site  # noqa: E402
 
 _FONT_ROOT = DEMO_DIR / "assets" / "fonts"
 # An explicit allowlist rather than a directory listing: this route takes a path
@@ -121,11 +122,51 @@ class Fleet:
         )
 
     def _front_door(self) -> Response:
-        links = "".join(
-            f'<li><a href="/{site.name}/">{site.title}</a> <small>/{site.name}/</small></li>'
+        """Every application the fleet serves, and what each one is for.
+
+        Generated from the sites themselves rather than a curated list, so a new
+        fixture appears here by existing. The real-time ones — the game and the
+        call room — are applications in the fleet exactly like the storefront
+        and the docs site, not test scaffolding parked somewhere else.
+        """
+        cards = "".join(
+            f'<article class="app">'
+            f'<h2><a href="/{escape(site.name)}{escape(getattr(site, "entry", "/"))}">{escape(site.title)}</a></h2>'
+            f'<p>{escape(getattr(site, "blurb", ""))}</p>'
+            f'<p class="meta"><code>/{escape(site.name)}/</code>'
+            + (
+                f' · <b>{len(site.planted)}</b> planted defect{"" if len(site.planted) == 1 else "s"}'
+                if getattr(site, "planted", None) else " · <b>clean control</b> — nothing planted"
+            )
+            + (f' · {len(getattr(site, "accounts", []))} accounts' if getattr(site, "accounts", None) else "")
+            + "</p></article>"
             for site in self.sites.values()
-        ) or "<li>No demo sites are available yet.</li>"
-        return Response.html(f"<!doctype html><title>Parallax demo fleet</title><h1>Parallax demo fleet</h1><ul>{links}</ul>")
+        ) or "<p>No demo sites are available yet.</p>"
+        planted = sum(len(getattr(site, "planted", [])) for site in self.sites.values())
+        return Response.html(
+            "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            "<title>Parallax demo fleet</title><style>"
+            f"{FONT_FACE_CSS}"
+            'body{margin:0;background:#fbfbfa;color:#16211f;font:16px/1.6 "Parallax Serif",serif}'
+            ".shell{max-inline-size:60rem;margin-inline:auto;padding:clamp(20px,5vw,56px)}"
+            'h1{font:800 clamp(28px,5vw,44px)/1.1 "Parallax Sans",sans-serif;letter-spacing:-.02em;margin:0 0 8px}'
+            ".lead{color:#4c5a57;max-inline-size:52ch;margin:0 0 32px}"
+            ".grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(17rem,1fr))}"
+            ".app{background:#fff;border:1px solid #d8e0de;border-radius:12px;padding:16px}"
+            'h2{font:700 18px/1.3 "Parallax Sans",sans-serif;margin:0 0 6px}'
+            "h2 a{color:#16211f;text-decoration:none}h2 a:hover{text-decoration:underline}"
+            ".app p{margin:0 0 8px;color:#3d4a48;font-size:14px}"
+            '.meta{color:#6b7a77;font:600 12px/1.5 "Parallax Mono",monospace;margin:0}'
+            ".meta code{background:#eef2f1;border-radius:4px;padding:1px 5px}"
+            "a:focus-visible{outline:3px solid #16211f;outline-offset:2px}"
+            "</style></head><body><main class=\"shell\">"
+            "<h1>Parallax demo fleet</h1>"
+            f"<p class=\"lead\">{len(self.sites)} applications served from one process. "
+            f"{planted} defects are planted in code and declared by the site that carries them, "
+            f"so a sweep can be graded rather than admired.</p>"
+            f'<div class="grid">{cards}</div></main></body></html>'
+        )
 
 
 def _has_parent_segment(path: str) -> bool:

@@ -31,3 +31,52 @@ body { margin:0; min-width:320px; background:var(--bg); color:var(--text); font-
 .finding { border:1px solid var(--line); border-left:5px solid var(--severity); margin-bottom:8px; padding:11px; background:#111923; cursor:pointer; }.finding:hover,.finding.is-active { background:#162331; border-color:#607386; }.finding-head { display:flex; gap:7px; align-items:center; flex-wrap:wrap; }.pill { padding:3px 6px; font-weight:800; font-size:10px; letter-spacing:.05em; background:var(--severity); color:#0b1016; }.finding-kind { color:#d3dfe8; font-size:11px; }.finding-axis { margin-left:auto; color:var(--muted); font-size:10px; }.finding-summary { margin:9px 0 7px; font:600 14px/1.4 ui-sans-serif,system-ui,sans-serif; }.finding-surface { color:var(--cyan); font-size:11px; }.evidence { border-top:1px solid #283541; padding-top:7px; margin-top:7px; color:#b8c6d0; font-size:10px; line-height:1.45; }.evidence strong { color:var(--muted); font-weight:700; }.footer { padding:10px 13px; display:flex; justify-content:space-between; gap:10px; }
 @media (max-width:900px) { .console-shell{height:auto;min-height:100vh}.wall-grid{grid-template-columns:1fr}.findings-panel{min-height:420px}.mosaic-stage img{max-height:none}.metrics{grid-template-columns:1fr 1fr}.severity-totals{grid-column:1/-1;border-top:1px solid var(--line)} }
 @media (max-width:600px) { .console-shell{padding:8px}.run-state{display:none}.topbar{padding:0 10px}.metrics{grid-template-columns:1fr 1fr}.metric{padding:12px}.metric-value{font-size:30px}.severity-totals{flex-wrap:wrap;justify-content:flex-start}.footer{flex-direction:column}.mosaic-stage{min-height:260px}.tile-label{font-size:7px;padding:2px}.finding-summary{font-size:13px} }
+
+/* The evidence inspector. A seven-context wall is unreadable at panel size, so
+   one witness at a time fills the viewport at its own pixels, and the tiles on
+   the wall become the way in. */
+.inspect-button { background:#132030; border:1px solid var(--line); color:var(--cyan); cursor:pointer; font:800 10px/1 ui-monospace,monospace; letter-spacing:.06em; padding:6px 9px; }
+.inspect-button:hover { background:#1b2c40; border-color:var(--cyan); }
+.inspect-button:focus-visible,.inspector-close:focus-visible,.inspector-witness:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }
+.mosaic-stage img { cursor:zoom-in; }
+.mosaic-stage .tile { pointer-events:auto; cursor:zoom-in; }
+.tile-layer { pointer-events:none; }
+
+.inspector { position:fixed; inset:0; z-index:60; display:flex; flex-direction:column; background:rgba(4,7,11,.97); }
+.inspector[hidden] { display:none; }
+.inspector-bar { align-items:center; border-bottom:1px solid var(--line); display:flex; flex-wrap:wrap; gap:14px; padding:10px 16px; }
+.inspector-bar h2 { font:800 17px/1.2 ui-sans-serif,system-ui,sans-serif; margin:2px 0 0; }
+.inspector-witnesses { display:flex; flex-wrap:wrap; gap:5px; margin-inline-start:auto; }
+.inspector-witness { background:#111923; border:1px solid var(--line); color:#c9d6e2; cursor:pointer; font:700 10px/1 ui-monospace,monospace; letter-spacing:.04em; padding:7px 8px; }
+.inspector-witness:hover { border-color:#607386; }
+.inspector-witness.is-active { background:var(--cyan); border-color:var(--cyan); color:#04252b; }
+.inspector-witness.is-evidence { border-color:var(--high); color:#ffd7d9; }
+.inspector-witness.is-evidence.is-active { background:var(--high); color:#180609; }
+.inspector-close { background:#1b0d10; border:1px solid var(--high); color:#ffd7d9; cursor:pointer; font:800 10px/1 ui-monospace,monospace; padding:7px 9px; }
+/* Not justify-content:center. A flex item wider than its scroll container gets
+   centred by overflowing equally on both sides, and the overflow on the start
+   side is unreachable by scrolling — the first witness could never be brought
+   into view. */
+.inspector-stage { align-items:flex-start; display:flex; flex:1; justify-content:flex-start; overflow:auto; padding:14px; }
+/* No max-height: the point is native pixels, and the stage scrolls to reach
+   them. Clamping here is what made the wall unreadable in the first place. */
+/* flex:none matters. As a shrinkable flex item the image collapsed back to its
+   intrinsic width no matter what width was set on it, which is the whole bug
+   the inspector exists to fix, reappearing inside the fix. */
+.inspector-frame { flex:none; position:relative; }
+.inspector-stage img { display:block; flex:none; height:auto; image-rendering:crisp-edges; max-width:none; }
+.inspector-caption { border-top:1px solid var(--line); color:var(--muted); font-size:11px; line-height:1.5; margin:0; padding:11px 16px; }
+@media (max-width:900px) { .inspector-witnesses { margin-inline-start:0; width:100%; } }
+
+/* A recorded sweep holds every settled frame it captured. Reading the file in
+   one fetch and drawing only the last of them threw the sweep away, so a
+   completed run replays instead of snapping to its final moment. */
+.scrubber { align-items:center; border-top:1px solid var(--line); display:flex; gap:10px; padding:8px 16px; }
+.scrubber[hidden] { display:none; }
+.scrubber span { color:var(--muted); font:700 10px/1 ui-monospace,monospace; letter-spacing:.05em; white-space:nowrap; }
+.scrubber input { accent-color:var(--cyan); flex:1; min-width:0; }
+
+/* Which pixels are this witness. Without it the neighbouring tile bleeds into
+   the view and reads as part of the evidence. */
+.inspector-window { position:absolute; border:2px solid var(--cyan); box-shadow:0 0 0 9999px rgba(4,7,11,.82); pointer-events:none; }
+.inspector-window.is-evidence { border-color:var(--high); }

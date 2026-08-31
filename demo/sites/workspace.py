@@ -135,6 +135,9 @@ class WorkspaceSite:
         },
     ]
 
+    blurb = "A team chat. Privilege, locale and theme defects, plus two claims only two live sessions can check."
+    entry = "/threads"
+
     def handle(self, request: Request) -> Response:
         lang, theme = request.lang, request.theme
         if request.path == "/":

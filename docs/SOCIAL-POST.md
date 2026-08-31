@@ -23,7 +23,7 @@ Paste the resulting post URL into the Devpost field
 > 20 controls fall outside a 360px viewport, zero at 768px. Verifiable by hand
 > in 30 seconds.
 >
-> Graded on 5 apps that declare their own planted defects: 15/15 found, 0
+> Graded on 7 apps that declare their own planted defects: 17/17 found, 0
 > missed, 0 false positives — enforced in CI on every push.
 >
 > Gemini 3.7 Flash · gemini-embedding-001 · Gemma 4 — all on Vertex AI, deployed on Cloud Run.
@@ -60,8 +60,8 @@ Paste the resulting post URL into the Devpost field
 > Load that page at 360px and twenty edit/delete links fall past the right edge;
 > at 768px, zero do. Thirty seconds to verify by hand.
 >
-> • Five demo applications declare their own deliberate defects in code,
-> including a clean control with nothing planted. 15 of 15 found, 0 missed, 0
+> • Seven demo applications declare their own deliberate defects in code,
+> including two clean controls with nothing planted. 17 of 17 found, 0 missed, 0
 > false positives — and that runs in CI on every push, so the badge means the
 > graded sweep passed, not just the unit tests.
 >

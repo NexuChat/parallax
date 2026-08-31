@@ -29,7 +29,10 @@ if str(DEMO_DIR) not in sys.path:
     sys.path.insert(0, str(DEMO_DIR))
 
 from parallax.conductor import Conductor, RelationalScenario  # noqa: E402
-from parallax.__main__ import relational_scenarios_from_data  # noqa: E402
+from parallax.__main__ import audiences_from_data, choreographies_from_data, relational_scenarios_from_data  # noqa: E402
+from parallax.audience import AudienceScenario  # noqa: E402
+from parallax.choreography import Choreography  # noqa: E402
+from parallax.media import MEDIA_BROWSER_ARGS  # noqa: E402
 from parallax.emitter import spec_for  # noqa: E402
 from parallax.specialists import AccessSpecialist, LayoutI18nSpecialist, RealtimeSpecialist  # noqa: E402
 from parallax.types import Axis, BASELINE, Context, Finding, FindingKind, Outcome, Privilege, Severity, Surface, SurfaceKind, Testimony  # noqa: E402
@@ -372,6 +375,16 @@ def _public_run_entry(directory: Path) -> dict[str, object]:
     }
 
 
+def _existing_public_runs(public_root: Path) -> list[Path]:
+    """Published runs already present, ignoring anything that is not one."""
+    if not public_root.is_dir():
+        return []
+    return [
+        entry for entry in sorted(public_root.iterdir())
+        if entry.is_dir() and not entry.is_symlink() and (entry / "feed.jsonl").is_file()
+    ]
+
+
 def publish_sweeps(
     runs_root: Path,
     public_root: Path,
@@ -379,11 +392,22 @@ def publish_sweeps(
     *,
     latest_site: str = "workspace",
 ) -> dict[str, dict[str, object]]:
-    """Publish complete demo evidence while excluding role storage states."""
+    """Publish complete demo evidence while excluding role storage states.
+
+    Publishing replaces the whole public directory in one exchange, so anything
+    already published that this sweep does not produce has to be carried across
+    deliberately. Sweeps of real applications live here too — they are run by
+    hand against sites the demo fleet does not serve — and without this they
+    were deleted, silently, by the next `--publish` of the demo suite.
+    """
     names = tuple(str(name) for name in site_names)
     for name in names:
         if not name or name in {".", ".."} or Path(name).name != name:
             raise ValueError(f"invalid demo site name: {name!r}")
+    carried = tuple(sorted(
+        entry.name for entry in _existing_public_runs(public_root)
+        if entry.name not in names and entry.name != "latest"
+    ))
     public_root.parent.mkdir(parents=True, exist_ok=True)
     if not stat.S_ISDIR(public_root.parent.lstat().st_mode):
         raise ValueError(f"publish root must be a real directory: {public_root.parent}")
@@ -392,9 +416,14 @@ def publish_sweeps(
     try:
         for name in names:
             _publish_run(runs_root / name, stage / name)
+        # Re-published through the same strict manifest and the same secret
+        # checks as a fresh run, rather than moved: a carried run is not exempt
+        # from the rules that let it be public in the first place.
+        for name in carried:
+            _publish_run(public_root / name, stage / name)
         if latest_site in names:
             _publish_run(stage / latest_site, stage / "latest")
-        index = {name: _public_run_entry(stage / name) for name in sorted(names)}
+        index = {name: _public_run_entry(stage / name) for name in sorted((*names, *carried))}
         descriptor, staged_name = tempfile.mkstemp(prefix=".index-", suffix=".json.tmp", dir=stage)
         staged_index = Path(staged_name)
         os.fchmod(descriptor, 0o644)
@@ -434,6 +463,67 @@ def _relational_scenarios(site: Site, host: str) -> list[RelationalScenario]:
             copy["surface"] = f"{host.rstrip('/')}/{site.name}/{surface.lstrip('/')}"
         mounted.append(copy)
     return relational_scenarios_from_data(mounted, host, source=f"site {site.name} relational scenarios")
+
+
+def _audiences(site: Site, host: str) -> list[AudienceScenario]:
+    """Read optional one-actor, many-observer declarations from a demo site."""
+    declarations = getattr(site, "audiences", [])
+    if not declarations:
+        return []
+    mounted: list[dict[str, object]] = []
+    for declaration in declarations:
+        if not isinstance(declaration, dict):
+            raise SystemExit(f"site {site.name} audiences: each declaration must be an object")
+        copy = dict(declaration)
+        copy["surface"] = _mounted(copy.get("surface"), site, host)
+        actor = copy.get("actor")
+        if isinstance(actor, dict) and actor.get("surface"):
+            copy["actor"] = {**actor, "surface": _mounted(actor["surface"], site, host)}
+        observers = copy.get("observers")
+        if isinstance(observers, list):
+            copy["observers"] = [
+                {**o, "surface": _mounted(o["surface"], site, host)}
+                if isinstance(o, dict) and o.get("surface") else o
+                for o in observers
+            ]
+        mounted.append(copy)
+    return audiences_from_data({"audiences": mounted}, host, source=f"site {site.name} audiences")
+
+
+def _mounted(value: object, site: Site, host: str) -> object:
+    """A site-relative path becomes an absolute URL under that site's mount."""
+    if isinstance(value, str) and not value.startswith(("http://", "https://")):
+        return f"{host.rstrip('/')}/{site.name}/{value.lstrip('/')}"
+    return value
+
+
+def _choreographies(site: Site, host: str) -> list[Choreography]:
+    """Read optional ordered-protocol declarations from a demo site.
+
+    Mounting is per-participant as well as per-choreography: each player opens
+    their own URL, because a session's identity in these fixtures is part of the
+    address rather than a cookie.
+    """
+    declarations = getattr(site, "choreographies", [])
+    if not declarations:
+        return []
+    def mount(value: object) -> object:
+        return _mounted(value, site, host)
+
+    mounted: list[dict[str, object]] = []
+    for declaration in declarations:
+        if not isinstance(declaration, dict):
+            raise SystemExit(f"site {site.name} choreographies: each declaration must be an object")
+        copy = dict(declaration)
+        copy["surface"] = mount(copy.get("surface"))
+        participants = copy.get("participants")
+        if isinstance(participants, list):
+            copy["participants"] = [
+                {**p, "surface": mount(p["surface"])} if isinstance(p, dict) and p.get("surface") else p
+                for p in participants
+            ]
+        mounted.append(copy)
+    return choreographies_from_data({"choreographies": mounted}, host, source=f"site {site.name} choreographies")
 
 
 def storage_state_from_login_response(response: object, origin: str) -> dict[str, object]:
@@ -585,9 +675,19 @@ async def _conduct_site(
             specialists=_specialists(no_vision), max_surfaces=max_surfaces,
             storage_states=build_storage_states(site, host, storage_root),
             relational_scenarios=_relational_scenarios(site, host),
+            choreographies=_choreographies(site, host),
+            audiences=_audiences(site, host),
         ).conduct()
     finally:
         shutil.rmtree(storage_root)
+
+
+async def _one(sweep: Any, site: Site) -> Any:
+    """Run a single sweep, returning its exception rather than raising it."""
+    try:
+        return await sweep(site)
+    except Exception as error:  # noqa: BLE001 - reported by the caller
+        return error
 
 
 async def run(args: argparse.Namespace) -> dict[str, Grade]:
@@ -598,18 +698,58 @@ async def run(args: argparse.Namespace) -> dict[str, Grade]:
         raise SystemExit(f"unknown or unavailable site: {args.only}")
     host = args.host.rstrip("/")
     grades: dict[str, Grade] = {}
+    # Sites are independent — separate module state, separate run directory,
+    # separate mosaic wall — so several can be swept at once. Surfaces within a
+    # site cannot: they share one wall with one frame sequence, and interleaving
+    # them would publish a mosaic whose tiles came from two different pages.
+    #
+    # The default is still one at a time, deliberately. Half of what this gate
+    # measures is timing — settle windows, tap targets, overflow at a threshold —
+    # and a loaded machine moves those. The published figure is produced by the
+    # sequential path; --jobs is for iterating, not for grading.
+    limit = asyncio.Semaphore(max(1, args.jobs))
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
-        try:
-            for site in sites:
-                run_dir = ROOT / "runs" / site.name
+        # The call fixture negotiates real peer connections, so the browser needs a
+        # synthetic microphone and permission to play without a gesture. Without
+        # these every observer measures silence and the room looks broken.
+        browser = await playwright.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage", *MEDIA_BROWSER_ARGS],
+        )
+
+        async def sweep(site: Site) -> tuple[str, Grade]:
+            async with limit:
                 summary = await _conduct_site(
-                    site, host, run_dir, browser, no_vision=args.no_vision, max_surfaces=args.max_surfaces,
+                    site, host, ROOT / "runs" / site.name, browser,
+                    no_vision=args.no_vision, max_surfaces=args.max_surfaces,
                 )
-                grades[site.name] = grade_findings(summary.findings, site.planted, site.name)
+                return site.name, grade_findings(summary.findings, site.planted, site.name)
+
+        # A site that measures real-time behaviour is swept on its own. Everything
+        # else is deterministic markup and can share the machine.
+        realtime = [site for site in sites if getattr(site, "realtime", False)]
+        batched = [site for site in sites if not getattr(site, "realtime", False)]
+        try:
+            if args.jobs > 1:
+                print(
+                    f"sweeping {len(batched)} sites {args.jobs} at a time"
+                    + (f", then {len(realtime)} alone" if realtime else ""),
+                    file=sys.stderr,
+                )
+            swept = list(await asyncio.gather(*(sweep(site) for site in batched), return_exceptions=True))
+            for site in realtime:
+                swept.append(await _one(sweep, site))
+            for site, result in zip([*batched, *realtime], swept):
+                if isinstance(result, BaseException):
+                    # One site failing must not discard the others' evidence, and
+                    # must not be reported as that site passing.
+                    raise SystemExit(f"sweep of {site.name} failed: {type(result).__name__}: {result}")
+                grades[result[0]] = result[1]
         finally:
             await browser.close()
-    return grades
+    # Reported in declaration order however they were scheduled, so two runs of
+    # the same commit produce the same report.
+    return {site.name: grades[site.name] for site in sites if site.name in grades}
 
 
 def print_report(grades: dict[str, Grade]) -> None:
@@ -633,6 +773,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--only")
     parser.add_argument("--no-vision", action="store_true")
     parser.add_argument("--max-surfaces", type=int, default=64)
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=1,
+        metavar="N",
+        help="sweep N sites concurrently; the graded figure is produced at the default of 1",
+    )
     parser.add_argument(
         "--no-publish",
         action="store_true",

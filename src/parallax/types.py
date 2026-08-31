@@ -294,11 +294,18 @@ class Severity(str, Enum):
 
 @dataclass(frozen=True)
 class FormAction:
-    """The replayable subset of a relational sender action."""
+    """The replayable subset of a relational sender action.
+
+    `kind` distinguishes a form submission from a plain click. Without it a
+    click replayed as a submission calls requestSubmit() on a button, which
+    throws — a generated spec that fails for a reason that has nothing to do
+    with the finding it was written to prove.
+    """
 
     form: str
     checks: tuple[str, ...] = ()
     fills: tuple[tuple[str, str], ...] = ()
+    kind: str = "submit_form"
 
 
 @dataclass(frozen=True)

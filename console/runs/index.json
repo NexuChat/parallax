@@ -1,7 +1,7 @@
 {
   "admin": {
     "feed": "runs/admin/feed.jsonl",
-    "mosaics": 13,
+    "mosaics": 20,
     "findings": 4,
     "by_severity": {
       "high": 2,
@@ -27,6 +27,28 @@
       "divergence": 20
     }
   },
+  "arena": {
+    "feed": "runs/arena/feed.jsonl",
+    "mosaics": 7,
+    "findings": 1,
+    "by_severity": {
+      "high": 1
+    },
+    "by_kind": {
+      "propagation": 1
+    }
+  },
+  "call": {
+    "feed": "runs/call/feed.jsonl",
+    "mosaics": 1,
+    "findings": 2,
+    "by_severity": {
+      "high": 2
+    },
+    "by_kind": {
+      "escalation": 2
+    }
+  },
   "control": {
     "feed": "runs/control/feed.jsonl",
     "mosaics": 4,
@@ -36,7 +58,7 @@
   },
   "docs": {
     "feed": "runs/docs/feed.jsonl",
-    "mosaics": 9,
+    "mosaics": 14,
     "findings": 5,
     "by_severity": {
       "medium": 4,
@@ -49,7 +71,7 @@
   },
   "shop": {
     "feed": "runs/shop/feed.jsonl",
-    "mosaics": 16,
+    "mosaics": 20,
     "findings": 4,
     "by_severity": {
       "high": 1,
@@ -78,7 +100,7 @@
   },
   "workspace": {
     "feed": "runs/workspace/feed.jsonl",
-    "mosaics": 12,
+    "mosaics": 19,
     "findings": 5,
     "by_severity": {
       "high": 3,

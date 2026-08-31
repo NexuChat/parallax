@@ -258,6 +258,11 @@ def _context_literal(context: Context, storage_state: str | None) -> str:
 def _effect_expression(page: str, effect: EffectExpectation) -> str | None:
     if effect.kind == "visible" and effect.selector:
         return f'await {page}.locator({_ts(effect.selector)}).isVisible().catch(() => false)'
+    if effect.kind == "text_equals" and effect.selector and effect.equals is not None:
+        return (
+            f'await {page}.locator({_ts(effect.selector)}).innerText()'
+            f'.then((text: string) => text.trim() === {_ts(effect.equals)}).catch(() => false)'
+        )
     if effect.kind == "json_contains" and all((effect.url, effect.items, effect.field, effect.equals)):
         expectation = (
             f'{{ url: {_ts(effect.url or "")}, items: {_ts(effect.items or "")}, '
@@ -280,7 +285,9 @@ def _action_lines(page: str, replay: RelationalReplay) -> str:
         for selector, value in replay.action.fills
     )
     lines.append(
-        f"  await {page}.locator({_ts(replay.action.form)}).evaluate((form: HTMLFormElement) => form.requestSubmit());"
+        f"  await {page}.locator({_ts(replay.action.form)}).click();"
+        if replay.action.kind == "click"
+        else f"  await {page}.locator({_ts(replay.action.form)}).evaluate((form: HTMLFormElement) => form.requestSubmit());"
     )
     return "\n".join(lines)
 
@@ -511,8 +518,21 @@ def is_expressible(finding: Finding) -> bool:
     against a fixed application exactly as loudly as against a broken one. That
     is worse than silence: the project's claim is that a finding becomes a test,
     and a test that cannot pass is not a test of anything.
+
+    The same answer applies to the two multi-session judgements. A protocol that
+    broke at step seven, and an audience that heard audio it should not have, are
+    both claims about several live sessions in one moment; this emitter writes a
+    single-page spec. Asked to express them anyway it reached for the privilege
+    template and produced a check for a login redirect — a file that failed
+    against an application whose audio leak had been fixed, for a reason that had
+    nothing to do with audio. A finding with no replay to drive is one this
+    emitter cannot yet express, and saying so is the honest answer.
     """
-    return not (finding.kind is FindingKind.RENDER_DEFECT and finding.defect is None)
+    if finding.kind is FindingKind.RENDER_DEFECT and finding.defect is None:
+        return False
+    if finding.axis is Axis.RELATIONAL and finding.replay is None:
+        return False
+    return True
 
 
 def emit_all(

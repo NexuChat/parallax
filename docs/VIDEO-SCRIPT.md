@@ -72,7 +72,7 @@ On camera: the green CI badge, then `web/graded-summary.json`.
 
 > Findings are worth nothing without a false-positive count. Five demo
 > applications declare their own deliberate defects in code, including a clean
-> control with nothing planted. Fifteen of fifteen found, zero missed, zero
+> controls with nothing planted. Seventeen of seventeen found, zero missed, zero
 > false positives — and the control stays at zero.
 >
 > That runs in CI on every push, so the badge means the graded sweep passed, not

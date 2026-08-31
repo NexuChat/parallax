@@ -21,7 +21,7 @@ The chore it removes is the one nobody automates: opening an app as an owner,
 then a member, then in Arabic, then at 360 pixels, then in dark mode — and
 trying to remember what the page looked like ten minutes ago.
 
-Parallax is a relational browser regression system. It runs seven isolated contexts together, then turns witness disagreement into failing Playwright specs. The published demo target, `https://demo.mlki.app`, currently reports 15 of 15 planted defects found, 0 missed, and 0 false positives on five demo sites, while the clean control stays at zero.
+Parallax is a relational browser regression system. It runs seven isolated contexts together, then turns witness disagreement into failing Playwright specs. The published demo target, `https://demo.mlki.app`, currently reports 17 of 17 planted defects found, 0 missed, and 0 false positives across seven demo applications, while the two clean controls stay at zero.
 
 It also reports revocation lag in an open session: the owner revokes one member while the member’s other live session is still open, and the remaining authority window is measured at 2,572ms. In that run the decision plane passes and the effects plane fails; distribution and enforcement are reported as unmeasured, because a browser witness sees what the member's session could still do, not what the server sent or refused. The finding says so in those words rather than counting an unobserved plane as a passing one.
 
@@ -353,6 +353,84 @@ made the next graded sweep report three findings nobody planted. Point
 capability scenarios at an environment you are willing to have written to, and
 reset it between graded runs.
 
+## An order, not a moment
+
+Everything above asks one question about one instant: somebody acts, and the
+others are checked for the effect. A great deal of what an application promises
+is not an instant but a sequence. An invitation must arrive before it can be
+accepted. A turn belongs to one player and must be refused from the other. A
+game's ending is not a private fact.
+
+Testing a sequence as a list of independent effects hides the failures that
+matter. If step four is wrong, checking only the final state reports that
+somebody won and says nothing about the illegal move that got them there. So a
+choreography verifies every step from every participant *before* the next step
+is allowed to run, and stops at the first divergence — because in a protocol the
+first divergence is the cause and everything after it is consequence.
+
+```json
+{
+  "choreographies": [{
+    "label": "invite, play, and win",
+    "surface": "/arena/game",
+    "participants": [
+      {"name": "amira", "surface": "/arena/game?me=amira&vs=samir"},
+      {"name": "samir", "surface": "/arena/game?me=samir&vs=amira"}
+    ],
+    "steps": [
+      {"label": "amira invites samir", "actor": "amira",
+       "action": {"type": "click", "selector": "#send-invite"},
+       "expect": [
+         {"participant": "samir", "effect": {"type": "visible", "selector": "#accept"}},
+         {"participant": "amira", "effect": {"type": "visible", "selector": "#accept"},
+          "visible": false, "note": "an invitation everybody can see is not an invitation"}
+       ]}
+    ]
+  }]
+}
+```
+
+The demo fleet serves the same tic-tac-toe game at two routes. `/arena/game`
+plays correctly and plants nothing. `/arena/game-legacy` reports the win to the
+winner and keeps telling the loser that play continues and the turn is theirs.
+Both routes screenshot identically. The graded sweep plays the seven-step
+protocol and reports:
+
+```
+'invite, play, and win' broke at step 7 of 7, 'amira completes the middle row
+and wins': samir should have seen it but it never appeared — and so is the
+player who lost
+```
+
+Every participant is a real session opened before the first step, for the same
+reason an audience is: a player who joined after the invitation was sent cannot
+testify about whether the invitation arrived.
+
+## One event, several vantage points
+
+A capability repeats an action as several roles and asks who may perform it. An
+audience performs it *once* and asks who perceived it — every observer already
+watching when it happens, and each carrying its own expectation, including a
+negative one. "Nobody outside the room heard it" is a claim that can only be
+made by watching the people who should not have.
+
+The call room is a real WebRTC mesh: audio genuinely travels between browser
+sessions through Chromium's synthetic microphone. `/call/room` enforces its own
+mute. `/call/room-legacy` updates the control, sets the label to `mic-off`, and
+never touches the outgoing track — the "you are still unmuted" bug. The two
+routes are pixel-identical, so no screenshot tool can tell them apart. The
+graded sweep mutes and asks three sessions what they can hear:
+
+```
+samir perceived 'muting stops the audio the others receive' but is not an
+intended audience for it — the event reached samir, layla
+```
+
+The third observer turned their own speaker off and is correctly *not* reported.
+That distinction is the whole reason the sensor measures energy through an
+`AnalyserNode` rather than asking whether a track exists: a muted sender, a
+deafened listener and a working call all have tracks.
+
 ## Hearing and seeing, not only reading the page
 
 An effect does not have to be in the DOM. A participant who can hear leaves no
@@ -418,6 +496,28 @@ participant still heard nothing.
 So a group call is expressible as an audience scenario without any new
 machinery: the speaker is the actor, participants expect `audio_audible`, and
 whoever muted or is outside the room carries the same expectation negated.
+
+## Which findings become specs
+
+Not all of them, and the gap is stated rather than papered over. A finding
+becomes a Playwright spec when the emitter can write an assertion about the
+application from it. Render, privilege, locale, theme and viewport findings all
+carry a measured geometry or a reachability claim, and so does a declared
+relational scenario, because the declaration is retained and replayed.
+
+The two multi-session judgements do not. A protocol that broke at step seven and
+an audience that heard audio it should not have are claims about several live
+sessions in one moment, and this emitter writes a single-page spec. Asked to
+express the audience finding anyway it reached for the privilege template and
+produced a check for a login redirect — a file that would fail against an
+application whose audio leak had been fixed, for a reason that had nothing to do
+with audio. It now declines, and the release gate is the proof: every one of the
+18 generated specs fails as an assertion, with none skipped and none passing.
+
+The findings are still reported, still published, and still graded. What is
+missing is the generated regression test for them, and that is an emitter that
+cannot yet write multi-context specs rather than a finding anybody should trust
+less.
 
 ## Limits
 
@@ -485,7 +585,7 @@ An early pre-calibration sweep of the demo fleet produced 94 false positives.
 Because every demo site declares its intentional defects, that was measurable
 rather than subjective: it exposed page-wide measurements repeated on controls,
 unstable query variants, and fixture accessibility defects. The current graded
-gate reports **15 of 15 planted defects found, 0 missed, and 0 false positives**,
+gate reports **17 of 17 planted defects found, 0 missed, and 0 false positives**,
 including on the clean control. Real applications can still produce many
 legitimate findings, so grouping remains useful after detection rather than as a
 way to hide detector noise.
@@ -546,7 +646,7 @@ PYTHONPATH=src:demo:. .venv/bin/python scripts/run_demo_suite.py \
 ```
 
 It exits non-zero for any miss or false positive. The current reproducible
-result is **15 of 15 planted defects found, 0 missed, and 0 false positives**;
+result is **17 of 17 planted defects found, 0 missed, and 0 false positives**;
 the clean control also stays at zero. `--no-publish` grades without touching the
 published evidence, which is what the CI gate in
 [`.github/workflows/verify.yml`](.github/workflows/verify.yml) runs on every
@@ -563,12 +663,12 @@ sites originally asked for `Georgia`, `system-ui` and `ui-monospace`, none of
 which is installed everywhere, so each host resolved a different fallback with
 different text metrics — and a measurement like horizontal overflow or
 tap-target size is exactly the kind that moves across a threshold when metrics
-shift. This is not hypothetical: the same commit that graded 15/15/0 here
+shift. This is not hypothetical: the same commit that graded a clean sweep here
 reported two unplanted render findings on a GitHub runner, and twenty under a
 Liberation-only font set. The fleet now serves subset faces built by
 [`scripts/build_demo_fonts.py`](scripts/build_demo_fonts.py) and every site,
 including anything that would otherwise inherit the user agent's default, asks
-for those by name. The suite now reports 15/15/0 identically with the host's
+for those by name. The suite now reports the same figure identically with the host's
 fonts and with everything but Liberation removed.
 
 ### A production application, signed in to

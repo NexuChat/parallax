@@ -40,6 +40,33 @@ from .base import FONT_FACE_CSS, Planted, Request, Response
 # for a fixture that must not accumulate state between graded runs.
 _ROOM: dict[str, Any] = {"members": {}, "signals": [], "seq": 0}
 
+# Long enough that a slow negotiation is never mistaken for a departure, short
+# enough that one graded run does not haunt the next.
+_MEMBER_TTL_S = 90.0
+
+
+# One actor mutes; three sessions are asked what they can hear. Two of the three
+# expectations are negative, which is the point: a room that never enforced mute
+# would satisfy every positive check ever written for it.
+_MUTE_MUST_BE_HEARD_BY_NOBODY = {
+    "label": "muting stops the audio the others receive",
+    "surface": "/room-legacy?peer=amira&call=1&mic=1",
+    "actor": {"surface": "/room-legacy?peer=amira&call=1&mic=1"},
+    "action": {"type": "click", "selector": "#mute"},
+    "deadline_ms": 9000,
+    "observers": [
+        # The two who are in the call and listening must stop hearing her.
+        {"name": "samir", "surface": "/room-legacy?peer=samir&call=1&mic=0",
+         "effect": {"type": "audio_audible", "min_level": 0.01}, "expect_visible": False},
+        {"name": "layla", "surface": "/room-legacy?peer=layla&call=1&mic=0",
+         "effect": {"type": "audio_audible", "min_level": 0.01}, "expect_visible": False},
+        # And the one who turned their own speaker off must not be reported as a
+        # propagation failure for a silence they chose.
+        {"name": "omar", "surface": "/room-legacy?peer=omar&call=0&speaker=0",
+         "effect": {"type": "audio_audible", "min_level": 0.01}, "expect_visible": False},
+    ],
+}
+
 
 def _now() -> float:
     return time.time()
@@ -51,8 +78,30 @@ class CallRoomSite:
     # Nothing is planted. This site exists to be measured, not to be graded, and
     # the suite records it with an empty expectation so a stray finding here is
     # still counted as a false positive.
-    planted: list[Planted] = []
+    # `/room` enforces its own mute and plants nothing. `/room-legacy` moves the
+    # control and leaves the track live — the "you're still unmuted" bug, which
+    # every screenshot tool passes because both routes look identical. It is only
+    # a defect in what the *other* sessions can hear.
+    planted = [
+        Planted(
+            # An unintended audience perceiving the event is an escalation of
+            # reach, which is what the judge calls it. Naming the plant after
+            # what the tool actually reports is the point of a graded fixture.
+            "escalation", "relational", "/room-legacy",
+            "Muting updates the control and never disables the outgoing track.",
+        ),
+    ]
     accounts: list[Any] = []
+    audiences = [_MUTE_MUST_BE_HEARD_BY_NOBODY]
+    # Never swept beside another site. What this fixture measures is whether
+    # audio arrived within a deadline, and a machine busy sweeping something
+    # else negotiates the mesh more slowly — which reads as a room that stayed
+    # silent, which is a missed detection rather than a slow one. Measured: with
+    # two sites in flight this plant was missed; alone it is found every time.
+    realtime = True
+
+    blurb = "A real WebRTC mesh. Audio actually travels between sessions, so a muted participant can be told apart from a silent one."
+    entry = "/room"
 
     def handle(self, request: Request) -> Response:
         if request.path == "/api/join":
@@ -64,8 +113,8 @@ class CallRoomSite:
         if request.path == "/api/reset":
             _ROOM.update(members={}, signals=[], seq=0)
             return Response.json({"ok": True})
-        if request.path in {"/", "/room"}:
-            return self._page(request)
+        if request.path in {"/", "/room", "/room-legacy"}:
+            return self._page(request, legacy=request.path == "/room-legacy")
         return Response.not_found()
 
     # ------------------------------------------------------------- signalling
@@ -75,6 +124,21 @@ class CallRoomSite:
         peer = str(payload.get("peer") or "")
         if not peer:
             return Response.json({"error": "peer required"}, status=400)
+        # A room that never forgets a closed session is a broken room, and it
+        # broke the graded run rather than the product: the next participant to
+        # use the same name inherited the previous one's pending offer, answered
+        # a description its connection had already sent, and the mesh never
+        # formed. Rejoining under a name ends the session that held it.
+        _ROOM["signals"] = [
+            signal for signal in _ROOM["signals"]
+            if signal["from"] != peer and signal["to"] != peer
+        ]
+        stale = [
+            name for name, member in _ROOM["members"].items()
+            if _now() - member["joined"] > _MEMBER_TTL_S
+        ]
+        for name in stale:
+            del _ROOM["members"][name]
         _ROOM["members"][peer] = {"joined": _now(), "in_call": bool(payload.get("in_call"))}
         return Response.json({
             "peer": peer,
@@ -112,7 +176,7 @@ class CallRoomSite:
 
     # ------------------------------------------------------------------- page
 
-    def _page(self, request: Request) -> Response:
+    def _page(self, request: Request, *, legacy: bool = False) -> Response:
         lang = request.query.get("lang", "en")
         direction = "rtl" if lang == "ar" else "ltr"
         return Response.html(
@@ -126,11 +190,16 @@ class CallRoomSite:
             'border-radius:8px;display:inline-block;margin-block:12px;min-block-size:44px;'
             'display:inline-flex;align-items:center}'
             '.peer{border:1px solid #cfd8d6;border-radius:10px;padding:12px;margin-block:8px}'
+            '.controls{display:flex;gap:8px;margin-block:12px}'
+            '.controls button{font:650 14px/1 "Parallax Sans",sans-serif;background:#fff;border:1px solid #cfd8d6;'
+            'border-radius:8px;cursor:pointer;min-block-size:44px;min-inline-size:44px;padding:10px 18px}'
             "</style></head><body><main class=\"shell\">"
             f"<h1>{escape(self.title)}</h1>"
             '<p class="state" id="state" data-state="idle">idle</p>'
+            '<div class="controls"><button id="mute" type="button">Mute</button>'
+            '<button id="unmute" type="button">Unmute</button></div>'
             '<div id="peers"></div><div id="audio"></div>'
-            f"{_CLIENT_SCRIPT.replace('__MOUNT__', escape(request.mount))}"
+            f"{_CLIENT_SCRIPT.replace('__MOUNT__', escape(request.mount)).replace('__LEGACY__', '1' if legacy else '')}"
             "</main></body></html>"
         )
 
@@ -147,6 +216,7 @@ def _body(request: Request) -> dict[str, Any]:
 # what each session received.
 _CLIENT_SCRIPT = """<script>
 const MOUNT = "__MOUNT__";
+const LEGACY = "__LEGACY__" === "1";
 const connections = new Map();
 let me = null, since = 0, micOn = true, speakerOn = true, localStream = null;
 
@@ -191,21 +261,42 @@ const connect = async (peer, initiate) => {
 };
 
 const pump = async () => {
+  try {
   const state = await fetch(`${MOUNT}/api/poll?peer=${encodeURIComponent(me)}&since=${since}`).then((r) => r.json());
   since = state.seq;
   for (const signal of state.signals) {
     const pc = await connect(signal.from, false);
     if (signal.kind === 'offer') {
-      await pc.setRemoteDescription(signal.data);
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      await post('/api/signal', {from: me, to: signal.from, kind: 'answer', data: answer});
+      // One malformed or out-of-order description must not throw out of pump()
+      // and stop every other peer in the mesh from ever connecting.
+      try {
+        await pc.setRemoteDescription(signal.data);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await post('/api/signal', {from: me, to: signal.from, kind: 'answer', data: answer});
+      } catch (_) { /* a peer that cannot negotiate stays silent, and is measured as such */ }
     } else if (signal.kind === 'answer') {
       if (!pc.currentRemoteDescription) await pc.setRemoteDescription(signal.data);
     } else if (signal.kind === 'ice') {
       try { await pc.addIceCandidate(signal.data); } catch (_) {}
     }
   }
+  } catch (_) { /* the next tick retries; a dropped poll is not a dead room */ }
+};
+
+// The room drives itself from the query string: ?peer=amira&call=1&mic=1 is one
+// participant at their own address. Without this a session could only be created
+// by injecting script, which is not something a browser tool should have to do.
+const boot = () => {
+  const q = new URLSearchParams(location.search);
+  if (!q.get('peer')) return;
+  const flag = (name, fallback) => (q.get(name) === null ? fallback : q.get(name) === '1');
+  window.joinRoom({
+    peer: q.get('peer'),
+    inCall: flag('call', true),
+    mic: flag('mic', true),
+    speaker: flag('speaker', true),
+  });
 };
 
 window.joinRoom = async ({peer, inCall = true, mic = true, speaker = true}) => {
@@ -225,10 +316,18 @@ window.joinRoom = async ({peer, inCall = true, mic = true, speaker = true}) => {
 // test that muting works rather than that a session started muted.
 window.setMic = (on) => {
   micOn = on;
-  if (localStream) localStream.getAudioTracks().forEach((t) => { t.enabled = on; });
+  // LEGACY is the planted defect. The control updates, the label says mic-off,
+  // and the outgoing track is never touched — so the room looks muted to the
+  // person who muted it and stays audible to everybody else. Screenshots of the
+  // two routes are identical; only the audio in the other sessions differs.
+  if (localStream && !LEGACY) localStream.getAudioTracks().forEach((t) => { t.enabled = on; });
   setState(on ? 'speaking' : 'mic-off');
   return micOn;
 };
+
+document.getElementById('mute').addEventListener('click', () => setMic(false));
+document.getElementById('unmute').addEventListener('click', () => setMic(true));
+boot();
 
 window.setSpeaker = (on) => {
   speakerOn = on;

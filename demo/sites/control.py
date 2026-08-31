@@ -53,6 +53,9 @@ class ControlSite:
             notice = f'<p role="alert">{words["wrong"]}</p>'
         return self._page(request, f'<p class="eyebrow">{words["sign_in"]}</p><h1>{words["login_title"]}</h1>{notice}<form method="post" action="{request.mount}/login"><label>{words["username"]}<input name="username" type="text" autocomplete="username"></label><label>{words["password"]}<input name="password" type="password" autocomplete="current-password"></label><button class="tap" type="submit">{words["continue"]}</button></form>', "sign_in")
 
+    blurb = "The clean control. Nothing is planted here, so any finding against it is a false positive."
+    entry = "/"
+
     def handle(self, request: Request) -> Response:
         words, role = self._copy[request.lang], self._role(request)
         if request.path == "/login":

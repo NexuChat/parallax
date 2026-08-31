@@ -526,3 +526,49 @@ def test_relational_scenarios_read_a_site_declaration_instead_of_its_name() -> N
 
     assert len(scenarios) == 1
     assert scenarios[0].surface.path == "http://127.0.0.1:8099/collaboration/threads"
+
+
+def test_publish_carries_forward_a_run_this_sweep_did_not_produce(tmp_path) -> None:
+    """Sweeps of real applications are published here too, and are not regenerated.
+
+    Publishing replaces the whole public directory in one exchange. Without the
+    carry-forward, running the demo suite with --publish silently deleted every
+    hand-run sweep of a real site and dropped it from index.json — evidence a
+    reader had been given a link to.
+    """
+    runs_root = tmp_path / "runs"
+    public_root = tmp_path / "console" / "runs"
+    fresh = runs_root / "workspace"
+    fresh.mkdir(parents=True)
+    (fresh / "feed.jsonl").write_text(
+        json.dumps({"kind": "finding", "payload": {"id": "f1", "severity": "high", "kind": "escalation"}}) + "\n",
+        encoding="utf-8",
+    )
+    existing = public_root / "arbchat"
+    existing.mkdir(parents=True)
+    (existing / "feed.jsonl").write_text(
+        json.dumps({"kind": "finding", "payload": {"id": "a1", "severity": "low", "kind": "render"}}) + "\n",
+        encoding="utf-8",
+    )
+
+    index = run_demo_suite.publish_sweeps(runs_root, public_root, ["workspace"])
+
+    assert (public_root / "arbchat" / "feed.jsonl").exists()
+    assert set(index) == {"arbchat", "workspace"}
+    assert index["arbchat"]["by_kind"] == {"render": 1}
+
+
+def test_a_carried_run_is_held_to_the_same_rules_as_a_fresh_one(tmp_path) -> None:
+    """Being already public is not a reason to skip the checks that made it public."""
+    runs_root = tmp_path / "runs"
+    public_root = tmp_path / "console" / "runs"
+    fresh = runs_root / "workspace"
+    fresh.mkdir(parents=True)
+    (fresh / "feed.jsonl").write_text("", encoding="utf-8")
+    leaky = public_root / "the-internet"
+    leaky.mkdir(parents=True)
+    (leaky / "feed.jsonl").write_text("", encoding="utf-8")
+    (leaky / "storage-owner.json").write_text('{"cookies": []}', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unexpected artifact"):
+        run_demo_suite.publish_sweeps(runs_root, public_root, ["workspace"])

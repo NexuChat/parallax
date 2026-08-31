@@ -73,6 +73,9 @@ class AdminSite:
         content = f'<section><p class="eyebrow">{escape(w["sign_in"])}</p><h1>{escape(w["login_title"])}</h1><p class="lede">{escape(w["login_copy"])}</p>{error}<form method="post" action="{self._url(request, "/login")}"><label>{escape(w["username"])}<input name="username" type="text" autocomplete="username" required="required"></label><label>{escape(w["password"])}<input name="password" type="password" autocomplete="current-password" required="required"></label><button class="tap primary" type="submit">{escape(w["submit"])}</button></form></section>'
         return self._page(request, content, "sign_in")
 
+    blurb = "An operations console. Privilege inversion and a locale-only dead link."
+    entry = "/reports"
+
     def handle(self, request: Request) -> Response:
         w, role = self._words[request.lang], self._role(request)
         if request.path == "/login":

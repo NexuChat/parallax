@@ -7,12 +7,17 @@
   // invented findings under the caption of the run they asked for.
   const requestedFeed = new URLSearchParams(location.search).get('feed');
   const source = requestedFeed || 'fixtures/feed.jsonl';
-  const state = { seen: new Set(), findings: [], mosaicsBySurface: new Map(), latestMosaic: null, tiles: [], lastFileText: '', byteOffset: 0, activeWitnesses: [], selectedFindingId: null, eventCount: 0, surfacesSeen: new Set(), witnessCount: 0, polled: false };
+  const state = { seen: new Set(), findings: [], mosaicsBySurface: new Map(), latestMosaic: null, tiles: [], lastFileText: '', byteOffset: 0, activeWitnesses: [], selectedFindingId: null, eventCount: 0, surfacesSeen: new Set(), witnessCount: 0, polled: false, shownMosaic: null, inspecting: null, frames: [], frameAt: 0, playing: false, timer: null };
   const $ = (id) => document.getElementById(id);
   const el = {
     image: $('mosaicImage'), stage: $('mosaicStage'), layer: $('tileLayer'), mosaicEmpty: $('mosaicEmpty'),
     sequence: $('sequence'), findings: $('findings'), findingsEmpty: $('findingsEmpty'), runState: $('runState'),
-    feedIndicator: $('feedIndicator'), feedSource: $('feedSource'), caption: $('mosaicCaption'), title: $('mosaicTitle'), wallMode: $('wallMode')
+    feedIndicator: $('feedIndicator'), feedSource: $('feedSource'), caption: $('mosaicCaption'), title: $('mosaicTitle'), wallMode: $('wallMode'),
+    inspector: $('inspector'), inspectorImage: $('inspectorImage'), inspectorStage: $('inspectorStage'),
+    inspectorTitle: $('inspectorTitle'), inspectorCaption: $('inspectorCaption'), inspectorWitnesses: $('inspectorWitnesses'),
+    inspectButton: $('inspectButton'), inspectorClose: $('inspectorClose'),
+    inspectorWindow: $('inspectorWindow'),
+    playButton: $('playButton'), scrubber: $('scrubber'), scrubberRange: $('scrubberRange'), scrubberLabel: $('scrubberLabel')
   };
 
   const contexts = [
@@ -69,10 +74,13 @@
       state.mosaicsBySurface.get(surfaceId).set(payload.seq, payload);
     }
     state.latestMosaic = payload;
+    state.frames.push(payload);
+    state.frameAt = state.frames.length - 1;
+    updateTransport();
     if (state.selectedFindingId) showSelectedFinding(); else showLiveMosaic();
   }
   function displayMosaic(payload, { title, mode, caption, dim = false } = {}) {
-    state.tiles = payload.tiles; el.title.textContent = title || 'Live witness mosaic'; el.wallMode.textContent = mode || 'SETTLED FRAME';
+    state.tiles = payload.tiles; state.shownMosaic = payload; el.title.textContent = title || 'Live witness mosaic'; el.wallMode.textContent = mode || 'SETTLED FRAME';
     el.wallMode.className = `wall-mode${mode === 'EVIDENCE FRAME' ? ' is-evidence' : ''}`;
     el.sequence.textContent = `FRAME ${payload.seq ?? '—'} · ${payload.tiles.length} WITNESSES`;
     el.stage.classList.toggle('is-unavailable', dim);
@@ -119,7 +127,8 @@
       const box = document.createElement('div'); box.className = 'tile'; box.dataset.context = tile.context;
       box.style.left = `${tile.x / naturalWidth * 100}%`; box.style.top = `${tile.y / naturalHeight * 100}%`;
       box.style.width = `${tile.w / naturalWidth * 100}%`; box.style.height = `${tile.h / naturalHeight * 100}%`;
-      const label = document.createElement('span'); label.className = 'tile-label'; label.textContent = tile.context; box.append(label); el.layer.append(box);
+      const label = document.createElement('span'); label.className = 'tile-label'; label.textContent = tile.context; box.append(label);
+      box.addEventListener('click', () => openInspector(tile.context)); el.layer.append(box);
     });
     highlightWitnesses(state.activeWitnesses);
   }
@@ -142,6 +151,9 @@
   }
   function activateFinding(id) {
     const finding = state.findings.find((item) => item.id === id); if (!finding) return;
+    // Pinning a finding's evidence and running the replay are two answers to the
+    // question "what am I looking at". Choosing one has to end the other.
+    stopPlaying();
     state.selectedFindingId = state.selectedFindingId === id ? null : id;
     el.findings.querySelectorAll('.finding').forEach((card) => { const active = card.dataset.id === state.selectedFindingId; card.classList.toggle('is-active', active); card.setAttribute('aria-pressed', String(active)); });
     if (state.selectedFindingId) showSelectedFinding(); else { highlightWitnesses([]); showLiveMosaic(); }
@@ -205,6 +217,24 @@
   async function boot() {
     $('clock').textContent = new Date().toISOString().slice(11, 19) + ' UTC'; setInterval(() => { $('clock').textContent = new Date().toISOString().slice(11, 19) + ' UTC'; }, 1000);
     addEventListener('resize', layoutTiles);
+    el.image.addEventListener('click', () => openInspector());
+    el.inspectButton.addEventListener('click', () => openInspector());
+    el.inspectorClose.addEventListener('click', closeInspector);
+    el.playButton.addEventListener('click', togglePlay);
+    el.scrubberRange.addEventListener('input', () => { stopPlaying(); showFrame(Number(el.scrubberRange.value)); });
+    el.inspector.addEventListener('click', (event) => { if (event.target === el.inspector) closeInspector(); });
+    addEventListener('keydown', (event) => {
+      if (el.inspector.hidden) return;
+      if (event.key === 'Escape') { closeInspector(); return; }
+      // Arrow keys walk the wall, which is how you compare two witnesses of the
+      // same moment without hunting for the right thumbnail.
+      const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+      if (!step || !state.shownMosaic) return;
+      const names = state.shownMosaic.tiles.map((tile) => tile.context);
+      const at = names.indexOf(state.inspecting);
+      event.preventDefault();
+      openInspector(names[(at + step + names.length) % names.length]);
+    });
     // The sample used to be drawn FIRST, unconditionally, so a console attached
     // to a real sweep still opened on frame 42 and six invented findings. It is
     // a fallback, not a seed: it appears only when no real feed can be read.
@@ -219,4 +249,130 @@
     setInterval(poll, 2500); connectSse();
   }
   boot();
+
+  // ---------------------------------------------------------------- inspector
+
+  function openInspector(context) {
+    const mosaic = state.shownMosaic;
+    if (!mosaic || !Array.isArray(mosaic.tiles) || !mosaic.tiles.length) return;
+    const tile = mosaic.tiles.find((item) => item.context === context) || mosaic.tiles[0];
+    state.inspecting = tile.context;
+    el.inspector.hidden = false;
+    el.inspectorImage.src = el.image.src;
+    el.inspectorImage.alt = `Witness ${tile.context} at full size`;
+    el.inspectorTitle.textContent = tile.context;
+    const evidence = state.activeWitnesses.includes(tile.context);
+    // Enlarged from the composited wall, so say so. The wall is stored at tile
+    // scale on purpose — it is re-encoded on every moment and sent to the vision
+    // model — and claiming native pixels here would be claiming detail that was
+    // never captured.
+    el.inspectorCaption.textContent = evidence
+      ? `${tile.context} — one of the witnesses behind the selected finding, enlarged from the composited wall. Arrow keys compare it against the others.`
+      : `${tile.context}, enlarged from the composited wall. Arrow keys move between witnesses of this same frame.`;
+    renderInspectorWitnesses(mosaic);
+    cropToTile(tile);
+  }
+
+  function cropToTile(tile) {
+    // The mosaic is one image, so a witness is a window onto it: scale so the
+    // tile fills the stage, then scroll the stage to put that tile in view.
+    const apply = () => {
+      const natural = el.inspectorImage.naturalWidth;
+      if (!natural || !tile.w) return;
+      const stage = el.inspectorStage.getBoundingClientRect();
+      // The smaller of the two fits, so the whole witness is on screen rather
+      // than its top half; never below 1:1, because shrinking the evidence is
+      // the thing this exists to stop.
+      const scale = Math.max(1, Math.min((stage.width - 28) / tile.w, (stage.height - 28) / tile.h));
+      el.inspectorImage.style.width = `${natural * scale}px`;
+      // Centre what is left over, so a tile narrower than the stage does not sit
+      // against one edge with the neighbouring witness bleeding in beside it.
+      const slackX = Math.max(0, (stage.width - tile.w * scale) / 2);
+      const slackY = Math.max(0, (stage.height - tile.h * scale) / 2);
+      el.inspectorWindow.style.left = `${tile.x * scale}px`;
+      el.inspectorWindow.style.top = `${tile.y * scale}px`;
+      el.inspectorWindow.style.width = `${tile.w * scale}px`;
+      el.inspectorWindow.style.height = `${tile.h * scale}px`;
+      el.inspectorWindow.classList.toggle('is-evidence', state.activeWitnesses.includes(tile.context));
+      el.inspectorStage.scrollTo({ left: tile.x * scale - slackX, top: tile.y * scale - slackY });
+    };
+    if (el.inspectorImage.complete && el.inspectorImage.naturalWidth) apply();
+    else el.inspectorImage.onload = apply;
+  }
+
+  function renderInspectorWitnesses(mosaic) {
+    el.inspectorWitnesses.replaceChildren();
+    mosaic.tiles.forEach((tile) => {
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'inspector-witness'; button.textContent = tile.context;
+      button.setAttribute('role', 'tab');
+      button.classList.toggle('is-active', tile.context === state.inspecting);
+      button.setAttribute('aria-selected', String(tile.context === state.inspecting));
+      // A witness behind the selected finding stays marked here too, so the
+      // inspector never loses the reason you opened it.
+      button.classList.toggle('is-evidence', state.activeWitnesses.includes(tile.context));
+      button.addEventListener('click', () => openInspector(tile.context));
+      el.inspectorWitnesses.append(button);
+    });
+  }
+
+  function closeInspector() {
+    el.inspector.hidden = true; state.inspecting = null;
+    el.inspectButton.focus();
+  }
+
+  // ------------------------------------------------------------- frame replay
+
+  // A live sweep pushes frames as they settle and the wall follows along. A
+  // recorded one arrives in a single read, so without a player the console drew
+  // thirteen to forty captured moments and showed only the last.
+  const FRAME_MS = 700;
+
+  function updateTransport() {
+    const many = state.frames.length > 1;
+    el.playButton.hidden = !many;
+    el.scrubber.hidden = !many;
+    if (!many) return;
+    el.scrubberRange.max = String(state.frames.length - 1);
+    el.scrubberRange.value = String(state.frameAt);
+    el.scrubberLabel.textContent = `FRAME ${state.frameAt + 1} / ${state.frames.length}`;
+    el.playButton.textContent = state.playing ? '❚❚ PAUSE' : '▶ PLAY';
+  }
+
+  function showFrame(index) {
+    const frame = state.frames[index];
+    if (!frame) return;
+    state.frameAt = index;
+    displayMosaic(frame, {
+      title: 'Witness mosaic',
+      mode: state.playing ? 'REPLAYING' : 'SETTLED FRAME',
+      caption: `Frame ${index + 1} of ${state.frames.length} · ${frame.tiles.length} contexts aligned to their source pixels.`,
+    });
+    highlightWitnesses([]);
+    updateTransport();
+    if (!el.inspector.hidden) openInspector(state.inspecting);
+  }
+
+  function stopPlaying() {
+    state.playing = false;
+    if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    updateTransport();
+  }
+
+  function togglePlay() {
+    if (state.playing) { stopPlaying(); return; }
+    if (state.frames.length < 2) return;
+    // Playing is a deliberate look at the whole sweep, so it takes the wall back
+    // from a pinned finding rather than fighting it for the image.
+    state.selectedFindingId = null;
+    document.querySelectorAll('.finding.is-active').forEach((node) => node.classList.remove('is-active'));
+    state.playing = true;
+    if (state.frameAt >= state.frames.length - 1) state.frameAt = -1;
+    state.timer = setInterval(() => {
+      const next = state.frameAt + 1;
+      if (next >= state.frames.length) { stopPlaying(); showFrame(state.frames.length - 1); return; }
+      showFrame(next);
+    }, FRAME_MS);
+    showFrame(state.frameAt + 1);
+  }
 })();

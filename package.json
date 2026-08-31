@@ -5,7 +5,7 @@
   "scripts": {
     "test:generated": "playwright test",
     "test:generated:list": "playwright test --list",
-    "verify:generated": "node scripts/verify-generated-specs.mjs --expected 21",
+    "verify:generated": "node scripts/verify-generated-specs.mjs --expected 18",
     "verify:demo-generated": "python scripts/verify_demo_generated.py"
   },
   "devDependencies": {

@@ -68,6 +68,9 @@ class ShopSite:
         Planted("clipped", "viewport", "/product/<id>", "Long product names are clipped by a fixed-height title box."),
     ]
 
+    blurb = "A storefront. Four viewport defects, including a control that leaves the screen on a phone."
+    entry = "/checkout"
+
     def handle(self, request: Request) -> Response:
         lang = request.lang
         explicit_theme = request.query.get("theme") or request.cookies.get("theme")

@@ -1,6 +1,6 @@
 {
-  "host": "https://demo.mlki.app",
-  "generated_at": "2026-08-30T19:35:10.923209+00:00",
+  "host": "http://127.0.0.1:8099",
+  "generated_at": "2026-08-31T10:27:25.570185+00:00",
   "sites": {
     "admin": {
       "planted": 3,
@@ -27,6 +27,36 @@
           "defect": "dead",
           "axis": "baseline",
           "route": "/legacy",
+          "verdict": "found"
+        }
+      ]
+    },
+    "arena": {
+      "planted": 1,
+      "found": 1,
+      "missed": 0,
+      "false_positives": 0,
+      "plants": [
+        {
+          "name": "A win ends the game for the winner alone; the loser is still told it is their turn.",
+          "defect": "propagation",
+          "axis": "relational",
+          "route": "/game-legacy",
+          "verdict": "found"
+        }
+      ]
+    },
+    "call": {
+      "planted": 1,
+      "found": 1,
+      "missed": 0,
+      "false_positives": 0,
+      "plants": [
+        {
+          "name": "Muting updates the control and never disables the outgoing track.",
+          "defect": "escalation",
+          "axis": "relational",
+          "route": "/room-legacy",
           "verdict": "found"
         }
       ]
@@ -148,8 +178,8 @@
     }
   },
   "totals": {
-    "planted": 15,
-    "found": 15,
+    "planted": 17,
+    "found": 17,
     "missed": 0,
     "false_positives": 0
   }

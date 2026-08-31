@@ -67,6 +67,10 @@ jobs:
       # --no-publish grades without touching web/graded-summary.json or
       # console/runs/, so CI can never overwrite the published evidence.
       # The script exits non-zero on any missed plant or any false positive,
-      # so this step is the regression gate for the headline 15/15/0 figure.
+      # so this step is the regression gate for the headline 17/17/0 figure.
       - name: Grade every planted defect
-        run: PYTHONPATH=src:demo:. python scripts/run_demo_suite.py --host http://127.0.0.1:8080 --no-vision --no-publish
+        # --jobs 2 sweeps two sites at once. Measured locally at 176s, 142s and
+        # 125s for one, two and four; the grade was identical at every setting.
+        # The floor is the slowest single site, because surfaces within a site
+        # share one mosaic wall, so more than two buys very little here.
+        run: PYTHONPATH=src:demo:. python scripts/run_demo_suite.py --host http://127.0.0.1:8080 --no-vision --no-publish --jobs 2

@@ -81,6 +81,9 @@ class DocsSite:
         Planted("divergence", "viewport", "/faq", "Related questions disappear under 768px."),
     ]
 
+    blurb = "A documentation site. An untranslated key, dark-only low contrast, and a viewport divergence."
+    entry = "/guide"
+
     def handle(self, request: Request) -> Response:
         path = request.path.rstrip("/") or "/"
         if path not in {"/", "/guide", "/api", "/faq"}:

@@ -22,6 +22,10 @@ from .mirror import mirror_defects, mirror_report
 from .proposer import BaselineObservation, ObservedAffordance, ProposalRejection, ProposalReport, ScenarioProposer
 from .capability import CapabilityRun, CapabilityScenario
 from .capability import judge as judge_capability
+from .audience import AudienceRun, AudienceScenario
+from .audience import judge as judge_audience
+from .choreography import Choreography, ChoreographyRun
+from .choreography import judge as judge_choreography
 from .relational import Expectation, RelationalPair
 from .types import Axis, AxisApplicability, Context, DefectObservation, Finding, Outcome, Privilege, RelationalReplay, Role, Surface, SurfaceKind, Testimony, derive_witnesses
 from .witness import StorageState, Witness
@@ -93,6 +97,10 @@ class ConductSummary:
     capabilities_exercised: int = 0
     capabilities_proposed_exercised: int = 0
     capability_roles_exercised: int = 0
+    audiences_exercised: int = 0
+    audience_observers_exercised: int = 0
+    choreographies_exercised: int = 0
+    choreography_steps_exercised: int = 0
 
 
 @dataclass(frozen=True)
@@ -132,6 +140,8 @@ class Conductor:
         poll_ms: int = 50,
         relational_scenarios: Sequence[RelationalScenario] | None = None,
         capability_scenarios: Sequence[CapabilityScenario] | None = None,
+        choreographies: Sequence[Choreography] | None = None,
+        audiences: Sequence[AudienceScenario] | None = None,
         scenario_proposer: ScenarioProposer | None = None,
         proposal_validator: Callable[..., list[RelationalScenario]] | None = None,
         capability_validator: Callable[..., list[CapabilityScenario]] | None = None,
@@ -149,6 +159,8 @@ class Conductor:
         self.poll_ms = max(1, poll_ms)
         self.relational_scenarios = list(relational_scenarios or [])
         self.capability_scenarios = list(capability_scenarios or [])
+        self.choreographies = list(choreographies or [])
+        self.audiences = list(audiences or [])
         self.scenario_proposer = scenario_proposer
         self.proposal_validator = proposal_validator
         self.capability_validator = capability_validator
@@ -256,6 +268,51 @@ class Conductor:
             for finding in findings:
                 self._write(feed_path, "finding", finding_payload(finding))
 
+        for audience in self.audiences:
+            self._write(feed_path, "status", {
+                "surface": audience.surface.describe(),
+                "surface_id": audience.surface.id,
+                "state": "started",
+            })
+            # Concurrent, unlike a capability sweep: one actor performs the event
+            # once and every observer is already watching when it happens. Doing
+            # this in sequence would ask each observer about a different event.
+            outcome = await AudienceRun(self.browser, poll_ms=self.poll_ms).observe(audience)
+            self._write(feed_path, "status", {
+                "surface_id": audience.surface.id,
+                "state": "audience",
+                "label": audience.label,
+                "observers": len(audience.observers),
+                "correct": sum(1 for result in outcome.results if result.correct),
+            })
+            findings = _unpublished_findings(judge_audience(outcome), published_finding_ids)
+            all_findings.extend(findings)
+            for finding in findings:
+                self._write(feed_path, "finding", finding_payload(finding))
+
+        for choreography in self.choreographies:
+            self._write(feed_path, "status", {
+                "surface": choreography.surface.describe(),
+                "surface_id": choreography.surface.id,
+                "state": "started",
+            })
+            # Played once, in order, from first step to first divergence. Unlike
+            # a capability sweep there is nothing to repeat per role: the roles
+            # are all in the room at the same time, which is the only way an
+            # ordered protocol can be observed at all.
+            outcome = await ChoreographyRun(self.browser, poll_ms=self.poll_ms).play(choreography)
+            self._write(feed_path, "status", {
+                "surface_id": choreography.surface.id,
+                "state": "choreography",
+                "label": choreography.label,
+                "steps_completed": sum(1 for r in outcome.results if r.passed),
+                "steps_declared": len(choreography.steps),
+            })
+            findings = _unpublished_findings(judge_choreography(outcome), published_finding_ids)
+            all_findings.extend(findings)
+            for finding in findings:
+                self._write(feed_path, "finding", finding_payload(finding))
+
         spec_paths = emit_all(
             all_findings, self.out_dir / "specs",
             # Only the roles this run was actually given; a guessed path makes a
@@ -270,6 +327,10 @@ class Conductor:
             capabilities_exercised=len(capability_scenarios),
             capabilities_proposed_exercised=len(proposed_capabilities),
             capability_roles_exercised=sum(len(c.roles) for c in capability_scenarios),
+            audiences_exercised=len(self.audiences),
+            audience_observers_exercised=sum(len(a.observers) for a in self.audiences),
+            choreographies_exercised=len(self.choreographies),
+            choreography_steps_exercised=sum(len(c.steps) for c in self.choreographies),
         )
 
     async def _discover(self) -> list[Surface]:

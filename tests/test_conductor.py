@@ -806,7 +806,12 @@ def test_relational_failure_is_published_emitted_and_keeps_sessions_overlapping(
         events = [json.loads(line) for line in result.feed_path.read_text().splitlines()]
         assert any(event["kind"] == "finding" for event in events)
         assert any(event["kind"] == "mosaic" for event in events)
-        assert any("propagation-relational" in path.name and path.exists() for path in result.spec_paths)
+        # No spec. This scenario was built in-process without a replayable
+        # declaration, and the emitter only writes specs that assert something
+        # about the application. What it wrote before was a file whose whole body
+        # was test.skip("cannot replay this relation") — which the release gate
+        # counts as a skip, and which proves nothing to anyone who runs it.
+        assert not [path for path in result.spec_paths if "propagation-relational" in path.name]
 
     asyncio.run(check())
 
