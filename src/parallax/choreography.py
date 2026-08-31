@@ -213,6 +213,7 @@ def judge(outcome: ChoreographyOutcome) -> list[Finding]:
             ),
             testimonies=_witnesses(choreography),
             evidence=outcome.error,
+            label=choreography.label,
         )]
 
     failure = outcome.first_failure
@@ -244,6 +245,7 @@ def judge(outcome: ChoreographyOutcome) -> list[Finding]:
             f"{who} disagreed · "
             + " → ".join(result.step.label for result in outcome.results)
         ),
+        label=f"{choreography.label}:{failure.step.label}",
     )]
 
 

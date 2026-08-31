@@ -395,12 +395,22 @@ class Finding:
     replay: RelationalReplay | None = None
     defect: Defect | None = None
     evidence: str | None = None
+    # What distinguishes two findings that share a surface, kind and axis.
+    label: str | None = None
 
     @property
     def id(self) -> str:
         identity = f"{self.kind.value}-{self.axis.value}-{self.surface.id}"
         if self.kind is FindingKind.RENDER_DEFECT and self.defect is not None:
             return f"{identity}-{self.defect.value}"
+        # Two scenarios can end on the same surface with the same kind and axis —
+        # "delete user" and "change billing" both escalating on /admin — and the
+        # run-level deduplicator drops the second without a feed event, so the
+        # report understates the exposure. The label distinguishes them, and a
+        # finding without one keeps the identity it always had.
+        if self.label:
+            digest = hashlib.blake2s(self.label.encode("utf-8"), digest_size=4).hexdigest()
+            return f"{identity}-{digest}"
         return identity
 
     def evidence_line(self) -> str:

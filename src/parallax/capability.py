@@ -169,6 +169,7 @@ def judge(scenario: CapabilityScenario, attempts: list[RoleAttempt]) -> list[Fin
                 by_role[role].testimony for role in scenario.allowed if role in by_role
             ],
             evidence=f"{attempt.role.value}=completed",
+            label=f"{scenario.label}:{attempt.role.value}",
         ))
 
     # A role that holds the capability and cannot use it is the plain functional
@@ -186,6 +187,7 @@ def judge(scenario: CapabilityScenario, attempts: list[RoleAttempt]) -> list[Fin
             ),
             testimonies=[attempt.testimony],
             evidence=attempt.error or f"{attempt.role.value}=no effect",
+            label=f"{scenario.label}:{attempt.role.value}",
         ))
 
     findings.extend(_render_findings(scenario, attempts))
@@ -222,5 +224,6 @@ def _render_findings(scenario: CapabilityScenario, attempts: list[RoleAttempt]) 
                 testimonies=[attempt.testimony],
                 defect=observation.defect,
                 evidence=f"measured after the action, not at page load · {attempt.role.value}",
+                label=f"{scenario.label}:{attempt.role.value}:{observation.defect.value}",
             ))
     return findings

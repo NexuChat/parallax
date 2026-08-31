@@ -121,8 +121,14 @@ class AudienceRun:
                 except Exception as error:  # noqa: BLE001 - recorded, not raised
                     outcome.actor_error = f"{type(error).__name__}: {error}"
             else:
+                # A sender still running at the deadline is indistinguishable
+                # from one that finished and produced nothing, unless it says so.
                 action_task.cancel()
                 await asyncio.gather(action_task, return_exceptions=True)
+                outcome.actor_error = (
+                    f"the actor had not finished '{scenario.label}' within "
+                    f"{scenario.deadline_ms}ms and was cancelled"
+                )
         except Exception as error:  # noqa: BLE001 - a failed run is evidence
             outcome.actor_error = f"{type(error).__name__}: {error}"
         finally:
@@ -185,10 +191,40 @@ async def _perceives(page: Any, expectation: Expectation) -> bool:
     return await RelationalPair._matches(page, expectation)
 
 
+def _witnesses(scenario: AudienceScenario) -> list[Testimony]:
+    """One testimony per observer, so a finding names everyone who was watching."""
+    return [
+        Testimony(scenario.surface, observer.context, Outcome.REACHED)
+        for observer in scenario.observers
+    ]
+
+
 def judge(outcome: AudienceOutcome) -> list[Finding]:
     """Report each observer that perceived the wrong thing, and say which way."""
     scenario = outcome.scenario
     findings: list[Finding] = []
+
+    # The actor's own failure has to be read first. Without this, a scenario
+    # whose setup threw produced no results at all and was reported as a clean
+    # pass, and a scenario whose action failed — a renamed selector, say — made
+    # every observer report "never perceived it" and manufactured one HIGH
+    # finding per observer against an application that was never asked to do
+    # anything.
+    if outcome.actor_error is not None or not outcome.results:
+        detail = outcome.actor_error or "the scenario produced no observations"
+        return [Finding(
+            kind=FindingKind.DEAD_SURFACE,
+            severity=Severity.MEDIUM,
+            surface=scenario.surface,
+            axis=Axis.RELATIONAL,
+            summary=(
+                f"'{scenario.label}' could not be judged: {detail} — "
+                "this is a fault in the run, not evidence about the application"
+            ),
+            testimonies=_witnesses(scenario),
+            evidence=detail,
+            label=scenario.label,
+        )]
     witnesses = [
         Testimony(
             scenario.surface,
@@ -217,6 +253,7 @@ def judge(outcome: AudienceOutcome) -> list[Finding]:
                 ),
                 testimonies=witnesses,
                 evidence=f"{result.name}=perceived · expected absent",
+                label=f"{scenario.label}:{result.name}",
             ))
         else:
             findings.append(Finding(
@@ -230,5 +267,6 @@ def judge(outcome: AudienceOutcome) -> list[Finding]:
                 ),
                 testimonies=witnesses,
                 evidence=result.error or f"{result.name}=never perceived",
+                label=f"{scenario.label}:{result.name}",
             ))
     return findings

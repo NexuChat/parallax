@@ -213,3 +213,48 @@ def test_a_readable_observer_that_perceives_nothing_still_confirms_containment()
     spec = scenario(observer("visitor in another room", False))
 
     assert judge(outcome(spec, **{"visitor in another room": False})) == []
+
+
+def test_a_failed_actor_is_reported_as_a_run_fault_not_as_product_bugs() -> None:
+    """A renamed selector made three observers report three HIGH product bugs.
+
+    The action's exception was recorded and never read, so every observer
+    expecting to perceive something reported that it never arrived — findings
+    against an application that was never asked to do anything.
+    """
+    spec = scenario(observer("a", True), observer("b", True), observer("c", True))
+    failed = AudienceOutcome(spec)
+    failed.actor_error = "TimeoutError: locator('#send') not found"
+    failed.results = [
+        ObserverResult(o.name, True, False, o.context) for o in spec.observers
+    ]
+
+    findings = judge(failed)
+
+    assert len(findings) == 1
+    assert findings[0].kind is FindingKind.DEAD_SURFACE
+    assert "not evidence about the application" in findings[0].summary
+
+
+def test_a_scenario_that_never_ran_is_not_reported_as_a_pass() -> None:
+    spec = scenario(observer("a", True))
+    never = AudienceOutcome(spec)
+
+    findings = judge(never)
+
+    assert len(findings) == 1
+    assert "produced no observations" in findings[0].summary
+
+
+def test_two_findings_on_one_surface_keep_separate_identities() -> None:
+    """Deduplication dropped the second without a feed event, understating exposure."""
+    from parallax.types import Finding
+
+    base = dict(kind=FindingKind.ESCALATION, severity=Severity.HIGH, surface=ROOM,
+                axis=Axis.RELATIONAL, summary="s", testimonies=[])
+    delete = Finding(**base, label="delete user:anon")
+    billing = Finding(**base, label="change billing:anon")
+    unlabelled = Finding(**base)
+
+    assert delete.id != billing.id
+    assert unlabelled.id.endswith(ROOM.id)
