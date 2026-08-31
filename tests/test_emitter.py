@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import re
 from pathlib import Path
 
@@ -601,3 +603,46 @@ def test_a_run_without_credentials_emits_a_spec_that_can_open() -> None:
 
     assert "storageState" not in generated
     assert "runs/site/" not in generated
+
+
+def test_a_model_only_render_finding_produces_no_spec(tmp_path) -> None:
+    """The vision lens reports a judgement, not a geometry the emitter can assert.
+
+    Writing a spec anyway produced a file that threw unconditionally, so it
+    failed against a healthy application exactly as loudly as against a broken
+    one. The project's claim is that a finding becomes a test; a test that
+    cannot pass is not a test of the application.
+    """
+    from parallax.emitter import emit_all, is_expressible
+
+    measured = replace(
+        finding(FindingKind.RENDER_DEFECT, axis=Axis.VIEWPORT), defect=Defect.HORIZONTAL_OVERFLOW
+    )
+    judged = replace(finding(FindingKind.RENDER_DEFECT, axis=Axis.VIEWPORT), defect=None)
+
+    assert is_expressible(measured) is True
+    assert is_expressible(judged) is False
+
+    written = emit_all([measured, judged], tmp_path)
+
+    assert len(written) == 1
+    for path in written:
+        assert "did not include a known defect" not in path.read_text(encoding="utf-8")
+
+
+def test_every_emitted_spec_asserts_something_about_the_page(tmp_path) -> None:
+    from parallax.emitter import emit_all
+
+    base = finding(FindingKind.RENDER_DEFECT, axis=Axis.VIEWPORT)
+    written = emit_all(
+        [replace(base, defect=d) for d in (
+            Defect.HORIZONTAL_OVERFLOW, Defect.LOW_CONTRAST, Defect.SMALL_TAP_TARGET,
+        )],
+        tmp_path,
+    )
+
+    assert written
+    for path in written:
+        body = path.read_text(encoding="utf-8")
+        assert "expect" in body, path.name
+        assert "throw new Error(\"Parallax render finding" not in body, path.name

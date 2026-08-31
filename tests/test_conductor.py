@@ -135,7 +135,8 @@ class Specialist:
     def judge(self, moments: object, testimonies: object) -> list[Finding]:
         self.calls.append((moments, testimonies))
         testimony = list(testimonies)[0]
-        return [Finding(FindingKind.RENDER_DEFECT, Severity.LOW, testimony.surface, Axis.BASELINE, "specialist", [testimony])]
+        return [Finding(FindingKind.RENDER_DEFECT, Severity.LOW, testimony.surface, Axis.BASELINE,
+                        "specialist", [testimony], defect=Defect.HORIZONTAL_OVERFLOW)]
 
 
 def test_axis_applicability_requires_page_claims_and_distinct_role_states() -> None:
@@ -632,7 +633,8 @@ def test_specialists_are_isolated_deduplicated_and_failures_are_reported(tmp_pat
         def judge(self, _moments: object, testimonies: object) -> list[Finding]:
             first = list(testimonies)[0]
             self.saw_unmodified_evidence = first.defects == []
-            return [Finding(FindingKind.RENDER_DEFECT, Severity.LOW, first.surface, Axis.LOCALE, "duplicate", [first])]
+            return [Finding(FindingKind.RENDER_DEFECT, Severity.LOW, first.surface, Axis.LOCALE,
+                            "duplicate", [first], defect=Defect.HORIZONTAL_OVERFLOW)]
 
     async def check() -> None:
         duplicate = DuplicateLens()

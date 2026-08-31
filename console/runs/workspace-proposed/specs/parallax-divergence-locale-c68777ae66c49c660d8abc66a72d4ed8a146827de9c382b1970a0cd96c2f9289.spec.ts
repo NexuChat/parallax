@@ -1,6 +1,6 @@
 /*
  * Parallax generated regression spec
- * Finding: render-locale-a6d075aa19e11584
+ * Finding: divergence-locale-a6d075aa19e11584
  * Axis: locale
  * Evidence: owner-ar-light-desktop=reached
  * In playwright.config.ts: use: { baseURL: "https://your-app.example" }
@@ -15,9 +15,16 @@ test.use({
   storageState: process.env.PARALLAX_OWNER_STORAGE_STATE,
 });
 
-test("Parallax: render-locale-a6d075aa19e11584", async ({ page }) => {
+test("Parallax: divergence-locale-a6d075aa19e11584", async ({ page }) => {
   if (!process.env.PARALLAX_OWNER_STORAGE_STATE) throw new Error("Parallax generated spec requires PARALLAX_OWNER_STORAGE_STATE");
   const response = await page.goto("/workspace/audit");
   const isLoginPage = /\/(?:login|sign-in|auth)(?:[/?#]|$)/i.test(new URL(page.url()).pathname);
-  throw new Error("Parallax render finding did not include a known defect");
+  const contentSignature = await page.evaluate(() => {
+    const root = document.querySelector("main") ?? document.body;
+    const text = (root.innerText || "").replace(/\s+/g, " ").trim();
+    let h = 2166136261;
+    for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(16);
+  });
+  expect(contentSignature).toBe("da8117ea");
 });

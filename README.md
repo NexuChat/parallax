@@ -226,7 +226,13 @@ Everything for one run is written below `--out`:
 
 - `feed.jsonl` is the append-only event feed consumed by the console.
 - `mosaics/` contains JPEG walls for settled visual moments.
-- `specs/` contains one generated failing Playwright `.spec.ts` per finding.
+- `specs/` contains one generated failing Playwright `.spec.ts` per finding that
+  can be expressed as a check. A render finding from the vision lens has no
+  measured defect behind it — the model said one tile disagreed with its peers,
+  which is a judgement rather than a geometry — so no spec is written for it.
+  Writing one anyway produced a file that threw unconditionally, failing against
+  a healthy application exactly as loudly as against a broken one, and a test
+  that cannot pass is not a test of the application.
 - The command prints totals for discovered surfaces, testimonies, findings, severity counts, feed path, and generated specs.
 
 Authenticated specs never embed the storage-state path used by the sweep. Set

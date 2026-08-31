@@ -80,17 +80,16 @@
   },
   "workspace-proposed": {
     "feed": "runs/workspace-proposed/feed.jsonl",
-    "mosaics": 11,
-    "findings": 14,
+    "mosaics": 20,
+    "findings": 9,
     "by_severity": {
-      "high": 2,
-      "medium": 12
+      "high": 1,
+      "medium": 8
     },
     "by_kind": {
       "escalation": 1,
-      "render": 9,
-      "divergence": 3,
-      "propagation": 1
+      "render": 6,
+      "divergence": 2
     }
   }
 }

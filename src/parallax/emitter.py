@@ -145,6 +145,9 @@ def _render_assertion(finding: Finding) -> str:
     witness = _context_for(finding)
     defect, observation = _render_observation(finding, witness)
     if defect is None:
+        # Unreachable through emit_all, which declines to write a spec for a
+        # finding it cannot express. Kept as a loud failure rather than a quiet
+        # pass in case a caller reaches spec_for directly.
         return "  throw new Error(\"Parallax render finding did not include a known defect\");"
     if observation is None or not observation.selector:
         return _render_skip(defect, "the probe recorded no element selector.")
@@ -487,6 +490,21 @@ def filename_for(finding: Finding) -> str:
     return f"parallax-{finding.kind.value}-{finding.axis.value}-{digest}.spec.ts"
 
 
+def is_expressible(finding: Finding) -> bool:
+    """Whether this finding can become a check of the application, not of itself.
+
+    A render finding from the vision lens has no measured defect behind it —
+    the model said one tile disagreed with its peers, which is a judgement and
+    not a geometry the emitter can assert. The honest answer is no spec.
+
+    Emitting one anyway produced a file that threw unconditionally, so it failed
+    against a fixed application exactly as loudly as against a broken one. That
+    is worse than silence: the project's claim is that a finding becomes a test,
+    and a test that cannot pass is not a test of anything.
+    """
+    return not (finding.kind is FindingKind.RENDER_DEFECT and finding.defect is None)
+
+
 def emit_all(
     findings: Iterable[Finding], out_dir: Path, storage_states: Mapping[str, str] | None = None
 ) -> list[Path]:
@@ -494,6 +512,8 @@ def emit_all(
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for finding in findings:
+        if not is_expressible(finding):
+            continue
         path = out_dir / filename_for(finding)
         path.write_text(spec_for(finding, storage_states), encoding="utf-8")
         written.append(path)
