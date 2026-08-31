@@ -1,15 +1,15 @@
 # Demo video script — ~4 minutes
 
-Target length 3:50. Every number below is in the repository, so nothing has to be
+Target length 3:55. Every number below is in the repository, so nothing has to be
 recreated for the camera. Record at 1920×1080; the console and the demo fleet are
 both readable at that size without zooming.
 
 The hackathon requires the video to *demonstrate the backend is running on Google
-Cloud*. Beat 5 is that requirement and is not optional.
+Cloud*. Beat 6 is that requirement and is not optional.
 
 ---
 
-## Beat 1 — the friction, 0:00–0:35
+## Beat 1 — the friction, 0:00–0:30
 
 On camera: the Parallax console at `https://perallax.mlki.app`, idle.
 
@@ -17,43 +17,42 @@ On camera: the Parallax console at `https://perallax.mlki.app`, idle.
 > the same page. That catches what changed. It never catches what only one kind
 > of user sees.
 >
-> The bugs that reached my users were never a diff against yesterday. A control
-> that only falls off the screen on a phone. A page an anonymous visitor could
-> reach that only members should. A message the sender saw sent and the receiver
-> never received. Every one of those is invisible to a tool that looks at one
-> browser at a time.
+> A control that only falls off the screen on a phone. A page an anonymous
+> visitor could reach that only members should. A message the sender saw sent and
+> the receiver never received. Every one of those is invisible to a tool that
+> looks at one browser at a time.
 
-## Beat 2 — the idea, 0:35–1:05
+## Beat 2 — the idea, 0:30–1:00
 
 On camera: `docs/architecture.png`, then the seven-context table in the README.
 
 > Parallax runs seven browser contexts against the same page at the same time.
-> Each one differs from the baseline by exactly one property — privilege,
-> locale, theme, viewport. Nothing is compared against a stored screenshot. The
-> finding *is* the disagreement between witnesses.
+> Each differs from the baseline by exactly one property — privilege, locale,
+> theme, viewport. Nothing is compared against a stored screenshot. The finding
+> *is* the disagreement between witnesses.
 >
 > That means there is no golden file to record, so it works on the first sweep of
 > a site it has never seen.
 
-## Beat 3 — the proof on a site I did not build, 1:05–2:05
+## Beat 3 — the proof on a site I did not build, 1:00–1:50
 
 **This is the beat that matters. Do not rush it.**
 
-On camera: the console, `the-internet` run selected.
+On camera: the console, `the-internet` run selected. Press **▶ PLAY** so the wall
+moves through the sweep while you talk, then click a tile to open the inspector.
 
 > This is a sweep of the-internet.herokuapp.com — a public site built by someone
-> else, for practising browser automation. No plants, no configuration, no
-> stored baseline. First run: twenty-six findings across thirteen surfaces.
+> else, for practising browser automation. No plants, no configuration, no stored
+> baseline. First run: twenty-six findings across thirteen surfaces.
 >
 > The highest severity one:
 
-Read the finding from the console:
+Read the finding from the console, then click its tile to enlarge that witness:
 
 > `/challenging_dom`: an actionable control sits outside the viewport; seen by
-> `owner-en-light-mobile`, not seen by `owner-en-light-desktop`,
-> `owner-en-light-tablet`.
+> `owner-en-light-mobile`, not seen by `owner-en-light-desktop`.
 
-Now switch to a terminal and prove it live — this takes fifteen seconds:
+Now switch to a terminal and prove it live — fifteen seconds:
 
 ```bash
 # at 360px, then at 768px
@@ -61,30 +60,65 @@ Now switch to a terminal and prove it live — this takes fifteen seconds:
 
 Show the output: **20 actionable controls off-screen at 360, zero at 768.**
 
-> Twenty edit and delete links fall outside a phone viewport. Zero fall outside
-> on a tablet. No tool comparing that page against its own history would report
-> this, because the page never changed. It is only visible when two witnesses
-> look at the same commit and disagree.
+> No tool comparing that page against its own history would report this, because
+> the page never changed. It is only visible when two witnesses look at the same
+> commit and disagree.
 
-## Beat 4 — the graded number, 2:05–2:45
+## Beat 4 — the two things a screenshot cannot see, 1:50–2:40
+
+**The strongest material in the demo. Both fixtures are pixel-identical between
+the correct route and the broken one.**
+
+On camera: the demo fleet front door at `demo.mlki.app`, then the arena.
+
+> Some promises are not a moment, they are an order. This is the same game served
+> at two routes. On the left it plays correctly. On the right, when a player wins,
+> the win is reported to the winner and the loser is still told it is their turn.
+
+Show the two boards side by side, then the finding:
+
+> `'invite, play, and win' broke at step 7 of 7: samir should have seen it but it
+> never appeared.`
+
+> Parallax played a seven-step protocol as two live sessions and verified every
+> step from both boards before running the next one. Screenshot the two routes and
+> they are identical.
+
+Now the call room:
+
+> And this is a real WebRTC call — audio genuinely travels between browser
+> sessions. One route enforces its own mute. The other updates the button, sets
+> the label to mic-off, and never touches the outgoing track.
+
+Show the finding:
+
+> `samir perceived 'muting stops the audio the others receive' but is not an
+> intended audience for it.`
+
+> Two listeners still hear her. The third turned his own speaker off, and is
+> correctly *not* reported — which is why the sensor measures audio energy rather
+> than asking whether a track exists. A muted sender, a deafened listener and a
+> working call all have tracks.
+
+## Beat 5 — the graded number, 2:40–3:05
 
 On camera: the green CI badge, then `web/graded-summary.json`.
 
-> Findings are worth nothing without a false-positive count. Five demo
-> applications declare their own deliberate defects in code, including a clean
+> Findings are worth nothing without a false-positive count. Seven demo
+> applications declare their own deliberate defects in code, including two clean
 > controls with nothing planted. Seventeen of seventeen found, zero missed, zero
-> false positives — and the control stays at zero.
+> false positives — and the controls stay at zero.
 >
 > That runs in CI on every push, so the badge means the graded sweep passed, not
-> just the unit tests. It reproduces on a machine I do not own.
+> just the unit tests.
 
 Optional, if the pace allows — the honest note lands well with judges:
 
-> It did not always. It disagreed with my laptop because the demo asked for
-> fonts that are not installed everywhere, and different text metrics move an
-> overflow measurement across its threshold. The fleet now serves its own fonts.
+> It did not always. It disagreed with my laptop because the demo asked for fonts
+> that are not installed everywhere, and different text metrics move an overflow
+> measurement across its threshold. The fleet now serves its own fonts.
 
-## Beat 5 — running on Google Cloud, 2:45–3:20
+## Beat 6 — running on Google Cloud, 3:05–3:35
 
 **Required by the rules. Show, do not narrate.**
 
@@ -95,12 +129,12 @@ On camera, in this order:
 3. Vertex AI logs, or a sweep's JSON summary showing
    `"model": {"name": "gemini-3.7-flash", "route": "vertex", "calls_succeeded": 25}`.
 
-> The sweep service runs on Cloud Run. Gemini 3.7 Flash is reached through
-> Vertex AI with the Google GenAI SDK — and the run reports how many calls it
-> attempted and how many succeeded, so a run that silently lost the model says
-> so instead of looking like a run that found nothing.
+> The sweep service runs on Cloud Run. Gemini 3.7 Flash is reached through Vertex
+> AI with the Google GenAI SDK — and the run reports how many calls it attempted
+> and how many succeeded, so a run that silently lost the model says so instead of
+> looking like a run that found nothing.
 
-## Beat 6 — the other models, 3:20–3:40
+## Beat 7 — the other models, 3:35–3:50
 
 On camera: the `triage` event in the `the-internet` feed.
 
@@ -108,10 +142,9 @@ On camera: the `triage` event in the `the-internet` feed.
 > baseline so the comparison is same-language, and `gemini-embedding-001` decides
 > whether the meanings match — the model it replaced could not, scoring correct
 > and wrong translations in bands that overlapped. Gemma 4 groups the findings by
-> cause — and it runs on Vertex like the rest, so anyone with the project can
-> reproduce the grouping without installing a thing.
+> cause, and it runs on Vertex like the rest.
 
-## Beat 7 — close, 3:40–3:50
+## Beat 8 — close, 3:50–3:55
 
 > Parallax turns disagreement between simultaneous witnesses into failing
 > Playwright specs you can run in your own suite. Repository and console are in
@@ -121,9 +154,26 @@ On camera: the `triage` event in the `the-internet` feed.
 
 ## Recording checklist
 
-- [ ] `PORT=8099 PYTHONPATH=src:demo:. python demo/serve.py` running for beat 4
+- [ ] `PORT=8099 PYTHONPATH=src:demo:. python demo/serve.py` running for beats 4–5
 - [ ] Console tab open at `perallax.mlki.app` on the `the-internet` run
+- [ ] Two browser windows ready for beat 4: `/arena/game?me=amira&vs=samir` and
+      `/arena/game?me=samir&vs=amira` — hit `/arena/api/reset` first so the board is empty
 - [ ] Cloud Run console tab already authenticated — do not film a login
 - [ ] Terminal font large enough to read at 1080p
 - [ ] No credentials, tokens, or `gcloud` output containing a token on screen
 - [ ] Under 4 minutes
+
+## What to say if a judge asks what is missing
+
+Answer plainly; it reads better than a claim of completeness.
+
+- The two multi-session findings are reported and graded but do not yet become
+  generated specs. The emitter writes single-page specs, and a protocol failure
+  is a claim about several sessions at once, so it declines rather than writing a
+  check that would fail for the wrong reason.
+- The locale axis reports itself not applicable on a monolingual application.
+  That is the correct answer, not a gap.
+- Surfaces within a site are swept in sequence because they share one mosaic
+  wall. Sites sweep two at a time; the real-time call fixture is swept alone,
+  because a loaded machine negotiates the mesh more slowly and silence would read
+  as a room that worked.
