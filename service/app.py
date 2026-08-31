@@ -14,6 +14,11 @@ from pathlib import Path
 from typing import Any
 from wsgiref.simple_server import make_server
 
+try:  # Imported as a package on the box, as a sibling inside the container.
+    from service.archive import RunArchive
+except ImportError:  # pragma: no cover - container layout
+    from archive import RunArchive
+
 
 Response = tuple[str, list[tuple[str, str]], bytes]
 Launcher = Callable[..., Any]
@@ -101,6 +106,7 @@ class Application:
         console_root: Path | str | None = None,
         web_root: Path | str | None = None,
         launcher: Launcher = subprocess.Popen,
+        archive: RunArchive | None = None,
     ) -> None:
         self.runs_root = Path(runs_root)
         self.runs_root.mkdir(parents=True, exist_ok=True)
@@ -110,6 +116,9 @@ class Application:
         self.runs: dict[str, dict[str, Any]] = {}
         self.protocols: dict[str, dict[str, Any]] = {}
         self.lock = threading.Lock()
+        # Completed runs are mirrored to a bucket so their links survive the
+        # instance; without a configured bucket the mirror is a no-op.
+        self.archive = archive if archive is not None else RunArchive(os.environ.get("PARALLAX_RUNS_BUCKET"))
 
     def __call__(self, environ: dict[str, Any], start_response: Callable[..., Any]) -> Iterable[bytes]:
         response = self.dispatch(environ)
@@ -340,13 +349,25 @@ class Application:
         except Exception as error:  # Keep failures observable without killing the HTTP server.
             with self.lock:
                 self.runs[run_id].update(status="failed", error=str(error))
+        # The run reached a final status either way; mirror what exists so the
+        # visitor's saved link outlives this instance. Counts are computed now
+        # because the mirror serves status without a feed on local disk.
+        with self.lock:
+            row = dict(self.runs[run_id])
+        row.update(id=run_id, counts=self.counts(output / "feed.jsonl"), log=row.get("log", ""))
+        self.archive.store(run_id, output, row)
 
     def run_status(self, run_id: str) -> Response:
         with self.lock:
             run = self.runs.get(run_id)
             details = dict(run) if run else None
         if details is None:
-            return self.not_found()
+            # This instance never ran it, but a previous one may have finished
+            # and mirrored it; a saved link should not depend on which is which.
+            archived = self.archive.meta(run_id)
+            if archived is None:
+                return self.not_found()
+            return self.json_response("200 OK", archived)
         return self.json_response("200 OK", {
             "id": run_id,
             "status": details["status"],
@@ -373,11 +394,23 @@ class Application:
         return counts
 
     def artifact_response(self, run_id: str, relative: Path) -> Response:
+        if not self.safe_relative(relative):
+            return self.not_found()
         with self.lock:
             exists = run_id in self.runs
-        if not exists or not self.safe_relative(relative):
+        if exists:
+            return self.file_response(self.runs_root / run_id / relative)
+        body = self.archive.fetch(run_id, relative.as_posix())
+        if body is None:
             return self.not_found()
-        return self.file_response(self.runs_root / run_id / relative)
+        content_type = mimetypes.guess_type(relative.name)[0] or (
+            "application/x-ndjson" if relative.name == "feed.jsonl" else "application/octet-stream"
+        )
+        return "200 OK", [
+            ("Content-Type", content_type),
+            ("Content-Length", str(len(body))),
+            ("Cache-Control", "no-cache, must-revalidate"),
+        ], body
 
     @staticmethod
     def file_response(path: Path) -> Response:
