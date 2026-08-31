@@ -68,9 +68,9 @@ axis applicability gate then judges locale on that mechanism rather than on the
 presence of non-Latin text, which is a property of most of the web and not
 evidence that a second rendering exists.
 
-## Capabilities and audiences
+## Capabilities, audiences and protocols
 
-Two subsystems answer questions the seven witnesses cannot.
+Three subsystems answer questions the seven witnesses cannot.
 
 `capability.py` asks what a role can *do*. A declared action is replayed once
 per role on its own session; a role outside `allowed` that completes it is an
@@ -91,10 +91,33 @@ contained. `expect_visible=False` is polled for the whole deadline exactly like
 a positive one, so an effect that appears and is then removed still counts as
 seen, and every observer is placed and watching before the actor acts.
 
-Gemini may propose either shape, and each is validated by exactly the validator
-its hand-written counterpart uses. The guard is stricter for a capability than
-for a relational scenario, because an invented `allowed` list would turn a
-correct authorisation rule into a reported escalation.
+`choreography.py` verifies an *order* rather than a moment. An invitation must
+arrive before it can be accepted; a turn belongs to one player; a win ends the
+game for both sides. Each step is checked from every participant before the next
+is allowed to run, and the run stops at the first divergence, because in a
+protocol the first divergence is the cause and everything after it is
+consequence. Every participant is a real session opened before step one, for the
+same reason an audience is: a player who joined after the invitation was sent
+cannot testify that it arrived. The watchers start before the action, so an
+effect that appears and vanishes while the action is still running — a toast, a
+spinner, a permission prompt — is still seen.
+
+All three are driven from one declaration grammar and one conductor. The grammar
+admits selectors and literal values and nothing else: `submit_form`, `click`,
+and the effects `visible`, `text_equals`, `json_contains` and the media kinds.
+Widening it for ordered protocols deliberately did not widen what a declaration
+is able to execute, because every scenario shape shares the same parser.
+
+Each has a fixture in the graded fleet that plants exactly one defect it can
+catch, and in both new fixtures the correct route and the broken one render
+identically — a game whose ending reaches only the winner, and a mute that
+updates its own control and leaves the outgoing track live. Neither is
+detectable by comparing pixels, which is the point of having them.
+
+Gemini may propose either of the first two shapes, and each is validated by
+exactly the validator its hand-written counterpart uses. The guard is stricter
+for a capability than for a relational scenario, because an invented `allowed`
+list would turn a correct authorisation rule into a reported escalation.
 
 ### A known limit of the relational mosaic
 
@@ -145,4 +168,20 @@ For every surface, the conductor writes status, mosaic, and finding events to `f
 
 The emitter turns each finding into a Playwright TypeScript spec configured with the selected witness viewport, locale, color scheme, and role storage-state convention. Authenticated specs accept role state only through `PARALLAX_<ROLE>_STORAGE_STATE`; they never embed the sweep's private path. The demo runner creates those states outside artifact trees with mode `0600` and removes them in `finally`. It emits reachability assertions for access findings and targeted assertions for known render and content findings.
 
+The emitter declines what it cannot express. A vision-lens render finding has no
+measured geometry behind it, and the two multi-session judgements are claims
+about several live sessions in one moment while this emitter writes single-page
+specs. Asked to express an audience finding anyway it reached for the privilege
+template and produced a login-redirect check for an audio leak — a spec that
+would fail against an application whose leak had been fixed. The release gate is
+what proves the rule holds: every generated spec must fail as an assertion, and
+a skipped or passing one fails the gate.
+
 Public evidence is copied through a closed manifest: `feed.jsonl`, generated `.spec.ts` files, and supported mosaic image types. The publisher opens every source without following symlinks, rejects non-regular or unexpected entries, and atomically replaces the public run. This keeps role cookies and unrelated local files outside `console/runs/` while preserving a live wall and concrete failing regression artifacts.
+
+Because that replacement swaps the whole public directory, anything already
+published that the current sweep does not produce is carried across explicitly
+and re-published through the same manifest and the same secret checks as a fresh
+run. Sweeps of real applications are run by hand and live here too; without the
+carry-forward, the next `--publish` of the demo suite deleted them silently and
+dropped them from `index.json`.
