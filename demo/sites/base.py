@@ -127,3 +127,23 @@ class Site(Protocol):
     accounts: list[Account]   # empty when the site has no login at all
 
     def handle(self, request: Request) -> Response: ...
+
+
+# Served by the fleet from demo/assets/fonts. Every site opens its stylesheet
+# with this, so text metrics are a property of the checkout rather than of the
+# machine: asking for Georgia or system-ui resolves to a different fallback on
+# every host, which is enough to move an overflow measurement across its
+# threshold and invent a render finding nobody planted.
+FONT_FACE_CSS = "".join(
+    f'@font-face{{font-family:"Parallax {label}";src:url("/assets/fonts/parallax-{slug}-{weight}.woff2")'
+    f' format("woff2");font-weight:{weight};font-style:normal;font-display:block}}'
+    for label, slug in (("Serif", "serif"), ("Sans", "sans"), ("Mono", "mono"))
+    for weight in (400, 700)
+) + (
+    # Anything the sites do not name explicitly would otherwise inherit the user
+    # agent's own default — Times New Roman and a bare `monospace`, which resolve
+    # to whatever the host has. These two rules carry the lowest useful
+    # specificity, so every site rule below still wins.
+    'html{font-family:"Parallax Serif",serif}'
+    'code,pre,kbd,samp,tt{font-family:"Parallax Mono",monospace}'
+)

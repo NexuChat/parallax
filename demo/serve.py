@@ -22,6 +22,19 @@ if str(DEMO_DIR) not in sys.path:
 
 from sites.base import Request, Response, Site  # noqa: E402
 
+_FONT_ROOT = DEMO_DIR / "assets" / "fonts"
+# An explicit allowlist rather than a directory listing: this route takes a path
+# segment straight from the request, and the allowlist is what stands between
+# that and the filesystem.
+_FONT_FILES = frozenset({
+    "parallax-serif-400.woff2",
+    "parallax-serif-700.woff2",
+    "parallax-sans-400.woff2",
+    "parallax-sans-700.woff2",
+    "parallax-mono-400.woff2",
+    "parallax-mono-700.woff2",
+})
+
 
 def discover_sites() -> list[Site]:
     """Load valid site classes without coupling the server to named demos."""
@@ -66,6 +79,8 @@ class Fleet:
             return Response(status=200, headers={"Content-Type": "text/plain; charset=utf-8"}, body=b"ok\n")
         if path == "/":
             return self._front_door()
+        if path.startswith("/assets/fonts/"):
+            return self._font(path.removeprefix("/assets/fonts/"))
         segments = path.lstrip("/").split("/", 1)
         site = self.sites.get(segments[0])
         if site is None:
@@ -82,6 +97,28 @@ class Fleet:
             body=body,
         )
         return site.handle(request)
+
+    def _font(self, name: str) -> Response:
+        """Serve the bundled faces so text metrics do not depend on the host.
+
+        Every site asks for these by name instead of Georgia or system-ui, which
+        resolve to a different fallback on every machine — enough to move an
+        overflow or tap-target measurement across its threshold and report a
+        render defect nobody planted.
+        """
+        if name not in _FONT_FILES:
+            return Response.not_found()
+        path = _FONT_ROOT / name
+        if not path.is_file():
+            return Response.not_found()
+        return Response(
+            status=200,
+            headers={
+                "Content-Type": "font/woff2",
+                "Cache-Control": "public, max-age=31536000, immutable",
+            },
+            body=path.read_bytes(),
+        )
 
     def _front_door(self) -> Response:
         links = "".join(

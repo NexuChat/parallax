@@ -281,6 +281,19 @@ contain no local storage path, role cookie, or skipped test.
 If the suite reports every surface dead and logins failing with HTTP 401, the
 demo fleet is not running on the host passed to `--host`.
 
+The demo serves its own webfonts, which is what makes the figure portable. The
+sites originally asked for `Georgia`, `system-ui` and `ui-monospace`, none of
+which is installed everywhere, so each host resolved a different fallback with
+different text metrics — and a measurement like horizontal overflow or
+tap-target size is exactly the kind that moves across a threshold when metrics
+shift. This is not hypothetical: the same commit that graded 15/15/0 here
+reported two unplanted render findings on a GitHub runner, and twenty under a
+Liberation-only font set. The fleet now serves subset faces built by
+[`scripts/build_demo_fonts.py`](scripts/build_demo_fonts.py) and every site,
+including anything that would otherwise inherit the user agent's default, asks
+for those by name. The suite now reports 15/15/0 identically with the host's
+fonts and with everything but Liberation removed.
+
 ### A site nobody built for Parallax
 
 The graded figures use planted defects because grading needs a known answer. To
