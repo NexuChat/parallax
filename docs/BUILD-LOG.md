@@ -88,7 +88,7 @@ Anything measurable is measured. Overflow is `scrollWidth > clientWidth`. Contra
 
 **Gemini 3.7 Flash** gets the one question geometry cannot express. The seven witness frames are composed into a single mosaic, and the model is asked which tile disagrees with its peers. Sending one image instead of seven screenshots is not a cost trick: the outlier becomes *spatial*, and comparison is native to a single frame rather than something a model must reconstruct.
 
-**Gemma 3** gets a different job. An early sweep of five applications produced ninety-four findings that were not defects — a number I published rather than hid. That was a detector-calibration failure, not a grouping problem; fixing page-wide duplication, contextual URLs, and unintended fixture defects brought the declared fleet to zero false positives in the later calibrated sweep. On an uncalibrated real application there can still be many legitimate findings, and Gemma can partition those by cause. It reads only summaries the deterministic layers already produced, and it cannot add to its input — an id it never received is discarded.
+**Gemma 4** gets a different job. An early sweep of five applications produced ninety-four findings that were not defects — a number I published rather than hid. That was a detector-calibration failure, not a grouping problem; fixing page-wide duplication, contextual URLs, and unintended fixture defects brought the declared fleet to zero false positives in the later calibrated sweep. On an uncalibrated real application there can still be many legitimate findings, and Gemma can partition those by cause. It reads only summaries the deterministic layers already produced, and it cannot add to its input — an id it never received is discarded.
 
 And a model I did **not** use: neither Veo nor Lyria appears anywhere in the engine, because generating video or audio inside a tool whose entire pitch is evidence integrity would be decoration at best and fabricated evidence at worst.
 
@@ -187,6 +187,6 @@ Saying what you did *not* test is worth more than one more finding.
 
 ---
 
-**Stack:** Gemini 3.7 Flash on Vertex AI · Google GenAI SDK · Gemma 3 self-hosted · Cloud Run, Cloud Build, Artifact Registry, Secret Manager · Playwright + CDP · Python 3.12, no framework
+**Stack:** Gemini 3.7 Flash on Vertex AI · Google GenAI SDK · gemini-embedding-001 · Gemma 4 on Vertex · Cloud Run, Cloud Build, Artifact Registry, Secret Manager · Playwright + CDP · Python 3.12, no framework
 
 **Try it:** [github.com/NexuChat/parallax](https://github.com/NexuChat/parallax)

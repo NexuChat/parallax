@@ -26,7 +26,7 @@ Paste the resulting post URL into the Devpost field
 > Graded on 5 apps that declare their own planted defects: 15/15 found, 0
 > missed, 0 false positives — enforced in CI on every push.
 >
-> Gemini 3.7 Flash on Vertex AI · Cloud Run · gemini-embedding-001 · Gemma 3.
+> Gemini 3.7 Flash · gemini-embedding-001 · Gemma 4 — all on Vertex AI, deployed on Cloud Run.
 >
 > #AllThingsAgenticHackathon
 >
@@ -72,7 +72,7 @@ Paste the resulting post URL into the Devpost field
 > reproducible, and reproducibility was the whole reason it was worth quoting.
 >
 > Built on Gemini 3.7 Flash via Vertex AI and the Google GenAI SDK, deployed on
-> Cloud Run, with Gemma 3 self-hosted to group findings by cause.
+> Cloud Run, with Gemma 4 grouping the findings by cause.
 >
 > #AllThingsAgenticHackathon
 >

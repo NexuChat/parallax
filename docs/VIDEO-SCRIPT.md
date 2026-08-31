@@ -107,9 +107,9 @@ On camera: the `triage` event in the `the-internet` feed.
 > Three more Google models each do one job. Cloud Translation translates the
 > baseline so the comparison is same-language, and `gemini-embedding-001` decides
 > whether the meanings match — the model it replaced could not, scoring correct
-> and wrong translations in bands that overlapped. Gemma 3 groups the findings by
-> cause, and it runs self-hosted, so defect summaries about someone's application
-> never leave the machine.
+> and wrong translations in bands that overlapped. Gemma 4 groups the findings by
+> cause — and it runs on Vertex like the rest, so anyone with the project can
+> reproduce the grouping without installing a thing.
 
 ## Beat 7 — close, 3:40–3:50
 

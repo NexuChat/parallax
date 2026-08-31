@@ -258,7 +258,7 @@ There are two expectations. Privilege is the exception: access should narrow as 
 
 ## Semantic content and translation checks
 
-A content-signature mismatch is a reason to inspect a changed region, not by itself proof of a defect. The FNV-1a signature still identifies changed content, but it no longer decides ordinary content divergence alone. For theme and viewport comparisons, Parallax sends only the changed visible landmark text to Vertex AI's `text-embedding-005` model and compares the vectors by cosine similarity. A score of at least `0.82` is equivalent; a lower score becomes a content-divergence finding. The finding keeps the model name, score, and threshold as evidence, so a reviewer can see why a hash mismatch was or was not treated as material.
+A content-signature mismatch is a reason to inspect a changed region, not by itself proof of a defect. The FNV-1a signature still identifies changed content, but it no longer decides ordinary content divergence alone. For theme and viewport comparisons, Parallax sends only the changed visible landmark text to Vertex AI's `gemini-embedding-001` model and compares the vectors by cosine similarity. A score of at least `0.90` is equivalent; a lower score becomes a content-divergence finding. The finding keeps the model name, score, and threshold as evidence, so a reviewer can see why a hash mismatch was or was not treated as material.
 
 For locale, Parallax translates the baseline region with Cloud Translation v2 and
 compares the two same-language strings by embedding. Both directions are
@@ -485,15 +485,15 @@ legitimate findings, so grouping remains useful after detection rather than as a
 way to hide detector noise.
 
 Grouping them is a judgement about wording, not a measurement, which is the one
-place a small model earns its place here. Gemma 3 reads only the summaries the
-deterministic layers already produced and returns a partition of their ids:
+place a small model earns its place here. **Gemma 4** reads only the summaries
+the deterministic layers already produced and returns a partition of their ids:
 
 This is the grouping it produced on the third-party sweep below, taken from the
 `triage` event in [that published feed](console/runs/the-internet/feed.jsonl)
 rather than retyped here:
 
 ```
-19 findings grouped into 3 causes by gemma3:4b
+19 findings grouped into 3 causes by gemma3:4b   # this published run predates the Vertex route
   14  Text contrast and tap target size issues
    3  Horizontal overflow and tap target size issues
    2  Viewport differences
@@ -502,11 +502,20 @@ rather than retyped here:
 It cannot invent a finding, change a severity, or reach a page. An id it returns
 that was not in its input is discarded, and a finding is claimed by one group
 only — both checkable against that feed, since the event carries the finding ids
-and every id in it also appears as a `finding` event in the same file. Point
-`PARALLAX_GEMMA_URL` at any Ollama-compatible endpoint to enable it; without one
-the run says the grouping was disabled rather than silently skipping it, and an
-unreachable grouper is reported as unreachable rather than as a run that found
-nothing to group.
+and every id in it also appears as a `finding` event in the same file.
+
+Two routes serve it. By default **Gemma 4 on Vertex AI**
+(`gemma-4-26b-a4b-it-maas`), through the same project, credentials and transport
+as the embedding lens — so a reader with the project reproduces the grouping
+without installing anything. That model is served only from the *global*
+endpoint; asking a region for it answers `only available via global endpoint`
+rather than 404, which is worth knowing because a 404 sends you looking for the
+wrong thing entirely. Setting `PARALLAX_GEMMA_URL` to an Ollama-compatible
+endpoint overrides that, because an operator who set one meant it.
+
+With neither, the run names both routes rather than saying only that grouping is
+off, and an unreachable grouper is reported as unreachable rather than as a run
+that found nothing to group.
 
 Self-hosting remains worth keeping as an option rather than a fallback. The
 finding summaries describe defects in someone's application, and an operator who
