@@ -5,8 +5,8 @@ body { margin:0; min-width:320px; overflow-x:hidden; background:var(--bg); color
 a { color:inherit; text-decoration-color:#3d8490; text-underline-offset:.22em; } a:hover,a:focus-visible { color:var(--accent); }
 .masthead, main, footer { width:min(1180px,calc(100% - 40px)); margin:auto; }
 .masthead { min-height:82px; display:flex; align-items:center; justify-content:space-between; gap:24px; border-bottom:1px solid var(--line); }
-.wordmark { display:flex; align-items:center; gap:9px; font-weight:800; letter-spacing:.14em; text-decoration:none; font-size:14px; } .wordmark span { display:grid; place-items:center; width:24px; height:24px; background:var(--accent); color:#061116; letter-spacing:0; }
-nav { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:18px; font-size:12px; color:var(--muted); } nav a { text-decoration:none; }
+.wordmark { display:inline-flex; align-items:center; min-height:44px; gap:9px; font-weight:800; letter-spacing:.14em; text-decoration:none; font-size:14px; } .wordmark span { display:grid; place-items:center; width:24px; height:24px; background:var(--accent); color:#061116; letter-spacing:0; }
+nav { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:18px; font-size:12px; color:var(--muted); } nav a { text-decoration:none; display:inline-flex; align-items:center; min-height:44px; }
 .section { padding:clamp(64px,11vw,150px) 0; border-bottom:1px solid var(--line); }.kicker { margin:0 0 12px; color:var(--accent); font-size:11px; font-weight:700; letter-spacing:.13em; }
 .hero { display:grid; grid-template-columns:minmax(0,1.05fr) minmax(420px,.95fr); gap:clamp(40px,8vw,110px); align-items:center; min-height:calc(100vh - 82px); padding-top:48px; }
 h1,h2,p { margin-top:0; } h1 { max-width:11ch; margin-bottom:28px; font-size:clamp(3.1rem,7.3vw,6.5rem); letter-spacing:-.075em; line-height:.9; } h2 { margin-bottom:15px; font-size:clamp(2rem,4.3vw,4.15rem); letter-spacing:-.06em; line-height:.95; }.lede { max-width:59ch; font-family:system-ui,sans-serif; font-size:clamp(1rem,1.3vw,1.18rem); line-height:1.65; color:#ccd6dc; }.secondary { color:var(--muted); font-size:.98rem; }
@@ -21,3 +21,13 @@ footer { display:flex; align-items:flex-end; justify-content:space-between; gap:
     @media (max-width:820px) { .hero { grid-template-columns:1fr; min-height:0; }.hero-copy { max-width:720px; }.app-gallery { grid-template-columns:repeat(2,minmax(0,1fr)); }.wall-frame iframe { height:650px; }.masthead { min-height:72px; }.section { padding-block:78px; } .revocation-figures { grid-template-columns:repeat(2,minmax(0,1fr)); } .generated-spec-figures { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @media (max-width:520px) { .masthead,main,footer { width:min(100% - 28px,1180px); }.masthead { align-items:flex-start; flex-direction:column; padding:17px 0; gap:13px; } nav { justify-content:flex-start; gap:13px; }.hero { padding-top:45px; }.section { padding-block:62px; } h1 { font-size:clamp(2.9rem,16vw,4.3rem); }.measured-control { min-height:294px; padding:14px; }.control-figures { gap:6px; }.control-figure { padding:8px; }.control-figure small { font-size:9px; white-space:normal; }.identity { grid-template-columns:repeat(2,1fr); }.tag { display:none; }.witness-grid { grid-template-columns:1fr; }.app-gallery { grid-template-columns:1fr; }.app-select { min-height:120px; }.wall-frame { margin-inline:-14px; }.wall-frame iframe { height:560px; min-height:0; }.section-heading { display:block; } th,td { padding:15px; } footer { align-items:flex-start; flex-direction:column; gap:28px; } pre { font-size:10px; padding:14px; } }
 @media (prefers-reduced-motion:no-preference) { .variant { animation:pulse-axis 8s ease-in-out infinite; } .variant:nth-child(2){animation-delay:1.3s}.variant:nth-child(3){animation-delay:2.6s}.variant:nth-child(4){animation-delay:3.9s}.variant:nth-child(5){animation-delay:5.2s}.variant:nth-child(6){animation-delay:6.5s} @keyframes pulse-axis { 0%,13%,100% { border-color:#3c5360; box-shadow:none; } 4%,9% { border-color:var(--accent); box-shadow:0 0 0 1px rgba(85,210,229,.25),0 0 25px rgba(85,210,229,.11); } } }
+
+
+/* Every interactive target reaches the 44px minimum Parallax itself enforces.
+   Its own front page failed that check at 390px — fifteen links between 15 and
+   24 pixels tall — which is the one defect a tool that reports it cannot have.
+   The boxes grow; the type and spacing do not move. */
+.app-live { display:inline-flex; align-items:center; min-height:44px; }
+.footer-links a, .repo-link { display:inline-flex; align-items:center; min-height:44px; }
+/* A target 43px wide fails by one pixel, which is the same failure as 20. */
+nav a, .footer-links a, .repo-link { min-width:44px; justify-content:center; }
