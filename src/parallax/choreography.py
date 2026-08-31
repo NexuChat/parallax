@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field, replace
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from .relational import Expectation, PageAction, RelationalPair, StorageState
@@ -126,7 +127,19 @@ class ChoreographyRun:
             storage_state=participant.storage_state,
         )
 
-    async def play(self, choreography: Choreography) -> ChoreographyOutcome:
+    async def play(
+        self,
+        choreography: Choreography,
+        on_step: Callable[[StepResult], Awaitable[None] | None] | None = None,
+    ) -> ChoreographyOutcome:
+        """Play the protocol, optionally reporting each step as it settles.
+
+        A protocol takes as long as its slowest promise, and a caller that only
+        learns the verdict at the end cannot say which step is being verified
+        while it is being verified. The callback is a progress channel and
+        nothing more: it cannot change the outcome, and a callback that raises
+        is not allowed to fail the run it is only watching.
+        """
         outcome = ChoreographyOutcome(choreography)
         sessions = {p.name: self._session(p) for p in choreography.participants}
         if not sessions:
@@ -147,6 +160,13 @@ class ChoreographyRun:
             for step in choreography.steps:
                 result = await self._play_step(step, pages)
                 outcome.results.append(result)
+                if on_step is not None:
+                    try:
+                        reported = on_step(result)
+                        if reported is not None and hasattr(reported, "__await__"):
+                            await reported
+                    except Exception:  # noqa: BLE001 - a watcher must not fail the run
+                        pass
                 if not result.passed:
                     # A protocol's first divergence is its cause. Continuing
                     # would report the consequences as though they were faults

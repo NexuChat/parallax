@@ -154,7 +154,9 @@ _INVITE_AND_PLAY = {
             "actor": "samir",
             "action": {"type": "click", "selector": "#accept"},
             "expect": [{"participant": "amira",
-                        "effect": {"type": "text_equals", "selector": "#status", "equals": "playing"},
+                        # Rendered text, not source text: the pill is uppercased by CSS, and
+                        # what a player reads is what the promise is about.
+                        "effect": {"type": "text_equals", "selector": "#status", "equals": "PLAYING"},
                         "note": "accepting starts the game for both players"}],
         },
         _move("amira takes the centre", "amira", 4, "X", "samir"),
@@ -190,6 +192,9 @@ class ArenaSite:
         Planted(
             "propagation", "relational", "/game-legacy",
             "A win ends the game for the winner alone; the loser is still told it is their turn.",
+            # The plant is about the ending. A protocol that breaks earlier is a
+            # different fault and must not be allowed to satisfy this one.
+            evidence="amira completes the middle row and wins",
         ),
     ]
     accounts: list[Any] = []

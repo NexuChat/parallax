@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import time
 from pathlib import Path
 
 from playwright.async_api import async_playwright
@@ -54,13 +55,25 @@ class Recording:
 
     def __init__(self, page: object) -> None:
         self.page = page
+        # Narration is captured, not guessed. Each line is stamped with the
+        # moment it appeared on screen, so the spoken track can be aligned to
+        # the recording rather than to an estimate of how long a beat took —
+        # and the beats that wait for a real sweep do not take a fixed time.
+        self.narration: list[dict[str, object]] = []
+        self._start = time.monotonic()
 
-    async def say(self, title: str, step: str = "") -> None:
+    def _mark(self, spoken: str | None) -> None:
+        if spoken:
+            self.narration.append({"at": round(time.monotonic() - self._start, 2), "say": spoken})
+
+    async def say(self, title: str, step: str = "", voice: str | None = None) -> None:
+        self._mark(voice)
         await self.page.evaluate(
             "([t, s]) => window.stage.say(t, s)", [title, step]
         )
 
-    async def note(self, html: str) -> None:
+    async def note(self, html: str, voice: str | None = None) -> None:
+        self._mark(voice)
         await self.page.evaluate("(html) => window.stage.note(html)", html)
 
     async def verdict(self, text: str, good: bool = False) -> None:
@@ -96,7 +109,8 @@ class Recording:
 
 
 async def act_one_thesis(rec: Recording) -> None:
-    await rec.say("One eye sees no depth. Two do.", "01 / THE IDEA")
+    await rec.say("One eye sees no depth. Two do.", "01 / THE IDEA",
+              voice="Every regression tool I have used compares a page against yesterday's copy of itself. That catches what changed. It never catches what only one kind of user sees.")
     await rec.show([{"label": "perallax.mlki.app", "url": f"{CONSOLE}/", "hint": "the thesis"}])
     await rec.note(
         "A single browsing session cannot know what it is missing. "
@@ -110,7 +124,8 @@ async def act_one_thesis(rec: Recording) -> None:
 
 async def act_one_b_value(rec: Recording) -> None:
     """What you hand it, and what it hands back."""
-    await rec.say("Point it at a URL. Get back failing tests.", "02 / WHAT IT DOES")
+    await rec.say("Point it at a URL. Get back failing tests.", "02 / WHAT IT DOES",
+              voice="You hand Parallax a URL and a credentials file. It finds the sign-in surface itself, signs in as each role, sweeps, decides which axes the application even supports, writes the failing tests, and opens the pull request. Nobody writes a selector or records a baseline.")
     # The architecture diagram, which is also a required deliverable and had
     # existed only as a file in the repository nobody would open.
     await rec.show([{"label": "one command, end to end", "url": f"{CONSOLE}/architecture.html", "hint": "the architecture"}])
@@ -128,7 +143,8 @@ async def act_one_b_value(rec: Recording) -> None:
 
 
 async def act_two_wall(rec: Recording) -> None:
-    await rec.say("Seven witnesses, one moment", "02 / THE WALL")
+    await rec.say("Seven witnesses, one moment", "02 / THE WALL",
+              voice="This is a sweep of a public practice site built by somebody else. No plants, no configuration. Twenty six findings on the first run. Seven browser contexts looked at the same page at the same instant, and the finding is where they disagreed.")
     await rec.show([{
         "label": "the-internet.herokuapp.com — a site nobody built for Parallax",
         "url": f"{CONSOLE}/console?feed=%2Fconsole%2Fruns%2Fthe-internet%2Ffeed.jsonl",
@@ -155,57 +171,44 @@ async def act_two_wall(rec: Recording) -> None:
 
 
 async def act_three_protocol(rec: Recording) -> None:
-    await rec.say("A promise that is an order, not a moment", "03 / TWO LIVE PLAYERS")
+    """The real choreography engine plays the protocol and judges it on camera.
+
+    The earlier version of this beat had the recording script click the boards
+    and then display a caption asserting what Parallax would have concluded.
+    That is a manual walkthrough with a claim stapled to it: a viewer sees pages
+    being driven and has to take the verdict on trust, because the system doing
+    the work is nowhere on screen.
+
+    Now nobody clicks. ChoreographyRun opens its own two sessions against the
+    deployed arena, plays the seven steps, and reports each one as it settles;
+    the panes are two more viewers of the same server-side game, so the boards
+    move because the engine moved them. The ledger is the engine's own
+    per-step result, not a script's narration of it.
+    """
+    await rec.say("A promise that is an order, not a moment", "03 / TWO LIVE PLAYERS",
+              voice="Some promises are not a moment. They are an order. Here is the same game at two routes. One plays correctly. On the other, when somebody wins, only the winner is told.")
     await rec.show([
         {"label": "amira · game-legacy", "url": f"{DEMO}/arena/game-legacy?me=amira&vs=samir", "hint": "player one"},
         {"label": "samir · game-legacy", "url": f"{DEMO}/arena/game-legacy?me=samir&vs=amira", "hint": "player two"},
     ])
+    await rec.ledger("PARALLAX · PLAYING THE PROTOCOL")
     await rec.note(
-        "Two real sessions of one game. The route on screen is <b>pixel-identical</b> to the correct one — "
-        "no screenshot comparison of any kind can tell them apart."
+        "Nobody is clicking these boards. Parallax opens its own two sessions and plays the protocol, "
+        "verifying every step from <b>both</b> players before it is allowed to run the next one.",
+        voice="Nobody is clicking these boards. Parallax opens its own two sessions, plays the protocol, "
+              "and checks every step from both players before it is allowed to run the next one. "
+              "Watch the ledger on the right: that is what it observed.",
     )
-    await rec.beat(4)
-
-    await rec.note("Step 1 — amira invites samir. The invitation must reach its recipient, and must <b>not</b> be offered to its sender.")
-    await rec.pane(0).locator("#send-invite").click()
-    await rec.beat(3)
-
-    await rec.note("Step 2 — samir accepts. Accepting starts the game for both players.")
-    await rec.pane(1).locator("#accept").click()
-    await rec.beat(2.5)
-
-    moves = [
-        (0, 4, "Step 3 — amira takes the centre."),
-        (1, 0, "Step 4 — samir takes a corner."),
-        (0, 3, "Step 5 — amira takes the left of the middle row."),
-        (1, 1, "Step 6 — samir takes the top."),
-    ]
-    for who, cell, caption in moves:
-        await rec.note(f"{caption} Every step is verified from <b>both</b> boards before the next one runs.")
-        await rec.pane(who).locator(f"#cell-{cell}").click()
-        await rec.beat(2.0)
-
-    await rec.note("Step 7 — amira completes the middle row and wins. Watch <span class='flag'>samir's board</span>.")
-    await rec.pane(0).locator("#cell-5").click()
-    await rec.beat(4)
+    await rec.beat(5)
+    await rec.play_protocol()
     await rec.tone(0, "good")
     await rec.tone(1, "hot")
-    await rec.note(
-        "Identical winning line on both boards. amira is told <b>WON</b>. "
-        "<span class='flag'>samir is told the game is still playing, and that it is his turn.</span>"
-    )
-    await rec.beat(5)
-    await rec.verdict(
-        "'invite, play, and win' broke at step 7 of 7,\n"
-        "'amira completes the middle row and wins':\n"
-        "samir should have seen it but it never appeared\n"
-        "— and so is the player who lost"
-    )
-    await rec.beat(5)
+    await rec.beat(4)
 
 
 async def act_four_audio(rec: Recording) -> None:
-    await rec.say("One event, several vantage points", "04 / A REAL CALL")
+    await rec.say("One event, several vantage points", "04 / A REAL CALL",
+              voice="This is a real call. Audio genuinely travels between these three sessions. One route enforces its own mute. The other updates the button, and never touches the outgoing track.")
     await rec.show([
         {"label": "amira · speaking", "url": f"{DEMO}/call/room-legacy?peer=amira&call=1&mic=1", "hint": "the actor"},
         # room-legacy on every pane: one broken room, three vantage points.
@@ -223,7 +226,10 @@ async def act_four_audio(rec: Recording) -> None:
     await rec.tone(1, "hot")
     await rec.note(
         "Her control says <b>mic-off</b>. samir still hears her. "
-        "omar hears nothing — but he turned his own speaker off, and is <b>not</b> reported."
+        "omar hears nothing — but he turned his own speaker off, and is <b>not</b> reported.",
+        voice="Her control says mic off. Samir still hears her. Omar hears nothing, but Omar turned his own "
+              "speaker off, and is correctly not reported. That is why the sensor measures audio energy "
+              "rather than asking whether a track exists.",
     )
     await rec.beat(4)
     await rec.verdict(
@@ -269,7 +275,8 @@ async def act_four_b_production(rec: Recording) -> None:
 
 
 async def act_five_graded(rec: Recording) -> None:
-    await rec.say("A detection rate is meaningless without an error rate", "05 / GRADED")
+    await rec.say("A detection rate is meaningless without an error rate", "05 / GRADED",
+              voice="Findings are worth nothing without a false positive count. Seven applications declare their own deliberate defects, including two clean controls with nothing planted. Seventeen of seventeen found, zero missed, zero false positives.")
     await rec.show([{"label": "perallax.mlki.app — read live from graded-summary.json", "url": f"{CONSOLE}/#scoreboard"}])
     await rec.note(
         "Seven applications declare their own deliberate defects in code, including "
@@ -281,7 +288,8 @@ async def act_five_graded(rec: Recording) -> None:
 
 
 async def act_six_cloud(rec: Recording) -> None:
-    await rec.say("Running on Google Cloud", "06 / CLOUD RUN + VERTEX AI")
+    await rec.say("Running on Google Cloud", "06 / CLOUD RUN + VERTEX AI",
+              voice="The service is one Cloud Run instance in us-central1, shown here at its own Google address. Gemini three point seven Flash, Gemini embeddings, and Gemma four are all reached through Vertex A I on the same project.")
     await rec.show([
         {"label": "parallax-x6nwdmf3oa-uc.a.run.app — Cloud Run, us-central1",
          "url": f"{CLOUD_RUN}/console?feed=%2Fconsole%2Fruns%2Farena%2Ffeed.jsonl",
@@ -302,7 +310,8 @@ async def act_eight_pull_request(rec: Recording) -> None:
     and a demo that showed a screenshot of a pull request instead of the pull
     request would be exactly the substitution this whole project argues against.
     """
-    await rec.say("And it opens the pull request", "08 / THE END OF THE WORKFLOW")
+    await rec.say("And it opens the pull request", "08 / THE END OF THE WORKFLOW",
+              voice="And the workflow does not stop at a report. These are real pull requests, opened by Parallax, one commit per finding.")
     # No placeholder pane: about:blank held four seconds of empty white while
     # the caption was read. The previous beat stays on screen until the browser
     # actually leaves for GitHub.
@@ -327,7 +336,8 @@ async def act_six_b_live(rec: Recording) -> None:
     the difference between showing evidence a sweep produced and showing the
     sweep produce it.
     """
-    await rec.say("Give it a URL. It does the rest.", "07 / A SWEEP, RIGHT NOW")
+    await rec.say("Give it a URL. It does the rest.", "07 / A SWEEP, RIGHT NOW",
+              voice="Now watch it work. This is the deployed service, and it is about to sweep a site it has never been configured for.")
     await rec.show([{
         "label": "parallax-x6nwdmf3oa-uc.a.run.app/run.html — Cloud Run",
         "url": f"{CLOUD_RUN}/run.html",
@@ -360,7 +370,8 @@ async def act_six_b_live(rec: Recording) -> None:
 
 
 async def act_seven_close(rec: Recording) -> None:
-    await rec.say("The output is a test, not a report", "07 / WHAT YOU GET")
+    await rec.say("The output is a test, not a report", "07 / WHAT YOU GET",
+              voice="Every finding it can express ships as a failing Playwright spec for your own suite. Eighteen of eighteen fail as assertions. None skipped, none passing. The two it cannot express yet, it declines.")
     await rec.show([{"label": "a generated Playwright spec", "url": f"{CONSOLE}/#output"}])
     await rec.note(
         "Every finding it can express ships as a failing Playwright spec for your own suite. "
@@ -410,6 +421,9 @@ async def record(out: Path) -> Path:
         source = Path(await video.path())
     out.parent.mkdir(parents=True, exist_ok=True)
     source.replace(out)
+    out.with_suffix(".narration.json").write_text(
+        json.dumps(rec.narration, indent=2) + "\n", encoding="utf-8"
+    )
     return out
 
 

@@ -84,6 +84,11 @@ def _finding_defects(finding: Finding) -> set[str]:
 
 
 def _matches(plant: Planted, finding: Finding, site_name: str | None) -> bool:
+    if getattr(plant, "evidence", "") and plant.evidence not in f"{finding.summary} {finding.evidence or ''}":
+        # The right kind of finding on the right route is not necessarily the
+        # finding the plant describes. A fixture that breaks earlier, for its
+        # own reasons, produced exactly that shape and was counted as found.
+        return False
     return (
         plant.defect in _finding_defects(finding)
         and plant.axis == _value(finding.axis)

@@ -33,7 +33,33 @@
       .title { font:800 21px/1.25 ui-sans-serif,system-ui,sans-serif; letter-spacing:-.02em; }
       .step { margin-inline-start:auto; color:var(--muted); font-size:11px; letter-spacing:.14em; white-space:nowrap; }
 
+      /* With a ledger open the stage splits: what the sessions look like on the
+         left, what Parallax observed about them on the right. A viewer who only
+         ever sees the pages being driven has watched a manual walkthrough and
+         has to take the verdict on trust. */
+      .split { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(0,1fr); gap:12px;
+        padding:14px 26px; min-height:0; }
+      .split .frames { padding:0; }
       .frames { display:grid; gap:12px; padding:14px 26px; min-height:0; }
+
+      .ledger { display:flex; flex-direction:column; min-height:0; border:1px solid var(--line);
+        background:#0b1116; overflow:hidden; }
+      .ledger-head { display:flex; justify-content:space-between; gap:10px; padding:9px 13px;
+        border-bottom:1px solid var(--line); color:var(--accent); font-size:11px; letter-spacing:.11em; }
+      .ledger-body { flex:1; overflow:auto; padding:10px 13px; }
+      .entry { border-block-end:1px solid #16222c; padding:9px 0; }
+      .entry:last-child { border-block-end:0; }
+      .entry-head { display:flex; align-items:baseline; gap:9px; }
+      .entry-mark { flex:0 0 auto; inline-size:16px; font-weight:800; }
+      .entry.is-ok .entry-mark { color:#7fd8a4; }
+      .entry.is-bad .entry-mark { color:var(--hot); }
+      .entry.is-live .entry-mark { color:var(--accent); }
+      .entry-label { color:#dbe6ed; font-size:12.5px; }
+      .entry.is-bad .entry-label { color:#ffd7d9; }
+      .obs { margin:6px 0 0 25px; color:var(--muted); font-size:11px; line-height:1.65; }
+      .obs b { color:#9fd9e4; font-weight:600; }
+      .obs .no { color:var(--hot); }
+      .obs .yes { color:#7fd8a4; }
       .frame { display:flex; flex-direction:column; min-width:0; min-height:0;
         border:1px solid var(--line); background:#0b1116; overflow:hidden; }
       .frame.is-hot { border-color:var(--hot); box-shadow:0 0 0 1px var(--hot); }
@@ -67,7 +93,13 @@
         <span class="title" id="title">Parallax</span>
         <span class="step" id="step"></span>
       </div>
-      <div class="frames" id="frames"></div>
+      <div class="split" id="split">
+        <div class="frames" id="frames"></div>
+        <div class="ledger" id="ledger" hidden>
+          <div class="ledger-head"><span id="ledgerTitle">PARALLAX · VERIFYING</span><span id="ledgerCount"></span></div>
+          <div class="ledger-body" id="ledgerBody"></div>
+        </div>
+      </div>
       <div class="note" id="note"></div>
     </div>
 
@@ -116,6 +148,26 @@
             frame.style.transform = `scale(${scale})`;
           });
           return panes.length;
+        },
+        ledger(title, open) {
+          el('ledger').hidden = !open;
+          el('split').style.gridTemplateColumns = open
+            ? 'minmax(0,1.55fr) minmax(0,1fr)'
+            : 'minmax(0,1fr)';
+          el('ledgerTitle').textContent = title || 'PARALLAX · VERIFYING';
+          el('ledgerBody').innerHTML = '';
+          el('ledgerCount').textContent = '';
+        },
+        entry(state, label, observations, count) {
+          const row = document.createElement('div');
+          row.className = `entry is-${state}`;
+          const mark = state === 'ok' ? '✓' : state === 'bad' ? '✕' : '·';
+          row.innerHTML = `<div class="entry-head"><span class="entry-mark">${mark}</span>`
+            + `<span class="entry-label">${label}</span></div>`
+            + (observations || []).map((o) => `<div class="obs">${o}</div>`).join('');
+          el('ledgerBody').append(row);
+          el('ledgerBody').scrollTop = el('ledgerBody').scrollHeight;
+          if (count) el('ledgerCount').textContent = count;
         },
         tone(index, tone) {
           const frame = document.querySelectorAll('.frame')[index];

@@ -19,6 +19,70 @@ Response = tuple[str, list[tuple[str, str]], bytes]
 Launcher = Callable[..., Any]
 
 
+# The protocol the live page plays. Declared here rather than imported from the
+# demo package so the service does not depend on the fixture fleet's source tree
+# to answer a request about it.
+_ARENA_PROTOCOL: dict[str, Any] = {
+    "label": "invite, play, and win",
+    "surface": "/game-legacy",
+    "participants": [
+        {"name": "amira", "surface": "/game-legacy?me=amira&vs=samir"},
+        {"name": "samir", "surface": "/game-legacy?me=samir&vs=amira"},
+    ],
+    "steps": [
+        {
+            "label": "amira invites samir",
+            "actor": "amira",
+            "action": {"type": "click", "selector": "#send-invite"},
+            "expect": [
+                {"participant": "samir", "effect": {"type": "visible", "selector": "#accept"},
+                 "note": "the invitation must reach its recipient"},
+                {"participant": "amira", "effect": {"type": "visible", "selector": "#accept"},
+                 "visible": False, "note": "and must not be offered to its sender"},
+            ],
+        },
+        {
+            "label": "samir accepts",
+            "actor": "samir",
+            "action": {"type": "click", "selector": "#accept"},
+            "expect": [{"participant": "amira",
+                        # Rendered text, not source text: the pill is uppercased by CSS, and
+                        # what a player reads is what the promise is about.
+                        "effect": {"type": "text_equals", "selector": "#status", "equals": "PLAYING"},
+                        "note": "accepting starts the game for both players"}],
+        },
+        *(
+            {
+                "label": label,
+                "actor": actor,
+                "action": {"type": "click", "selector": f"#cell-{cell}"},
+                "expect": [{"participant": watcher,
+                            "effect": {"type": "text_equals", "selector": f"#cell-{cell}", "equals": mark},
+                            "note": f"{actor}'s move must appear on {watcher}'s board"}],
+            }
+            for label, actor, cell, mark, watcher in (
+                ("amira takes the centre", "amira", 4, "X", "samir"),
+                ("samir takes a corner", "samir", 0, "O", "amira"),
+                ("amira takes the left of the middle row", "amira", 3, "X", "samir"),
+                ("samir takes the top", "samir", 1, "O", "amira"),
+            )
+        ),
+        {
+            "label": "amira completes the middle row and wins",
+            "actor": "amira",
+            "action": {"type": "click", "selector": "#cell-5"},
+            "expect": [
+                {"participant": "amira", "effect": {"type": "visible", "selector": "#winner"},
+                 "note": "the winner is told they won"},
+                {"participant": "samir", "effect": {"type": "visible", "selector": "#winner"},
+                 "note": "and so is the player who lost"},
+            ],
+            "deadline_ms": 4000,
+        },
+    ],
+}
+
+
 def _tail(path: Path, limit: int = 2_000) -> str:
     """Return the end of a sweep log, which is where its diagnosis lands."""
     try:
@@ -44,6 +108,7 @@ class Application:
         self.web_root = Path(web_root) if web_root else Path(__file__).resolve().parents[1] / "web"
         self.launcher = launcher
         self.runs: dict[str, dict[str, Any]] = {}
+        self.protocols: dict[str, dict[str, Any]] = {}
         self.lock = threading.Lock()
 
     def __call__(self, environ: dict[str, Any], start_response: Callable[..., Any]) -> Iterable[bytes]:
@@ -60,6 +125,8 @@ class Application:
             return self.file_response(self.web_root / "index.html")
         if path in {"/console", "/console/"} and method == "GET":
             return self.console_index_response()
+        if path == "/protocol" or path.startswith("/protocol/"):
+            return self.protocol_response(method, path)
         if path == "/runs" or path.startswith("/runs/"):
             return self.run_response(method, path, environ)
         if path.startswith("/console/") and method == "GET":
@@ -132,6 +199,104 @@ class Application:
     @staticmethod
     def safe_relative(path: Path) -> bool:
         return not path.is_absolute() and all(part not in {"", ".", ".."} for part in path.parts)
+
+    # ------------------------------------------------------------- protocol demo
+
+    def protocol_response(self, method: str, path: str) -> Response:
+        """Play the arena protocol with real sessions and report it step by step.
+
+        This exists so the claim can be pressed rather than read. A visitor who
+        is told that seven steps were verified from two live sessions has to
+        take it on trust; a visitor who starts it and watches each step settle
+        does not. The steps reported here are the choreography engine's own
+        results — the same objects the graded gate judges — not a description
+        of them.
+        """
+        parts = [part for part in path.strip("/").split("/") if part]
+        if method == "POST" and len(parts) == 1:
+            return self.start_protocol()
+        if method == "GET" and len(parts) == 2:
+            with self.lock:
+                state = self.protocols.get(parts[1])
+            if state is None:
+                return self.not_found()
+            return self.json_response("200 OK", state)
+        return self.not_found()
+
+    def start_protocol(self) -> Response:
+        run_id = uuid.uuid4().hex
+        with self.lock:
+            self.protocols[run_id] = {"id": run_id, "status": "queued", "steps": [], "verdict": None, "error": None}
+        threading.Thread(target=self.execute_protocol, args=(run_id,), daemon=True).start()
+        return self.json_response("202 Accepted", {"id": run_id, "status": "queued"})
+
+    def execute_protocol(self, run_id: str) -> None:
+        import asyncio
+
+        def record(**fields: Any) -> None:
+            with self.lock:
+                self.protocols[run_id].update(fields)
+
+        def add_step(result: Any) -> None:
+            expectations = []
+            for expect in result.step.expect:
+                broken = next((reason for spec, reason in result.violated if spec is expect), None)
+                expectations.append({
+                    "participant": expect.participant,
+                    "wanted": "must see it" if expect.visible else "must not see it",
+                    "observed": broken or ("as expected" if broken is None else broken),
+                    "held": broken is None,
+                    "note": expect.note,
+                })
+            with self.lock:
+                self.protocols[run_id]["steps"].append({
+                    "label": result.step.label,
+                    "actor": result.step.actor,
+                    "passed": result.passed,
+                    "error": result.error,
+                    "expectations": expectations,
+                })
+
+        async def play() -> None:
+            from playwright.async_api import async_playwright
+
+            from parallax.choreography import ChoreographyRun
+            from parallax.choreography import judge as judge_choreography
+            from parallax.__main__ import choreographies_from_data
+
+            host = os.environ.get("PARALLAX_DEMO_HOST", "https://demo.mlki.app")
+            declaration = json.loads(json.dumps(_ARENA_PROTOCOL))
+            declaration["surface"] = f"{host}/arena{declaration['surface']}"
+            for participant in declaration["participants"]:
+                participant["surface"] = f"{host}/arena{participant['surface']}"
+            [choreography] = choreographies_from_data({"choreographies": [declaration]}, host)
+
+            async with async_playwright() as pw:
+                browser = await pw.chromium.launch(
+                    headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"]
+                )
+                try:
+                    # A fresh game, so a visitor never joins one somebody left
+                    # half-played. The fixture resets on invite anyway; this is
+                    # belt and braces for a page anyone can press twice.
+                    context = await browser.new_context()
+                    await context.request.post(f"{host}/arena/api/reset", data={})
+                    await context.close()
+                    record(status="playing")
+                    outcome = await ChoreographyRun(browser, poll_ms=80).play(choreography, on_step=add_step)
+                finally:
+                    await browser.close()
+            findings = judge_choreography(outcome)
+            record(
+                status="complete",
+                verdict=findings[0].summary if findings else None,
+                held=not findings,
+            )
+
+        try:
+            asyncio.run(play())
+        except Exception as error:  # noqa: BLE001 - reported to the page
+            record(status="failed", error=f"{type(error).__name__}: {error}")
 
     def start_run(self, environ: dict[str, Any]) -> Response:
         try:

@@ -96,12 +96,19 @@ class Planted:
     `defect` names the Defect or FindingKind Parallax should raise; `axis` is the
     witness axis expected to expose it. A site with an empty list is a control:
     finding anything there is a false positive, which is worth proving too.
+
+    `evidence` is optional and exists because kind, axis and route were not
+    enough. A protocol fixture broke at step two for an unrelated reason and the
+    gate still counted its step-seven plant as found — the finding had the right
+    kind on the right route, and nothing checked that it was the right finding.
+    When a plant names a phrase, the matching finding has to contain it.
     """
 
     defect: str
     axis: str
     route: str
     note: str
+    evidence: str = ""
 
 
 @dataclass(frozen=True)
