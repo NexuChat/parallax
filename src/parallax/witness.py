@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from .media import INSTRUMENT_MEDIA
 from .types import (
     Axis,
     Context,
@@ -96,6 +97,13 @@ class Witness:
             extra_http_headers={"Accept-Language": self.context.locale.value},
             storage_state=self.storage_state,
         )
+        # Before any application script: a page's peer connections are otherwise
+        # unreachable, and a call cannot be measured from outside the objects
+        # that carry it. This records them and changes nothing.
+        try:
+            await self.browser_context.add_init_script(INSTRUMENT_MEDIA)
+        except Exception:
+            pass
         self.page = await self.browser_context.new_page()
 
     async def visit(self, surface: Surface) -> Testimony:

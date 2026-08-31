@@ -21,6 +21,7 @@ from .capability import CapabilityScenario
 from .contracts import FeedEvent
 from .delivery import DeliveryReport, PullRequestDelivery
 from .differ import configure_semantics
+from .media import MediaExpectation, media_probe, perceived
 from .discovery import Credential, SessionDiscovery, credentials_from_data
 from .proposer import ProposalReport, ScenarioProposer
 from .semantics import SemanticComparator
@@ -274,6 +275,18 @@ def _action(spec: Any, name: str, source: str) -> tuple[object, FormAction]:
     return submit_form, FormAction(form, tuple(checks), tuple(fields))
 
 
+def _positive_number(value: Any, name: str, source: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+        raise _scenario_error(source, f"{name} must be a non-negative number")
+    return float(value)
+
+
+def _positive_int(value: Any, name: str, source: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise _scenario_error(source, f"{name} must be a non-negative integer")
+    return value
+
+
 def _effect(spec: Any, name: str, source: str) -> tuple[object, EffectExpectation]:
     if not isinstance(spec, dict):
         raise _scenario_error(source, f"{name}.effect must be an object")
@@ -285,6 +298,23 @@ def _effect(spec: Any, name: str, source: str) -> tuple[object, EffectExpectatio
             return bool(await page.locator(selector).is_visible())
 
         return visible, EffectExpectation("visible", selector=selector)
+    if effect_type in {"audio_received", "video_received"}:
+        # Presence is not perception. A muted participant negotiates the call and
+        # receives packets exactly like a listening one, so the threshold is on
+        # energy and decoded frames rather than on a track existing.
+        expectation = MediaExpectation(
+            kind=effect_type,
+            min_level=_positive_number(spec.get("min_level", 0.01), f"{name}.effect.min_level", source),
+            min_packets=_positive_int(spec.get("min_packets", 5), f"{name}.effect.min_packets", source),
+            min_frames=_positive_int(spec.get("min_frames", 5), f"{name}.effect.min_frames", source),
+        )
+        script, arguments = media_probe(expectation)
+
+        async def media(page: object) -> bool:
+            return perceived(expectation, await page.evaluate(script, arguments))
+
+        media.__name__ = expectation.describe()
+        return media, EffectExpectation(effect_type)
     if effect_type == "json_contains":
         request = {
             "url": _string(spec.get("url"), f"{name}.effect.url", source),

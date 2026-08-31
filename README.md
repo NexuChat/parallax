@@ -295,6 +295,43 @@ made the next graded sweep report three findings nobody planted. Point
 capability scenarios at an environment you are willing to have written to, and
 reset it between graded runs.
 
+## Hearing and seeing, not only reading the page
+
+An effect does not have to be in the DOM. A participant who can hear leaves no
+mark on the page, and a participant who has muted looks identical to one who is
+listening — so "did B hear A speak" is unanswerable by every check above it,
+while being exactly the same *shape* of question as "did B see A's message": one
+actor, several simultaneous observers, each with its own expectation.
+
+Two effect kinds close that gap, declarable anywhere the others are:
+
+```json
+{"type": "audio_received", "min_level": 0.01, "min_packets": 5}
+{"type": "video_received", "min_frames": 5}
+```
+
+A page's `RTCPeerConnection` objects are not reachable from outside unless the
+application chose to expose them, and none does, so the constructor is wrapped
+before any application script runs and every connection registers itself. That
+instrumentation records; it never alters what is negotiated, sent, or received.
+
+**Presence is not perception, and this is the measurement that matters.** A
+muted participant still negotiates, still has a track, and still receives
+packets. Measured live on a two-peer call, speaking reported an audio level of
+`1.0254` and muted reported `0.0000` — while `packetsReceived` was `175` and
+`174`. Packet counting cannot tell the two apart. Energy can, read from the
+received signal with the Web Audio API and from `getStats`, whichever is louder.
+An element's `volume` is never consulted: it is what a page was told to play at,
+not what arrived.
+
+A session that is supposed to speak needs a microphone that produces sound, or
+it is indistinguishable from a muted one; `speaking_args()` supplies Chromium's
+synthetic device and, optionally, a recording to play into it.
+
+So a group call is expressible as an audience scenario without any new
+machinery: the speaker is the actor, participants expect `audio_received`, and
+whoever muted or is outside the room carries the same expectation negated.
+
 ## Limits
 
 Parallax observes rendered surfaces and discovered controls; it does not prove application policy, API authorization, or behavior outside the exercised browser flow. It uses the role storage states you supply, so a missing or incorrect role state limits what its privilege witnesses can establish. Evidence is tiered on purpose. Anything a page can be measured for — overflow, contrast ratio, mirrored geometry, tap-target size — is decided by the in-page probe, because a measurement is repeatable and a model's opinion is not; that is what makes a live unedited run reproducible. Gemini 3.6 Flash is given the one question geometry cannot express: shown all seven witness tiles composed into a single frame, which tile disagrees with its peers. Its verdicts are accepted only when they name a real tile, and they are labelled with their source in the feed. Running with `--no-vision` therefore removes cross-tile visual comparison and leaves every measured check intact.

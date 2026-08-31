@@ -151,7 +151,12 @@ def test_all_derived_contexts_share_one_browser_and_evaluate_probe_from_disk() -
         assert all(len(sources) == 1 for sources in probe_sources)
         assert len({sources[0] for sources in probe_sources}) == 1
         assert "The deterministic probe" in probe_sources[0][0]
-        assert all(not context.init_scripts for context in browser.contexts)
+        # One init script, and only one: the media instrumentation, which has to
+        # run before any application code to see the connections it creates. It
+        # records them and alters nothing, which is why a witness can carry it
+        # without becoming a participant in what it observes.
+        assert all(len(context.init_scripts) == 1 for context in browser.contexts)
+        assert all("__parallaxMedia" in context.init_scripts[0] for context in browser.contexts)
         assert browser.context_options[3]["locale"] == Locale.AR.value
         assert browser.context_options[4]["color_scheme"] == Theme.DARK.value
 
