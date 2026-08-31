@@ -85,3 +85,23 @@ def test_demo_verifier_builds_private_mount_scoped_states_and_cleans_them() -> N
     source = wrapper.read_text(encoding="utf-8")
     assert "TemporaryDirectory" in source
     assert 'cookie["path"] = f"/{site.name}"' in source
+
+
+def test_parallax_is_a_real_package_not_a_namespace_one() -> None:
+    """A namespace package imports by accident and merges with anything sharing its name.
+
+    Without __init__.py, Python treats src/parallax as an implicit namespace
+    package: the import works, `__file__` is None, and any other installed
+    distribution shipping a `parallax/` directory silently joins the same name.
+    """
+    import parallax
+
+    assert parallax.__file__ is not None
+    assert parallax.__file__.endswith("__init__.py")
+    assert (ROOT / "src" / "parallax" / "__init__.py").is_file()
+
+
+def test_the_package_reports_a_version_rather_than_asserting_one() -> None:
+    import parallax
+
+    assert isinstance(parallax.__version__, str) and parallax.__version__
