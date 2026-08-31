@@ -139,6 +139,12 @@ class Recording:
     async def play_protocol(self) -> None:
         """Ask the deployed service to play the protocol, and show what it saw.
 
+        The ledger opens with the FIRST observed step, not before: an engine
+        takes a few seconds to open its two sessions, and a dark empty column
+        on film reads as a broken pane, not as anticipation.
+        """
+        """Ask the deployed service to play the protocol, and show what it saw.
+
         The engine runs on the server with its own two sessions. This reads its
         per-step results as they land and writes them into the ledger, so what
         appears beside the boards is the verification itself rather than a
@@ -147,6 +153,7 @@ class Recording:
         started = await self.page.request.post(f"{CONSOLE}/protocol")
         run_id = (await started.json())["id"]
         shown = 0
+        ledger_open = False
         for _ in range(150):
             await self.page.wait_for_timeout(1500)
             state = await (await self.page.request.get(f"{CONSOLE}/protocol/{run_id}")).json()
@@ -158,6 +165,9 @@ class Recording:
                 7: "Now the winning move — watch Samir's board.",
             }
             for step in steps[shown:]:
+                if not ledger_open:
+                    await self.ledger("PARALLAX · PLAYING THE PROTOCOL")
+                    ledger_open = True
                 observations = [
                     f"<b>{want['participant']}</b> {want['wanted']} — "
                     + (f"<span class='yes'>{want['observed']}</span>" if want["held"]
@@ -204,7 +214,7 @@ async def act_one_start_a_sweep(rec: Recording) -> None:
         "label": "parallax-x6nwdmf3oa-uc.a.run.app/run.html — Cloud Run, us-central1",
         "url": f"{CLOUD_RUN}/run.html",
         "hint": "no selectors, no baseline, no config",
-    }])
+    }], width={"w": 1000})
     await rec.beat(6)
     await rec.pane(0).locator(".presets button", has_text="the-internet").click()
     await rec.beat(1.5)
@@ -240,7 +250,7 @@ async def act_three_harvest_the_run(rec: Recording) -> None:
         "label": "parallax-x6nwdmf3oa-uc.a.run.app — the same run",
         "url": f"{CLOUD_RUN}/run.html",
         "hint": "no cuts: this is the same service",
-    }])
+    }], width={"w": 1000})
     rec._mark("And back to the sweep we started — the service remembers it, and while the game "
               "was being judged, it finished.")
     await rec.note("Re-attached to the same sweep. Nothing was restarted.")
@@ -281,11 +291,11 @@ async def act_four_protocol(rec: Recording) -> None:
         {"label": "samir · game-legacy", "url": f"{DEMO}/arena/game-legacy?me=samir&vs=amira", "hint": "player two"},
     ])
     await rec.beat(3)
-    await rec.ledger("PARALLAX · PLAYING THE PROTOCOL")
     await rec.note(
         "Nobody is clicking these boards. Parallax plays the protocol with its own two sessions, "
         "verifying every step from <b>both</b> players before the next may run.",
     )
+    # اللوحتان بكامل العرض حتى يصل أول قيد فيُفتح الدفتر معه
     rec._mark("Now the part no screenshot tool can do: the same game at two routes, pixel identical — "
               "one tells only the winner. Nobody is clicking these boards; Parallax plays them itself, "
               "and the ledger is what it observed.")
@@ -336,6 +346,7 @@ async def act_six_the_deliverable(rec: Recording) -> None:
     )
     await rec.beat(3)
     await rec.page.goto(PULL_REQUEST, wait_until="domcontentloaded")
+    await rec.page.evaluate("document.documentElement.style.zoom = '1.35'")
     await rec.beat(5)
     await rec.page.mouse.wheel(0, 1000)
     await rec.beat(4)
@@ -352,7 +363,7 @@ async def act_seven_cloud_and_close(rec: Recording) -> None:
     await rec.show([
         {"label": "parallax-x6nwdmf3oa-uc.a.run.app — the service you watched", "url": f"{CLOUD_RUN}/graded-summary.json", "hint": "its own data"},
         {"label": "the graded gate, run in CI on every push", "url": f"{CONSOLE}/console?feed=%2Fconsole%2Fruns%2Fworkspace%2Ffeed.jsonl", "hint": "17/17 · 0 false positives"},
-    ])
+    ], width={"w": 780, "h": 940})
     await rec.beat(12)
     await rec.say("Seventeen of seventeen. Zero false positives.", "08 / GRADED, NOT ADMIRED",
               voice="Seven applications declare their own defects, two clean controls among them. "
