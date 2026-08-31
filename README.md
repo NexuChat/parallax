@@ -235,6 +235,20 @@ Everything for one run is written below `--out`:
   that cannot pass is not a test of the application.
 - The command prints totals for discovered surfaces, testimonies, findings, severity counts, feed path, and generated specs.
 
+The console reads `feed.jsonl` and replays it. A sweep captures a settled wall
+for every moment it observed — thirteen to forty of them on the published runs —
+and a completed feed arrives in one read, so the frames are played back with a
+scrubber rather than collapsed into whichever one happened to be last. Selecting
+a finding pins its evidence frame and stops the playback.
+
+Seven contexts side by side means each witness is a seventh of the panel, which
+is too small to read the control a finding is about. Clicking a tile opens that
+witness across the viewport, outlined with everything else dimmed, and the arrow
+keys walk the wall so two witnesses of the same moment can be compared. The wall
+is stored at tile scale on purpose — it is re-encoded on every moment and sent to
+the vision model — so the inspector says it enlarges rather than claiming pixels
+that were never captured.
+
 Authenticated specs never embed the storage-state path used by the sweep. Set
 `PARALLAX_OWNER_STORAGE_STATE` or `PARALLAX_MEMBER_STORAGE_STATE` to a
 CI-provisioned state file for that role; a spec that needs one fails with a clear
