@@ -106,10 +106,58 @@ class Witness:
             target = contextual_url(surface.path, self.context)
             response = await self.page.goto(target, wait_until="domcontentloaded", timeout=5_000)
             await self._wait_for_load()
+            await self.reveal_lazy_content()
         except Exception as error:
             return self._error_testimony(surface, "navigation", error)
 
         return await self.measure(surface, status=getattr(response, "status", None) if response is not None else None)
+
+    # Enough to walk a long page, bounded so an infinite-scroll feed cannot hold
+    # a sweep open forever. Twelve viewports is far past any fold.
+    _LAZY_SCROLL_STEPS = 12
+    _LAZY_SETTLE_MS = 120
+
+    _REVEAL_LAZY_CONTENT = """
+    async ({ steps, settle }) => {
+      const pause = (ms) => new Promise((done) => setTimeout(done, ms));
+      const start = window.scrollY;
+      let previous = -1;
+      for (let step = 0; step < steps; step += 1) {
+        const height = document.documentElement.scrollHeight;
+        const target = Math.min(height, (step + 1) * window.innerHeight);
+        if (target <= previous) break;
+        previous = target;
+        window.scrollTo(0, target);
+        await pause(settle);
+        if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1
+            && height === document.documentElement.scrollHeight) break;
+      }
+      window.scrollTo(0, start);
+      await pause(settle);
+      return document.documentElement.scrollHeight;
+    }
+    """
+
+    async def reveal_lazy_content(self) -> None:
+        """Scroll the page once so deferred content exists before it is measured.
+
+        The probe already walks the whole DOM, so static content far below the
+        fold is measured without this. Content that does not exist until an
+        IntersectionObserver fires is a different matter: it is simply absent,
+        and a sweep that never scrolls reports a clean page because it never
+        loaded the half that was broken. Scrolling has no side effects, unlike
+        every other way of making an application reveal itself.
+        """
+        if self.page is None:
+            return
+        try:
+            await self.page.evaluate(
+                self._REVEAL_LAZY_CONTENT,
+                {"steps": self._LAZY_SCROLL_STEPS, "settle": self._LAZY_SETTLE_MS},
+            )
+        except Exception:
+            # A page that refuses to scroll is still worth measuring as it is.
+            return
 
     async def measure(self, surface: Surface, *, status: int | None = None) -> Testimony:
         """Measure whatever the page currently shows, however it got there.

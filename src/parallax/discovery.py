@@ -64,11 +64,18 @@ COMMON_SIGN_IN_PATHS = (
 
 @dataclass(frozen=True)
 class Credential:
-    """One role's way in. The secret is never rendered."""
+    """One role's way in. The secret is never rendered.
+
+    `rank` orders this role against the others for the escalation and inversion
+    questions. The three built-in roles have known ranks (anon 0, member 1,
+    owner 2); anything else must say where it sits, because only the caller
+    knows whether a moderator outranks a room owner.
+    """
 
     role: str
     identifier: str
     secret: str = field(repr=False)
+    rank: int | None = None
 
     def __repr__(self) -> str:  # pragma: no cover - defensive, exercised by test
         return f"Credential(role={self.role!r}, identifier={self.identifier!r}, secret=***)"
@@ -452,9 +459,18 @@ def credentials_from_data(data: Any, *, source: str = "credentials") -> list[Cre
         if not isinstance(value, dict):
             raise ValueError(f"{source}: {role} must be an object with identifier and secret")
         identifier, secret = value.get("identifier"), value.get("secret")
+        rank = value.get("rank")
+        if rank is not None and (not isinstance(rank, int) or isinstance(rank, bool) or rank < 0):
+            raise ValueError(f"{source}: {role}.rank must be a non-negative integer")
         if not isinstance(identifier, str) or not identifier:
             raise ValueError(f"{source}: {role}.identifier must be a non-empty string")
         if not isinstance(secret, str) or not secret:
             raise ValueError(f"{source}: {role}.secret must be a non-empty string")
-        result.append(Credential(role.strip(), identifier, secret))
+        name = role.strip()
+        if rank is None and name not in {"anon", "member", "owner"}:
+            raise ValueError(
+                f"{source}: {name}.rank is required — Parallax knows the order of "
+                "anon, member and owner, but not where this role sits among them"
+            )
+        result.append(Credential(name, identifier, secret, rank))
     return result

@@ -23,7 +23,7 @@ from .proposer import BaselineObservation, ObservedAffordance, ProposalRejection
 from .capability import CapabilityRun, CapabilityScenario
 from .capability import judge as judge_capability
 from .relational import Expectation, RelationalPair
-from .types import Axis, AxisApplicability, Context, DefectObservation, Finding, Outcome, Privilege, RelationalReplay, Surface, SurfaceKind, Testimony, derive_witnesses
+from .types import Axis, AxisApplicability, Context, DefectObservation, Finding, Outcome, Privilege, RelationalReplay, Role, Surface, SurfaceKind, Testimony, derive_witnesses
 from .witness import StorageState, Witness
 
 
@@ -137,7 +137,7 @@ class Conductor:
         self.start_url = _normal_url(start_url)
         self.out_dir = Path(out_dir)
         self.browser = browser
-        self.contexts = list(contexts or derive_witnesses())
+        self.contexts = list(contexts or derive_witnesses(extra_roles=_declared_roles(storage_states)))
         self.specialists = list(specialists or [])
         self.storage_states = storage_states
         self.max_surfaces = max_surfaces
@@ -381,10 +381,14 @@ class Conductor:
 
     def _baseline_observation(self) -> BaselineObservation:
         """Keep the model's input to what this baseline actually encountered."""
-        roles = {context.privilege.value for context in self.contexts if context.privilege is Privilege.ANON}
-        for privilege in Privilege:
-            if self._storage_for(Context(privilege=privilege)) is not None:
-                roles.add(privilege.value)
+        # Every role the run can actually act as: anonymous is always available,
+        # and anything else needs a session behind it.
+        roles = {Privilege.ANON.value}
+        for context in self.contexts:
+            if context.varies is not Axis.PRIVILEGE and context.varies is not Axis.BASELINE:
+                continue
+            if self._storage_for(context) is not None or context.privilege is Privilege.ANON:
+                roles.add(context.privilege.value)
         return BaselineObservation(
             self.start_url,
             tuple(sorted(self._observed_routes)),
@@ -632,6 +636,28 @@ class Conductor:
     def _write(path: Path, kind: str, payload: dict[str, Any]) -> None:
         with path.open("a", encoding="utf-8") as feed:
             feed.write(json.dumps(FeedEvent(kind, payload).to_json(), separators=(",", ":")) + "\n")
+
+
+def _declared_roles(storage_states: Mapping[Privilege | str, StorageState] | None) -> list[Role]:
+    """Turn supplied role names Parallax does not know into privilege witnesses.
+
+    A key that is not one of the built-in three is a role the caller invented,
+    and it only becomes a witness because a session was supplied for it. The
+    rank comes from the run configuration; absent one, it sits above owner,
+    because a caller who adds a role to a sweep of their own product is almost
+    always adding a more privileged one.
+    """
+    if not storage_states:
+        return []
+    known = {privilege.value for privilege in Privilege}
+    ranks = getattr(storage_states, "ranks", {})
+    extra: list[Role] = []
+    for key in storage_states:
+        name = key.value if isinstance(key, Privilege) else str(key)
+        if name in known:
+            continue
+        extra.append(Role(name, int(ranks.get(name, Privilege.OWNER.rank + 1))))
+    return sorted(extra, key=lambda role: (role.rank, role.value))
 
 
 def assess_axis_applicability(

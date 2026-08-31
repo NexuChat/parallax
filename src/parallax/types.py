@@ -37,6 +37,40 @@ class Privilege(str, Enum):
         return {"anon": 0, "member": 1, "owner": 2}[self.value]
 
 
+@dataclass(frozen=True)
+class Role:
+    """A privilege level beyond the built-in three.
+
+    Applications rarely stop at anonymous, member and owner. A chat product has
+    guests, ranks, room owners and site owners, and "can the room owner do what
+    the site owner can" is exactly the question the privilege axis exists for —
+    it was simply unaskable while the axis was an enum of three.
+
+    `rank` is supplied by the caller because only the caller knows the ordering.
+    Parallax uses it for one decision: a surface reached by a lower rank that a
+    higher rank was denied is an inversion, and one reached by a lower rank that
+    the baseline was offered is an escalation. Both need an order, and neither
+    needs to know what the roles mean.
+    """
+
+    value: str
+    rank: int
+
+    def __post_init__(self) -> None:
+        if not self.value or not self.value.strip():
+            raise ValueError("a role needs a name")
+        if self.rank < 0:
+            raise ValueError(f"role {self.value!r} needs a non-negative rank")
+
+    def __str__(self) -> str:
+        return self.value
+
+
+# Either kind of role can sit on a Context: the built-in enum carries its own
+# rank, and a declared Role carries the one its caller gave it.
+AnyRole = Privilege | Role
+
+
 class Locale(str, Enum):
     EN = "en"
     AR = "ar"
@@ -119,7 +153,9 @@ class Context:
 BASELINE = Context()
 
 
-def derive_witnesses(baseline: Context = BASELINE) -> list[Context]:
+def derive_witnesses(
+    baseline: Context = BASELINE, *, extra_roles: Sequence["Role"] = ()
+) -> list[Context]:
     """One-axis-at-a-time derivation: 8 witnesses instead of a 36-cell product.
 
     Each returned context differs from the baseline in exactly one axis, so any
@@ -128,6 +164,11 @@ def derive_witnesses(baseline: Context = BASELINE) -> list[Context]:
     witnesses = [baseline]
     for privilege in (Privilege.MEMBER, Privilege.ANON):
         witnesses.append(replace(baseline, privilege=privilege, varies=Axis.PRIVILEGE))
+    # Declared roles are witnesses on the same axis as the built-in three. They
+    # are appended rather than substituted, so a run that adds a role does not
+    # stop asking the questions it asked before.
+    for role in extra_roles:
+        witnesses.append(replace(baseline, privilege=role, varies=Axis.PRIVILEGE))
     witnesses.append(replace(baseline, locale=Locale.AR, varies=Axis.LOCALE))
     witnesses.append(replace(baseline, theme=Theme.DARK, varies=Axis.THEME))
     for viewport in (MOBILE, TABLET):
