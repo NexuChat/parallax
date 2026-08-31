@@ -643,86 +643,49 @@ def relational_scenarios_from_data(data: Any, start_url: str, *, source: str = "
     return result
 
 
-def _relational_scenarios(path: Path, start_url: str) -> list[RelationalScenario]:
+def _declaration(path: Path) -> Any:
+    """Read the scenario file once, reporting where it is malformed."""
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as error:
         raise _scenario_error(str(path), "file does not exist") from error
     except OSError as error:
         raise _scenario_error(str(path), f"could not read file: {error}") from error
     except json.JSONDecodeError as error:
         raise _scenario_error(str(path), f"invalid JSON at line {error.lineno}, column {error.colno}") from error
-    return relational_scenarios_from_data(data, start_url, source=str(path))
 
 
-async def _run(args: argparse.Namespace) -> int:
-    from playwright.async_api import async_playwright
+def _relational_scenarios(path: Path, start_url: str) -> list[RelationalScenario]:
+    return relational_scenarios_from_data(_declaration(path), start_url, source=str(path))
 
-    relational_scenarios = _relational_scenarios(args.relational_scenarios, args.url) if args.relational_scenarios else None
-    audiences = (
-        audiences_from_data(
-            json.loads(args.relational_scenarios.read_text(encoding="utf-8")),
-            args.url,
-            source=str(args.relational_scenarios),
-        )
-        if args.relational_scenarios
-        else []
-    )
-    choreographies = (
-        choreographies_from_data(
-            json.loads(args.relational_scenarios.read_text(encoding="utf-8")),
-            args.url,
-            source=str(args.relational_scenarios),
-        )
-        if args.relational_scenarios
-        else []
-    )
-    capability_scenarios = (
-        capability_scenarios_from_data(
-            json.loads(args.relational_scenarios.read_text(encoding="utf-8")),
-            args.url,
-            source=str(args.relational_scenarios),
-        )
-        if args.relational_scenarios
-        else []
-    )
-    # Built once and kept, because the run summary has to report what the lens
-    # actually did and cannot ask a list the conductor threw away.
-    specialists = _specialists(args.no_vision)
-    semantics = SemanticComparator()
-    configure_semantics(semantics)
-    proposer = _scenario_proposer(args.propose_scenarios)
-    async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(
-            headless=not args.headed, args=["--no-sandbox", "--disable-dev-shm-usage"]
-        )
-        try:
-            sign_ins, discovered_states, locale = await _discover_sessions(args, browser)
-            summary = await _conduct(
-                args, browser, relational_scenarios, specialists, proposer,
-                capability_scenarios=capability_scenarios,
-                choreographies=choreographies,
-                audiences=audiences,
-                discovered_states=discovered_states,
-                locale_kind=locale.kind,
-            )
-        finally:
-            await browser.close()
 
+def run_summary(
+    summary: Any,
+    *,
+    sign_ins: list[dict[str, object]],
+    locale: Any,
+    capability_scenarios: list[Any],
+    audiences: list[Any],
+    choreographies: list[Any],
+    relational_scenarios: list[Any] | None,
+    specialists: list[Any],
+    semantics: Any,
+    delivery: Any,
+    triage: Any,
+) -> dict[str, Any]:
+    """Assemble the run report.
+
+    Extracted from the command so it can be checked without launching a browser.
+    This dict is the run's primary artifact — the thing a reader opens to decide
+    whether a sweep did what it claims — and it was previously a literal inside
+    an async function that needed Chromium to evaluate at all.
+    """
     counts: dict[str, int] = {}
     for finding in summary.findings:
         counts[finding.severity.value] = counts.get(finding.severity.value, 0) + 1
-    delivery = _deliver(args, summary)
-    triage = GemmaTriage().group(summary.findings)
-    # The console reads the feed, not this process's stdout. A grouping that
-    # exists only in the terminal cannot be checked against the published
-    # evidence later, so it is appended to the feed as its own event — carrying
-    # the finding ids, so a reader can confirm the model only ever partitioned
-    # findings the deterministic layers had already produced.
-    _append_triage(summary.feed_path, triage)
     exercised = [decision for decision in summary.axis_applicability if decision.applicable]
     not_applicable = [decision for decision in summary.axis_applicability if not decision.applicable]
-    print(json.dumps({
+    return {
         "surfaces": len(summary.surfaces),
         "testimonies": len(summary.testimonies),
         "findings": len(summary.findings),
@@ -775,7 +738,72 @@ async def _run(args: argparse.Namespace) -> int:
                 for group in triage.groups
             ],
         },
-    }, indent=2))
+    }
+
+
+async def _run(args: argparse.Namespace) -> int:
+    from playwright.async_api import async_playwright
+
+    # Read once. Every scenario shape lives in the same file, and each used to
+    # re-open and re-parse it: four reads of one path, and four chances for the
+    # four parsers to disagree about a file somebody edited between them.
+    declaration = _declaration(args.relational_scenarios) if args.relational_scenarios else None
+    source = str(args.relational_scenarios) if args.relational_scenarios else "declaration"
+    relational_scenarios = (
+        relational_scenarios_from_data(declaration, args.url, source=source)
+        if declaration is not None else None
+    )
+    audiences = audiences_from_data(declaration, args.url, source=source) if declaration is not None else []
+    choreographies = (
+        choreographies_from_data(declaration, args.url, source=source) if declaration is not None else []
+    )
+    capability_scenarios = (
+        capability_scenarios_from_data(declaration, args.url, source=source) if declaration is not None else []
+    )
+    # Built once and kept, because the run summary has to report what the lens
+    # actually did and cannot ask a list the conductor threw away.
+    specialists = _specialists(args.no_vision)
+    semantics = SemanticComparator()
+    configure_semantics(semantics)
+    proposer = _scenario_proposer(args.propose_scenarios)
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(
+            headless=not args.headed, args=["--no-sandbox", "--disable-dev-shm-usage"]
+        )
+        try:
+            sign_ins, discovered_states, locale = await _discover_sessions(args, browser)
+            summary = await _conduct(
+                args, browser, relational_scenarios, specialists, proposer,
+                capability_scenarios=capability_scenarios,
+                choreographies=choreographies,
+                audiences=audiences,
+                discovered_states=discovered_states,
+                locale_kind=locale.kind,
+            )
+        finally:
+            await browser.close()
+
+    delivery = _deliver(args, summary)
+    triage = GemmaTriage().group(summary.findings)
+    # The console reads the feed, not this process's stdout. A grouping that
+    # exists only in the terminal cannot be checked against the published
+    # evidence later, so it is appended to the feed as its own event — carrying
+    # the finding ids, so a reader can confirm the model only ever partitioned
+    # findings the deterministic layers had already produced.
+    _append_triage(summary.feed_path, triage)
+    print(json.dumps(run_summary(
+        summary,
+        sign_ins=sign_ins,
+        locale=locale,
+        capability_scenarios=capability_scenarios,
+        audiences=audiences,
+        choreographies=choreographies,
+        relational_scenarios=relational_scenarios,
+        specialists=specialists,
+        semantics=semantics,
+        delivery=delivery,
+        triage=triage,
+    ), indent=2))
     print(f"\nconsole: open console/index.html?feed=../{summary.feed_path}", file=sys.stderr)
     # A run that found nothing is a finished run, not a failed one.
     return 0

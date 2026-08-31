@@ -167,7 +167,10 @@ class Fleet:
             ".grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(17rem,1fr))}"
             ".app{background:#fff;border:1px solid #d8e0de;border-radius:12px;padding:16px}"
             'h2{font:700 18px/1.3 "Parallax Sans",sans-serif;margin:0 0 6px}'
-            "h2 a{color:#16211f;text-decoration:none}h2 a:hover{text-decoration:underline}"
+            # An inline link is as tall as its text, which was 18px. The fleet index is
+            # swept by the same rule it advertises, and it failed on the first sweep.
+            "h2 a{align-items:center;color:#16211f;display:inline-flex;min-block-size:44px;"
+            "text-decoration:none}h2 a:hover{text-decoration:underline}"
             ".app p{margin:0 0 8px;color:#3d4a48;font-size:14px}"
             '.meta{color:#6b7a77;font:600 12px/1.5 "Parallax Mono",monospace;margin:0}'
             ".meta code{background:#eef2f1;border-radius:4px;padding:1px 5px}"
