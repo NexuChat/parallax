@@ -20,4 +20,13 @@ The feed is newline-delimited JSON (`.jsonl`). Each line is one frozen `FeedEven
 
 `mosaic.image` may be an HTTP(S), relative, `data:` image URL, or a file-relative image URL. Tile coordinates are source-image pixels; the console measures the displayed image and scales every overlay from its natural dimensions. Findings are appended without re-rendering the existing list, newest first, and their `witnesses` activate the corresponding mosaic tiles.
 
+A recorded feed arrives in one read, so the console keeps every mosaic frame and
+replays them: **▶ PLAY** walks the sweep's captured moments and the scrubber
+jumps to any frame. Selecting a finding pins its evidence frame and stops the
+playback. Clicking a tile (or **⤢ INSPECT**) opens that witness across the whole
+viewport, outlined, with everything else dimmed — seven contexts side by side
+are too small to read the control a finding is about. `status` events with
+`state:"denied"` list the routes and controls a `[constraints] deny` rule kept
+the sweep away from, so an audit sees what was not swept and why.
+
 For a static URL the console polls with byte ranges where the server supports them, otherwise it only processes appended lines. It also attempts SSE at the same `?feed` URL shape; malformed events/lines are ignored and leave the current display intact.

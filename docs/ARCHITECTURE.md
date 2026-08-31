@@ -36,6 +36,16 @@ The sessions run concurrently because simultaneity is part of the evidence. A se
 
 The sessions do not know who is watching. Witnesses navigate and evaluate the deterministic probe; the compositor receives JPEG frames through CDP and specialists only consume recorded moments and testimonies. No specialist controls a page or talks to another specialist. That separation prevents a reviewing lens from changing the behavior it is meant to judge.
 
+### The written "never this"
+
+Discovery navigates and queues controls on live applications, so it accepts a
+deny list (`[constraints] deny`, or `--deny`): plain text matches anywhere — the
+person writing `delete` means every delete button — and glob patterns match
+whole paths. A denied route is excluded before it can be visited, a denied
+control before it can be queued, and every exclusion is written to the feed as a
+`denied` status event, so the audit trail shows what was not swept and why
+rather than leaving a gap to wonder about.
+
 ## Relational scenario proposals
 
 Relational scenarios are normally caller-declared data. `--propose-scenarios` is an opt-in discovery aid that asks Gemini 3.7 Flash on Vertex AI for up to three propagation or revocation scenarios after the baseline crawl. Its input is restricted to what the baseline observed: routes, affordances with labels and selectors, same-origin endpoints, visible text, and the roles supplied to the run. Without the flag, no proposal client is created and existing sweeps keep their behavior.
@@ -178,6 +188,17 @@ what proves the rule holds: every generated spec must fail as an assertion, and
 a skipped or passing one fails the gate.
 
 Public evidence is copied through a closed manifest: `feed.jsonl`, generated `.spec.ts` files, and supported mosaic image types. The publisher opens every source without following symlinks, rejects non-regular or unexpected entries, and atomically replaces the public run. This keeps role cookies and unrelated local files outside `console/runs/` while preserving a live wall and concrete failing regression artifacts.
+
+The deployed service (Cloud Run, one instance) exposes the same engine three
+ways: `POST /runs` starts a sweep of any URL on a background thread and serves
+its evidence as it lands (`/run.html` is the page in front of it); `POST
+/protocol` plays the arena choreography with the engine's own two sessions and
+reports each `StepResult` as it settles, so the multi-session claim can be
+pressed rather than read; and the console replays any published feed. The demo
+video is generated against these live endpoints — `scripts/record_demo.py`
+records one uncut browser session and `scripts/narrate_demo.py` adds Cloud
+Text-to-Speech narration aligned to timestamps the recorder observed, with the
+video stream copied untouched.
 
 Because that replacement swaps the whole public directory, anything already
 published that the current sweep does not produce is carried across explicitly

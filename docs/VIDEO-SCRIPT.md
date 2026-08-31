@@ -1,179 +1,60 @@
-# Demo video script — ~4 minutes
+# The demo video is produced, not performed
 
-Target length 3:55. Every number below is in the repository, so nothing has to be
-recreated for the camera. Record at 1920×1080; the console and the demo fleet are
-both readable at that size without zooming.
-
-The hackathon requires the video to *demonstrate the backend is running on Google
-Cloud*. Beat 6 is that requirement and is not optional.
-
----
-
-## Beat 1 — the friction, 0:00–0:30
-
-On camera: the Parallax console at `https://perallax.mlki.app`, idle.
-
-> Every regression tool I have used compares a page against yesterday's copy of
-> the same page. That catches what changed. It never catches what only one kind
-> of user sees.
->
-> A control that only falls off the screen on a phone. A page an anonymous
-> visitor could reach that only members should. A message the sender saw sent and
-> the receiver never received. Every one of those is invisible to a tool that
-> looks at one browser at a time.
-
-## Beat 2 — the idea, 0:30–1:00
-
-On camera: `docs/architecture.png`, then the seven-context table in the README.
-
-> Parallax runs seven browser contexts against the same page at the same time.
-> Each differs from the baseline by exactly one property — privilege, locale,
-> theme, viewport. Nothing is compared against a stored screenshot. The finding
-> *is* the disagreement between witnesses.
->
-> That means there is no golden file to record, so it works on the first sweep of
-> a site it has never seen.
-
-## Beat 3 — the proof on a site I did not build, 1:00–1:50
-
-**This is the beat that matters. Do not rush it.**
-
-On camera: the console, `the-internet` run selected. Press **▶ PLAY** so the wall
-moves through the sweep while you talk, then click a tile to open the inspector.
-
-> This is a sweep of the-internet.herokuapp.com — a public site built by someone
-> else, for practising browser automation. No plants, no configuration, no stored
-> baseline. First run: twenty-six findings across thirteen surfaces.
->
-> The highest severity one:
-
-Read the finding from the console, then click its tile to enlarge that witness:
-
-> `/challenging_dom`: an actionable control sits outside the viewport; seen by
-> `owner-en-light-mobile`, not seen by `owner-en-light-desktop`.
-
-Now switch to a terminal and prove it live — fifteen seconds:
+`web/demo.mp4` (3:44, 1920×1080, narrated) is generated end to end by two
+commands, and that is deliberate: a hackathon that requires an *unedited, live*
+demo is better served by a recording nobody could have edited than by a screen
+capture taken on trust.
 
 ```bash
-# at 360px, then at 768px
+python scripts/record_demo.py  --out /tmp/demo.webm     # one continuous browser session
+python scripts/narrate_demo.py --video /tmp/demo.mp4    # Google Cloud TTS narration
 ```
 
-Show the output: **20 actionable controls off-screen at 360, zero at 768.**
+## What the recording actually is
 
-> No tool comparing that page against its own history would report this, because
-> the page never changed. It is only visible when two witnesses look at the same
-> commit and disagree.
+One Playwright video of one browser session, no cuts. The stage
+(`demo/stage.html`) frames real sessions side by side — each pane is a genuine
+browser context against the deployed hosts — and a caption bar driven by the
+same script that paces the beats. Nothing framed is a mock-up.
 
-## Beat 4 — the two things a screenshot cannot see, 1:50–2:40
+The beats, in order:
 
-**The strongest material in the demo. Both fixtures are pixel-identical between
-the correct route and the broken one.**
+1. **The thesis** — the landing page and the seven-witness derivation.
+2. **The value** — the architecture diagram: URL in, failing tests and a pull
+   request out.
+3. **The wall** — the published sweep of `the-internet.herokuapp.com` replayed
+   frame by frame, then one witness opened full-screen in the inspector.
+4. **The protocol** — *the beat that matters.* The choreography engine plays the
+   seven-step game against the deployed arena with its own two sessions; nobody
+   scripts a click. The ledger beside the boards is the engine's own per-step
+   verification — `samir must see it — never appeared` is read from the
+   `StepResult`, not typed into a caption. The verdict shown is the finding.
+5. **The call** — three live WebRTC peers; the mute that mutes nothing; the
+   observer who chose silence and is correctly not reported.
+6. **The graded number** — 17/17/0 read live from `graded-summary.json`.
+7. **Google Cloud** — the service at its own `.run.app` URL beside its data.
+8. **A sweep, right now** — `/run.html` on Cloud Run sweeps an external site
+   during the recording; the closing caption reads the real finding count off
+   the page, because the beat *waits for the sweep* rather than timing it.
+9. **The pull request** — navigated to on GitHub, not screenshotted: a real PR
+   opened by a sweep, one commit per finding.
 
-On camera: the demo fleet front door at `demo.mlki.app`, then the arena.
+## How the narration stays in sync
 
-> Some promises are not a moment, they are an order. This is the same game served
-> at two routes. On the left it plays correctly. On the right, when a player wins,
-> the win is reported to the winner and the loser is still told it is their turn.
+Two beats wait for real work (the live sweep, the played protocol) and take as
+long as they take. So the recorder stamps every headline line with the second it
+appeared on screen (`demo.narration.json`), and `narrate_demo.py` synthesises
+each line with **Cloud Text-to-Speech** (`en-US-Chirp3-HD-Charon`), pads it to
+its own timestamp, and mixes the track under the untouched picture. The video
+stream is stream-copied — narration cannot alter a frame of what was recorded.
+The tool reports any line that would overrun its slot; the published render has
+zero.
 
-Show the two boards side by side, then the finding:
+## If a judge asks what is missing
 
-> `'invite, play, and win' broke at step 7 of 7: samir should have seen it but it
-> never appeared.`
-
-> Parallax played a seven-step protocol as two live sessions and verified every
-> step from both boards before running the next one. Screenshot the two routes and
-> they are identical.
-
-Now the call room:
-
-> And this is a real WebRTC call — audio genuinely travels between browser
-> sessions. One route enforces its own mute. The other updates the button, sets
-> the label to mic-off, and never touches the outgoing track.
-
-Show the finding:
-
-> `samir perceived 'muting stops the audio the others receive' but is not an
-> intended audience for it.`
-
-> Two listeners still hear her. The third turned his own speaker off, and is
-> correctly *not* reported — which is why the sensor measures audio energy rather
-> than asking whether a track exists. A muted sender, a deafened listener and a
-> working call all have tracks.
-
-## Beat 5 — the graded number, 2:40–3:05
-
-On camera: the green CI badge, then `web/graded-summary.json`.
-
-> Findings are worth nothing without a false-positive count. Seven demo
-> applications declare their own deliberate defects in code, including two clean
-> controls with nothing planted. Seventeen of seventeen found, zero missed, zero
-> false positives — and the controls stay at zero.
->
-> That runs in CI on every push, so the badge means the graded sweep passed, not
-> just the unit tests.
-
-Optional, if the pace allows — the honest note lands well with judges:
-
-> It did not always. It disagreed with my laptop because the demo asked for fonts
-> that are not installed everywhere, and different text metrics move an overflow
-> measurement across its threshold. The fleet now serves its own fonts.
-
-## Beat 6 — running on Google Cloud, 3:05–3:35
-
-**Required by the rules. Show, do not narrate.**
-
-On camera, in this order:
-
-1. Cloud Run console — the `parallax` service, region `us-central1`, green.
-2. The `.run.app` URL in the address bar, serving the console.
-3. Vertex AI logs, or a sweep's JSON summary showing
-   `"model": {"name": "gemini-3.7-flash", "route": "vertex", "calls_succeeded": 25}`.
-
-> The sweep service runs on Cloud Run. Gemini 3.7 Flash is reached through Vertex
-> AI with the Google GenAI SDK — and the run reports how many calls it attempted
-> and how many succeeded, so a run that silently lost the model says so instead of
-> looking like a run that found nothing.
-
-## Beat 7 — the other models, 3:35–3:50
-
-On camera: the `triage` event in the `the-internet` feed.
-
-> Three more Google models each do one job. Cloud Translation translates the
-> baseline so the comparison is same-language, and `gemini-embedding-001` decides
-> whether the meanings match — the model it replaced could not, scoring correct
-> and wrong translations in bands that overlapped. Gemma 4 groups the findings by
-> cause, and it runs on Vertex like the rest.
-
-## Beat 8 — close, 3:50–3:55
-
-> Parallax turns disagreement between simultaneous witnesses into failing
-> Playwright specs you can run in your own suite. Repository and console are in
-> the description.
-
----
-
-## Recording checklist
-
-- [ ] `PORT=8099 PYTHONPATH=src:demo:. python demo/serve.py` running for beats 4–5
-- [ ] Console tab open at `perallax.mlki.app` on the `the-internet` run
-- [ ] Two browser windows ready for beat 4: `/arena/game?me=amira&vs=samir` and
-      `/arena/game?me=samir&vs=amira` — hit `/arena/api/reset` first so the board is empty
-- [ ] Cloud Run console tab already authenticated — do not film a login
-- [ ] Terminal font large enough to read at 1080p
-- [ ] No credentials, tokens, or `gcloud` output containing a token on screen
-- [ ] Under 4 minutes
-
-## What to say if a judge asks what is missing
-
-Answer plainly; it reads better than a claim of completeness.
-
-- The two multi-session findings are reported and graded but do not yet become
-  generated specs. The emitter writes single-page specs, and a protocol failure
-  is a claim about several sessions at once, so it declines rather than writing a
-  check that would fail for the wrong reason.
-- The locale axis reports itself not applicable on a monolingual application.
-  That is the correct answer, not a gap.
-- Surfaces within a site are swept in sequence because they share one mosaic
-  wall. Sites sweep two at a time; the real-time call fixture is swept alone,
-  because a loaded machine negotiates the mesh more slowly and silence would read
-  as a room that worked.
+- The two multi-session finding kinds are reported and graded but do not become
+  generated specs; the emitter declines what it cannot express honestly.
+- The locale axis reports itself not applicable on monolingual applications —
+  that is the correct answer, not a gap.
+- The real-time call fixture is swept alone because a loaded machine negotiates
+  WebRTC more slowly, and silence would read as a room that worked.
