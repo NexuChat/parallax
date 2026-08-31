@@ -1,5 +1,7 @@
 # The demo video is produced, not performed
 
+**Published:** [https://youtu.be/D2dLCLVAZ2A](https://youtu.be/D2dLCLVAZ2A) — public, for the All Things Agentic Hackathon submission.
+
 `web/demo.mp4` (2:30, 1920×1080, narrated) is generated end to end by two
 commands, and that is deliberate: a hackathon that requires an *unedited, live*
 demo is better served by a recording nobody could have edited than by a screen

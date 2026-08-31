@@ -77,5 +77,5 @@ Paste the resulting post URL into the Devpost field
 > #AllThingsAgenticHackathon
 >
 > Run it on your own URL: perallax.mlki.app/run.html
-> Demo (2:30, one uncut browser session): perallax.mlki.app/demo.mp4
+> Demo (2:30, one uncut browser session): youtu.be/D2dLCLVAZ2A
 > Code: github.com/NexuChat/parallax

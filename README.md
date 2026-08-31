@@ -216,7 +216,7 @@ rejected for a different reason — the model kept inventing effect keys like
 it. With both effect shapes spelled out exactly as the validator enforces them,
 format rejections stopped and only evidence-grounding rejections remain.
 
-Open `console/index.html?feed=../runs/first/feed.jsonl` in the repository's console, or use the live console. It is served by one Cloud Run service in
+Open `console/index.html?feed=../runs/first/feed.jsonl` in the repository's console, or use the live console. The demo film is on YouTube: [https://youtu.be/D2dLCLVAZ2A](https://youtu.be/D2dLCLVAZ2A). It is served by one Cloud Run service in
 `us-central1`, reachable at its own Google URL —
 [`parallax-x6nwdmf3oa-uc.a.run.app`](https://parallax-x6nwdmf3oa-uc.a.run.app/console)
 — and at [`perallax.mlki.app`](https://perallax.mlki.app), which is the same
