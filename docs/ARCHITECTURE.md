@@ -42,6 +42,70 @@ Relational scenarios are normally caller-declared data. `--propose-scenarios` is
 
 The model does not control a browser. Before a proposal reaches the ordinary data-only scenario validator, the proposer rejects references to routes, selectors, endpoints, or roles the baseline did not observe, rejects a sender and receiver that are the same role, and rejects fields outside the relational grammar. Each remaining proposal is then validated exactly as a file supplied to `--relational-scenarios` would be. The run summary preserves proposed and validated counts, every rejection and reason, model route, attempted and successful calls, and any error. That makes a rejected or unavailable proposal distinguishable from no useful proposal.
 
+## Getting in without being handed the keys
+
+`src/parallax/discovery.py` removes the step that made "point it at a URL"
+untrue. Given a credentials file of `role -> {identifier, secret}`, it finds the
+sign-in surface by ranking the links the page itself offers above a list of
+common paths, in English and Arabic alike; locates the panel by its password
+field rather than by a `<form>`, because applications increasingly render a
+sign-in panel with no form element; waits for that field rather than for the
+network, because the panel is often rendered after hydration; ranks the buttons
+beside it and excludes guest and register, which do not use supplied
+credentials; and only claims a session when the password prompt is gone or a
+way out has appeared.
+
+Secrets come from a file rather than an argument, because a command line is
+visible in `ps` to every user on the host. `Credential` masks its secret in
+`repr`, so a traceback cannot leak it either, and no report, feed event, or
+generated spec carries it.
+
+The same pass establishes how the application produces a second language.
+`?lang=ar` is accepted only when the document's `lang` attribute actually
+changes; otherwise a language control is located — including inside a signed-in
+user's settings, where most applications keep it — actuated, and confirmed. The
+axis applicability gate then judges locale on that mechanism rather than on the
+presence of non-Latin text, which is a property of most of the web and not
+evidence that a second rendering exists.
+
+## Capabilities and audiences
+
+Two subsystems answer questions the seven witnesses cannot.
+
+`capability.py` asks what a role can *do*. A declared action is replayed once
+per role on its own session; a role outside `allowed` that completes it is an
+escalation, and a role inside `allowed` that cannot is a capability drift. This
+is the case a rendered page cannot expose: a control hidden with CSS in front of
+an endpoint that still accepts the request renders exactly as intended. The
+state the action produced is then measured with the same probe that measures a
+page, so a dialog that overflows a phone viewport is seen — it exists on no
+freshly loaded page and no page-load checker ever reaches it. Roles run
+sequentially on purpose: they perform the same action with the same payload, so
+running them together would let one role's effect satisfy another's check.
+
+`audience.py` performs an event once and judges it from every vantage point at
+the same moment, each observer carrying its own expectation. The expectation may
+be negative, which is the half normally left untested and the half that leaks: a
+tool that can only assert presence can show a feature works but never that it is
+contained. `expect_visible=False` is polled for the whole deadline exactly like
+a positive one, so an effect that appears and is then removed still counts as
+seen, and every observer is placed and watching before the actor acts.
+
+Gemini may propose either shape, and each is validated by exactly the validator
+its hand-written counterpart uses. The guard is stricter for a capability than
+for a relational scenario, because an invented `allowed` list would turn a
+correct authorisation rule into a reported escalation.
+
+## Delivery
+
+`delivery.py` closes the loop the rest of the pipeline opens. A finding that
+stays in `runs/` is a report, and a report is work the operator still has to do,
+so the specs the emitter wrote are pushed to a branch and proposed as a pull
+request. The base branch is only ever read; the branch name is a digest of the
+finding ids, so re-delivering the same defects reuses the branch and returns the
+open pull request rather than opening a second one; and a delivery failure is
+reported without failing the sweep that found real defects.
+
 ## Three capture layers
 
 The first layer is the deterministic in-page probe. It measures horizontal overflow, offscreen controls, mobile tap targets, clipped text or controls, WCAG AA contrast, and untranslated strings. It also emits per-element geometry plus separate content and layout signatures. These checks are cheap, repeatable, and can produce a direct finding without image interpretation.
