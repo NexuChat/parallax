@@ -1,198 +1,163 @@
 from __future__ import annotations
 
-import json
-import asyncio
+from pathlib import Path
 
 import pytest
 
-from parallax import __main__ as cli
-from parallax.proposer import ProposalRejection, ProposalReport
+from parallax import cli, config
 
 
-def test_sweep_without_relational_scenario_file_keeps_conductor_default(monkeypatch) -> None:
-    args = cli._parse(["https://app.example.test"])
-    received: dict[str, object] = {}
-
-    class FakeConductor:
-        def __init__(self, _url, _out, **options):
-            received.update(options)
-
-        async def conduct(self):
-            return object()
-
-    monkeypatch.setattr(cli, "Conductor", FakeConductor)
-    monkeypatch.setattr(cli, "_specialists", lambda _no_vision: [])
-    asyncio.run(cli._conduct(args, object(), None))
-
-    assert args.relational_scenarios is None
-    assert "relational_scenarios" not in received
+def write_config(tmp_path: Path, body: str) -> Path:
+    path = tmp_path / config.CONFIG_NAME
+    path.write_text(body, encoding="utf-8")
+    return path
 
 
-def test_scenario_proposal_is_opt_in_and_receives_the_existing_validator(monkeypatch) -> None:
-    args = cli._parse(["https://app.example.test", "--propose-scenarios"])
-    received: dict[str, object] = {}
+def test_init_writes_a_file_a_sweep_can_actually_use(tmp_path: Path) -> None:
+    assert cli.main(["init", str(tmp_path)]) == 0
 
-    class FakeProposer:
-        route = "injected"
+    settings = config.load(tmp_path / config.CONFIG_NAME)
 
-    class FakeConductor:
-        def __init__(self, _url, _out, **options):
-            received.update(options)
-
-        async def conduct(self):
-            return object()
-
-    proposer = FakeProposer()
-    monkeypatch.setattr(cli, "Conductor", FakeConductor)
-    monkeypatch.setattr(cli, "ScenarioProposer", lambda: proposer)
-    monkeypatch.setattr(cli, "_specialists", lambda _no_vision: [])
-    asyncio.run(cli._conduct(args, object(), None))
-
-    assert args.propose_scenarios
-    assert received["scenario_proposer"] is proposer
-    assert received["proposal_validator"] is cli.relational_scenarios_from_data
+    assert settings.url == "https://app.example.com"
+    assert settings.max_surfaces == 12
+    assert settings.vision is True
 
 
-def test_proposal_report_keeps_rejection_reasons_and_empty_proposals_visible() -> None:
-    report = ProposalReport(
-        True, 2, 1, (ProposalRejection(2, "action.form selector was not observed"),),
-        calls_attempted=1, calls_succeeded=1, route="vertex", note=None,
-    )
+def test_init_refuses_to_overwrite_without_being_told_to(tmp_path: Path) -> None:
+    cli.main(["init", str(tmp_path)])
+    (tmp_path / config.CONFIG_NAME).write_text("# mine\n", encoding="utf-8")
 
-    assert cli._proposal_report(report) == {
-        "enabled": True,
-        "proposed": 2,
-        "validated": 1,
-        "rejected": [{"index": 2, "reason": "action.form selector was not observed"}],
-        "calls_attempted": 1,
-        "calls_succeeded": 1,
-        "route": "vertex",
-    }
-    assert cli._proposal_report(ProposalReport(True, 0, 0, note="Gemini proposed no scenarios"))["note"] == "Gemini proposed no scenarios"
+    assert cli.main(["init", str(tmp_path)]) == 1
+    assert (tmp_path / config.CONFIG_NAME).read_text(encoding="utf-8") == "# mine\n"
+    assert cli.main(["init", str(tmp_path), "--force"]) == 0
 
 
-def test_relational_scenario_file_builds_safe_conductor_scenarios(tmp_path, monkeypatch) -> None:
-    path = tmp_path / "relational.json"
-    path.write_text(json.dumps({"scenarios": [{
-        "surface": "/threads",
-        "sender": "owner",
-        "receiver": "member",
-        "action": {
-            "type": "submit_form",
-            "form": "form.composer",
-            "checks": ["input[value='quiet']"],
-            "fills": [{"selector": "#message", "value": "Ship it"}],
-        },
-        "effect": {
-            "type": "json_contains",
-            "url": "api/messages?since=0",
-            "items": "messages",
-            "field": "text",
-            "equals": "Ship it",
-        },
-        "deadline_ms": 3000,
-    }]}), encoding="utf-8")
+def test_paths_resolve_against_the_file_not_the_shell(tmp_path: Path) -> None:
+    """The same configuration must mean the same thing from any directory."""
+    path = write_config(tmp_path, '[target]\nout = "runs/x"\n[auth]\ncredentials = ".auth/c.json"\n')
 
-    scenarios = cli._relational_scenarios(path, "https://app.example.test/base/")
-    received: dict[str, object] = {}
+    settings = config.load(path)
 
-    class FakeConductor:
-        def __init__(self, _url, _out, **options):
-            received.update(options)
-
-        async def conduct(self):
-            return object()
-
-    monkeypatch.setattr(cli, "Conductor", FakeConductor)
-    monkeypatch.setattr(cli, "_specialists", lambda _no_vision: [])
-    asyncio.run(cli._conduct(cli._parse(["https://app.example.test", "--relational-scenarios", str(path)]), object(), scenarios))
-
-    assert len(scenarios) == 1
-    scenario = scenarios[0]
-    assert scenario.surface.path == "https://app.example.test/threads"
-    assert scenario.sender.privilege.value == "owner"
-    assert scenario.receiver.privilege.value == "member"
-    assert scenario.deadline_ms == 3000
-    assert scenario.replay is not None
-    assert scenario.replay.action.form == "form.composer"
-    assert scenario.replay.action.checks == ("input[value='quiet']",)
-    assert scenario.replay.action.fills == (("#message", "Ship it"),)
-    assert scenario.replay.effect.kind == "json_contains"
-    assert scenario.replay.effect.url == "api/messages?since=0"
-    assert received["relational_scenarios"] == scenarios
+    assert settings.out == tmp_path / "runs/x"
+    assert settings.credentials == tmp_path / ".auth/c.json"
 
 
-def test_revocation_scenario_uses_the_same_safe_action_and_effect_vocabulary(tmp_path) -> None:
-    path = tmp_path / "revocation.json"
-    path.write_text(json.dumps({"scenarios": [{
-        "type": "revocation",
-        "surface": "/workspace",
-        "sender": "owner",
-        "receiver": "member",
-        "action": {"type": "submit_form", "form": "form.disable"},
-        "effect": {"type": "visible", "selector": "#workspace"},
-        "max_lag_ms": 50,
-        "deadline_ms": 200,
-    }]}), encoding="utf-8")
+def test_a_missing_file_is_not_an_error(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
 
-    scenario = cli._relational_scenarios(path, "https://app.example.test")[0]
+    settings = config.load()
 
-    assert scenario.kind == "revocation"
-    assert scenario.max_lag_ms == 50
-    assert scenario.deadline_ms == 200
-    assert scenario.replay is not None
-    assert scenario.replay.max_lag_ms == 50
-    assert scenario.replay.effect.selector == "#workspace"
+    assert settings.source is None
+    assert settings.url is None
+    assert "no configuration file" in settings.describe()
 
 
-def test_revocation_scenario_requires_an_explicit_acceptable_lag(tmp_path) -> None:
-    path = tmp_path / "revocation.json"
-    path.write_text(json.dumps({"scenarios": [{
-        "type": "revocation",
-        "surface": "/workspace",
-        "sender": "owner",
-        "receiver": "member",
-        "action": {"type": "submit_form", "form": "form.disable"},
-        "effect": {"type": "visible", "selector": "#workspace"},
-        "deadline_ms": 200,
-    }]}), encoding="utf-8")
+def test_the_file_is_found_from_a_subdirectory(tmp_path: Path, monkeypatch) -> None:
+    write_config(tmp_path, '[target]\nurl = "https://app.example.com"\n')
+    nested = tmp_path / "a" / "b"
+    nested.mkdir(parents=True)
+    monkeypatch.chdir(nested)
 
-    with pytest.raises(SystemExit, match="scenario 1.max_lag_ms must be a non-negative integer"):
-        cli._relational_scenarios(path, "https://app.example.test")
+    assert config.load().url == "https://app.example.com"
 
 
-def test_revocation_observation_window_must_exceed_acceptable_lag(tmp_path) -> None:
-    path = tmp_path / "revocation.json"
-    path.write_text(json.dumps({"scenarios": [{
-        "type": "revocation",
-        "surface": "/workspace",
-        "sender": "owner",
-        "receiver": "member",
-        "action": {"type": "submit_form", "form": "form.disable"},
-        "effect": {"type": "visible", "selector": "#workspace"},
-        "max_lag_ms": 200,
-        "deadline_ms": 200,
-    }]}), encoding="utf-8")
+def test_a_malformed_file_names_itself_rather_than_failing_obscurely(tmp_path: Path) -> None:
+    path = write_config(tmp_path, "[target\nurl =")
 
-    with pytest.raises(SystemExit, match="scenario 1.max_lag_ms must be below deadline_ms"):
-        cli._relational_scenarios(path, "https://app.example.test")
+    with pytest.raises(SystemExit) as raised:
+        config.load(path)
+
+    assert str(path) in str(raised.value)
 
 
-def test_relational_scenario_rejects_unknown_scenario_types(tmp_path) -> None:
-    path = tmp_path / "invalid.json"
-    path.write_text(json.dumps({"scenarios": [{"type": "javascript"}]}), encoding="utf-8")
-
-    with pytest.raises(SystemExit, match="scenario 1.type"):
-        cli._relational_scenarios(path, "https://app.example.test")
+def _captured(monkeypatch) -> list[list[str]]:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(cli, "sweep_main", lambda argv: calls.append(list(argv)) or 0)
+    return calls
 
 
-@pytest.mark.parametrize("payload, problem", [
-    ({"scenarios": [{"surface": "/threads"}]}, "scenario 1.sender"),
-    ({"scenarios": "not a list"}, "scenarios must be a list"),
-])
-def test_malformed_relational_scenario_file_names_the_problem(tmp_path, payload, problem) -> None:
-    path = tmp_path / "relational.json"
-    path.write_text(json.dumps(payload), encoding="utf-8")
+def test_settings_become_arguments(tmp_path: Path, monkeypatch) -> None:
+    path = write_config(tmp_path, (
+        '[target]\nurl = "https://app.example.com"\nout = "runs/x"\nmax_surfaces = 4\n'
+        '[models]\nvision = false\npropose_scenarios = true\n'
+    ))
+    calls = _captured(monkeypatch)
 
-    with pytest.raises(SystemExit, match=problem):
-        cli._relational_scenarios(path, "https://app.example.test")
+    assert cli.main(["sweep", "--config", str(path), "--quiet"]) == 0
+
+    argv = calls[0]
+    assert argv[0] == "https://app.example.com"
+    assert argv[argv.index("--max-surfaces") + 1] == "4"
+    assert "--no-vision" in argv and "--propose-scenarios" in argv
+
+
+def test_a_flag_beats_the_file(tmp_path: Path, monkeypatch) -> None:
+    """The reason to type a flag is to override what is written down."""
+    path = write_config(tmp_path, '[target]\nurl = "https://app.example.com"\nout = "runs/x"\n')
+    calls = _captured(monkeypatch)
+
+    cli.main(["sweep", "--config", str(path), "--quiet", "--out", "runs/override"])
+
+    argv = calls[0]
+    assert argv.count("--out") == 1
+    assert argv[argv.index("--out") + 1] == "runs/override"
+
+
+def test_a_flag_value_is_never_mistaken_for_the_target(tmp_path: Path, monkeypatch) -> None:
+    """argparse binds an unknown flag's value to a positional; `runs/x` is not a URL."""
+    path = write_config(tmp_path, '[target]\nurl = "https://app.example.com"\n')
+    calls = _captured(monkeypatch)
+
+    cli.main(["sweep", "--config", str(path), "--quiet", "--out", "runs/x", "--max-surfaces", "2"])
+
+    argv = calls[0]
+    assert argv[0] == "https://app.example.com"
+    assert argv[argv.index("--out") + 1] == "runs/x"
+
+
+def test_a_leading_url_overrides_the_configured_target(tmp_path: Path, monkeypatch) -> None:
+    path = write_config(tmp_path, '[target]\nurl = "https://configured.example"\n')
+    calls = _captured(monkeypatch)
+
+    cli.main(["sweep", "https://typed.example", "--config", str(path), "--quiet"])
+
+    assert calls[0][0] == "https://typed.example"
+
+
+def test_no_target_anywhere_says_what_to_do_about_it(tmp_path: Path, monkeypatch) -> None:
+    path = write_config(tmp_path, "[target]\n")
+    monkeypatch.setattr(cli, "sweep_main", lambda argv: 0)
+
+    with pytest.raises(SystemExit) as raised:
+        cli.main(["sweep", "--config", str(path)])
+
+    assert "parallax init" in str(raised.value)
+
+
+def test_an_exported_variable_is_never_overwritten_by_the_file(tmp_path: Path, monkeypatch) -> None:
+    """Exporting one is a deliberate act; the file is a default."""
+    path = write_config(tmp_path, (
+        '[target]\nurl = "https://app.example.com"\n[models]\ngoogle_cloud_project = "from-file"\n'
+    ))
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "from-environment")
+    _captured(monkeypatch)
+
+    cli.main(["sweep", "--config", str(path), "--quiet"])
+
+    import os
+
+    assert os.environ["GOOGLE_CLOUD_PROJECT"] == "from-environment"
+
+
+def test_the_file_supplies_the_variable_when_nothing_else_has(tmp_path: Path, monkeypatch) -> None:
+    path = write_config(tmp_path, (
+        '[target]\nurl = "https://app.example.com"\n[models]\ngoogle_cloud_project = "from-file"\n'
+    ))
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+    _captured(monkeypatch)
+
+    cli.main(["sweep", "--config", str(path), "--quiet"])
+
+    import os
+
+    assert os.environ["GOOGLE_CLOUD_PROJECT"] == "from-file"

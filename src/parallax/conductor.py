@@ -148,6 +148,9 @@ class Conductor:
         self.scenario_proposer = scenario_proposer
         self.proposal_validator = proposal_validator
         self.capability_validator = capability_validator
+        # Set by the CLI after its discovery pass, because how an application
+        # changes language is established once per run rather than per page.
+        self.locale_mechanism: str | None = None
         self._observed_routes: set[str] = set()
         self._observed_affordances: set[ObservedAffordance] = set()
         self._observed_endpoints: set[str] = set()
@@ -188,7 +191,9 @@ class Conductor:
 
             specialist_runs.append((surface, moments, testimonies))
 
-        axis_applicability = assess_axis_applicability(all_testimonies, self.storage_states)
+        axis_applicability = assess_axis_applicability(
+            all_testimonies, self.storage_states, locale_mechanism=self.locale_mechanism
+        )
         for decision in axis_applicability:
             self._write(feed_path, "status", {
                 "state": "axis_applicability",
@@ -661,7 +666,10 @@ def _declared_roles(storage_states: Mapping[Privilege | str, StorageState] | Non
 
 
 def assess_axis_applicability(
-    testimonies: Sequence[Testimony], storage_states: Mapping[Privilege | str, StorageState] | None
+    testimonies: Sequence[Testimony],
+    storage_states: Mapping[Privilege | str, StorageState] | None,
+    *,
+    locale_mechanism: str | None = None,
 ) -> list[AxisApplicability]:
     """Accept only page claims and supplied sessions as grounds for a comparison."""
     support = {
@@ -702,6 +710,14 @@ def assess_axis_applicability(
     )
     if lang_changed:
         locale_reason = "page lang attribute changes between contexts"
+    # A mechanism the discovery pass actuated and confirmed outranks anything
+    # inferred from a single page. arbchat.org keeps its language switch in a
+    # signed-in user's settings: discovery found it, operated it, and watched the
+    # lang attribute change, while every individual page still looked
+    # monolingual — so the gate skipped the axis the run had just proved exists.
+    discovered = locale_mechanism in {"query", "control"}
+    if discovered:
+        locale_reason = f"discovery confirmed a locale mechanism: {locale_mechanism}"
     theme_reason = _support_reason(
         support,
         (
@@ -727,7 +743,7 @@ def assess_axis_applicability(
         ),
         AxisApplicability(
             Axis.LOCALE,
-            bool(support & {"localeAlternate", "languageSwitcher"}) or lang_changed,
+            bool(support & {"localeAlternate", "languageSwitcher"}) or lang_changed or discovered,
             locale_reason,
         ),
         AxisApplicability(Axis.THEME, bool(support & {"themeMedia", "themeToggle"}), theme_reason),

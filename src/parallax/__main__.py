@@ -488,6 +488,7 @@ async def _run(args: argparse.Namespace) -> int:
                 args, browser, relational_scenarios, specialists, proposer,
                 capability_scenarios=capability_scenarios,
                 discovered_states=discovered_states,
+                locale_kind=locale.kind,
             )
         finally:
             await browser.close()
@@ -560,6 +561,7 @@ async def _conduct(
     proposer: ScenarioProposer | None = None,
     capability_scenarios: list[CapabilityScenario] | None = None,
     discovered_states: dict[str, Any] | None = None,
+    locale_kind: str | None = None,
 ) -> object:
     """Make the CLI-to-conductor contract testable without launching Chromium."""
     options: dict[str, object] = {
@@ -579,7 +581,11 @@ async def _conduct(
         options["scenario_proposer"] = proposer or ScenarioProposer()
         options["proposal_validator"] = relational_scenarios_from_data
         options["capability_validator"] = capability_scenarios_from_data
-    return await Conductor(args.url, args.out, **options).conduct()
+    conductor = Conductor(args.url, args.out, **options)
+    # What the discovery pass established about this application, handed to the
+    # gate that decides whether the locale axis is worth judging at all.
+    conductor.locale_mechanism = locale_kind
+    return await conductor.conduct()
 
 
 def main(argv: list[str] | None = None) -> int:

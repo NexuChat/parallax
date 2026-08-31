@@ -880,3 +880,35 @@ def test_a_changed_lang_attribute_still_makes_the_locale_axis_applicable() -> No
 
     assert decisions[Axis.LOCALE].applicable is True
     assert decisions[Axis.LOCALE].reason == "page lang attribute changes between contexts"
+
+
+def test_a_confirmed_locale_mechanism_outranks_what_a_single_page_shows() -> None:
+    """arbchat.org keeps its language switch in a signed-in user's settings.
+
+    Discovery found it, operated it, and watched the lang attribute change,
+    while every individual page still looked monolingual — so the gate skipped
+    the axis the same run had just proved exists.
+    """
+    surface = Surface(SurfaceKind.ROUTE, f"{SITE}/")
+    baseline = WitnessTestimony(surface, Context(), Outcome.REACHED, document_lang="ar", support={})
+    variant = WitnessTestimony(
+        surface, Context(locale=Locale.AR, varies=Axis.LOCALE), Outcome.REACHED, document_lang="ar"
+    )
+
+    without = {d.axis: d for d in assess_axis_applicability([baseline, variant], None)}
+    with_discovery = {
+        d.axis: d for d in assess_axis_applicability([baseline, variant], None, locale_mechanism="control")
+    }
+
+    assert without[Axis.LOCALE].applicable is False
+    assert with_discovery[Axis.LOCALE].applicable is True
+    assert "discovery confirmed a locale mechanism: control" == with_discovery[Axis.LOCALE].reason
+
+
+def test_a_mechanism_discovery_could_not_find_does_not_open_the_axis() -> None:
+    surface = Surface(SurfaceKind.ROUTE, f"{SITE}/")
+    baseline = WitnessTestimony(surface, Context(), Outcome.REACHED, document_lang="ar", support={})
+
+    decisions = {d.axis: d for d in assess_axis_applicability([baseline], None, locale_mechanism="none")}
+
+    assert decisions[Axis.LOCALE].applicable is False

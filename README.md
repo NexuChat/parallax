@@ -71,7 +71,36 @@ installs anything. Installing the package brings in Playwright, Pillow,
 `google-genai`, and the direct `google-auth` dependency used by the Vertex
 route; the last command downloads the browser build Playwright drives.
 
-Run a deterministic sweep. `PYTHONPATH=src` runs the checkout's own code rather than the installed copy; `--no-vision` makes the run independent of a Gemini API key.
+Installing the package puts `parallax` on the PATH. Three commands:
+
+```bash
+parallax init          # write a parallax.toml to start from
+parallax doctor        # check a sweep can run here, before one spends four minutes finding out
+parallax sweep         # witness the application and emit failing specs
+```
+
+`parallax.toml` holds the settings that belong to a project — the target, where
+evidence is written, which models are configured — so a sweep is a command
+rather than eight arguments retyped from shell history. Any of them can still be
+given as a flag, and a flag always wins, because the reason to type one is to
+override what is written down. Secrets are the exception and are never written
+there: the file says where credentials live, not what they are.
+
+`parallax doctor` reports what is configured and what is missing without running
+anything, and only a broken Chromium or an unusable target stops a sweep —
+everything else degrades and says so:
+
+```
+ok    configuration   /work/parallax.toml
+ok    chromium        151.0.7922.34
+ok    vertex ai       project rasikh-fleet-2026
+ok    credentials     /work/.auth/credentials.json (mode 600)
+note  finding triage  no PARALLAX_GEMMA_URL; grouping is disabled
+```
+
+The module form is unchanged and takes the same flags. `PYTHONPATH=src` runs the
+checkout's own code rather than the installed copy; `--no-vision` makes the run
+independent of a Gemini API key.
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m parallax https://app.example.com --out runs/first --no-vision

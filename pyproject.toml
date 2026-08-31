@@ -21,6 +21,11 @@ where = ["src"]
 
 # probe.js is read at runtime with Path(__file__).with_name("probe.js"), so it
 # must travel inside the installed package, not just the source checkout.
+[project.scripts]
+# An installed command, so using Parallax does not require knowing where its
+# source tree is or what PYTHONPATH it wants.
+parallax = "parallax.cli:main"
+
 [tool.setuptools.package-data]
 parallax = ["probe.js"]
 
